@@ -1,0 +1,32 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "leardy-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-09-02",
+	"compatibility_flags": ["nodejs_compat"],
+	"observability": {
+		"enabled": true
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "leardy",
+			"database_id": "00000000-0000-0000-0000-000000000001",
+			"migrations_dir": "drizzle"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "QUIZ_SESSION",
+				"class_name": "QuizSession"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["QuizSession"]
+		}
+	]
+}
