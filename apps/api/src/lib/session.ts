@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { sessions, users } from "../db/schema";
 import type { Database } from "../db";
 import type { AuthUser } from "../types";
@@ -11,12 +11,14 @@ export function toPublicUser(row: {
 	username: string;
 	email: string | null;
 	createdAt: string;
+	isTeacher?: number | boolean | null;
 }): AuthUser {
 	return {
 		id: row.id,
 		username: row.username,
 		email: row.email,
 		createdAt: row.createdAt,
+		isTeacher: row.isTeacher === true || row.isTeacher === 1,
 	};
 }
 
@@ -44,6 +46,7 @@ export async function userFromToken(db: Database, token: string): Promise<AuthUs
 			id: users.id,
 			username: users.username,
 			email: users.email,
+			isTeacher: users.isTeacher,
 			createdAt: users.createdAt,
 		})
 		.from(sessions)
@@ -64,4 +67,9 @@ export async function deleteSessionByToken(db: Database, token: string): Promise
 		id: sessions.id,
 	});
 	return deleted.length > 0;
+}
+
+export async function deleteOtherSessions(db: Database, userId: string, keepToken: string): Promise<void> {
+	const keepHash = await sha256Hex(keepToken);
+	await db.delete(sessions).where(and(eq(sessions.userId, userId), ne(sessions.tokenHash, keepHash)));
 }

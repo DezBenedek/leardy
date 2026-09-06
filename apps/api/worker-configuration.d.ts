@@ -4,11 +4,12 @@
 interface __BaseEnv_Env {
 	DB: D1Database;
 	QUIZ_SESSION: DurableObjectNamespace<import("./src/index").QuizSession>;
+	RATE_LIMITER: DurableObjectNamespace<import("./src/index").RateLimiter>;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: typeof import("./src/index");
-		durableNamespaces: "QuizSession";
+		durableNamespaces: "QuizSession" | "RateLimiter";
 	}
 	interface Env extends __BaseEnv_Env {}
 }

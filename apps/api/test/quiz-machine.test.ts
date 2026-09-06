@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialMachineState, reduce } from "../src/quiz/machine";
+import { initialMachineState, reduce, scoreAnswer, studentMayReveal, type QuizMachineState } from "../src/quiz/machine";
 
 describe("QuizSession state machine", () => {
 	it("start → question → answer → close → results", () => {
@@ -73,9 +73,9 @@ describe("QuizSession state machine", () => {
 	});
 
 	it("pauses and resumes the same question", () => {
-		let state = {
+		let state: QuizMachineState = {
 			...initialMachineState(1),
-			phase: "QUESTION_OPEN" as const,
+			phase: "QUESTION_OPEN",
 			questionIndex: 0,
 		};
 		const closed = reduce(state, { type: "close_question" });
@@ -88,6 +88,23 @@ describe("QuizSession state machine", () => {
 		if (!resumed.ok) return;
 		expect(resumed.state.phase).toBe("QUESTION_OPEN");
 		expect(resumed.state.questionIndex).toBe(0);
+	});
+
+	it("rejects ending a quiz from the lobby", () => {
+		const result = reduce(initialMachineState(2), { type: "end_quiz" });
+		expect(result.ok).toBe(false);
+	});
+
+	it("reveals answers only after results are shown", () => {
+		expect(studentMayReveal("QUESTION_CLOSED")).toBe(false);
+		expect(studentMayReveal("RESULTS_SHOWN")).toBe(true);
+		expect(studentMayReveal("FINISHED")).toBe(true);
+	});
+
+	it("scores correct answers with remaining time", () => {
+		expect(scoreAnswer(false, 10_000, 30_000)).toBe(0);
+		expect(scoreAnswer(true, 30_000, 30_000)).toBe(1000);
+		expect(scoreAnswer(true, 0, 30_000)).toBe(500);
 	});
 
 	it("rejects student-style answers when the question is closed", () => {

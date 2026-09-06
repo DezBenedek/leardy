@@ -3,9 +3,9 @@ import { Hono } from "hono";
 import { createDb } from "../db";
 import { users } from "../db/schema";
 import { nowIso, randomId } from "../lib/crypto";
-import { DISPLAY_NAME_RE, EMAIL_RE, jsonError, readJson } from "../lib/http";
+import { DISPLAY_NAME_RE, EMAIL_RE, MAX_PASSWORD_LENGTH, jsonError, readJson } from "../lib/http";
 import { hashPassword, verifyPassword } from "../lib/password";
-import { createSession, deleteSessionByToken, toPublicUser, userFromToken } from "../lib/session";
+import { createSession, deleteOtherSessions, deleteSessionByToken, toPublicUser, userFromToken } from "../lib/session";
 import { extractToken } from "../middleware/auth";
 import type { AppEnv } from "../types";
 
@@ -27,6 +27,7 @@ type PatchMeBody = {
 	name?: unknown;
 	currentPassword?: unknown;
 	newPassword?: unknown;
+	isTeacher?: unknown;
 };
 
 export const authRoutes = new Hono<AppEnv>();
@@ -42,6 +43,7 @@ authRoutes.post("/register", async (c) => {
 	}
 	if (!EMAIL_RE.test(email)) return jsonError(c, 400, "Invalid email");
 	if (password.length < 8) return jsonError(c, 400, "Password must be at least 8 characters");
+	if (password.length > MAX_PASSWORD_LENGTH) return jsonError(c, 400, "Password is too long");
 
 	const db = createDb(c.env.DB);
 	const existingEmail = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).get();
@@ -55,6 +57,7 @@ authRoutes.post("/register", async (c) => {
 		username: name,
 		passwordHash: await hashPassword(password),
 		email,
+		isTeacher: 0,
 		createdAt,
 	};
 	await db.insert(users).values(user);
@@ -68,6 +71,7 @@ authRoutes.post("/login", async (c) => {
 	const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
 	const username = typeof body.username === "string" ? body.username.trim() : "";
 	const password = typeof body.password === "string" ? body.password : "";
+	if (password.length > MAX_PASSWORD_LENGTH) return jsonError(c, 400, "Password is too long");
 	const db = createDb(c.env.DB);
 	const row = email
 		? await db.select().from(users).where(eq(users.email, email)).get()
@@ -141,6 +145,7 @@ authRoutes.patch("/me", async (c) => {
 		if (typeof body.newPassword !== "string" || body.newPassword.length < 8) {
 			return jsonError(c, 400, "Password must be at least 8 characters");
 		}
+		if (body.newPassword.length > MAX_PASSWORD_LENGTH) return jsonError(c, 400, "Password is too long");
 		const current = typeof body.currentPassword === "string" ? body.currentPassword : "";
 		if (!(await verifyPassword(current, row.passwordHash))) {
 			return jsonError(c, 401, "Current password is wrong");
@@ -148,10 +153,19 @@ authRoutes.patch("/me", async (c) => {
 		passwordHash = await hashPassword(body.newPassword);
 	}
 
-	if (body.email === undefined && body.name === undefined && body.newPassword === undefined) {
+	let isTeacher = row.isTeacher;
+	if (body.isTeacher !== undefined) {
+		if (typeof body.isTeacher !== "boolean") return jsonError(c, 400, "Invalid teacher flag");
+		isTeacher = body.isTeacher ? 1 : 0;
+	}
+
+	if (body.email === undefined && body.name === undefined && body.newPassword === undefined && body.isTeacher === undefined) {
 		return c.json({ user });
 	}
 
-	await db.update(users).set({ email, username, passwordHash }).where(eq(users.id, user.id));
-	return c.json({ user: toPublicUser({ ...row, email, username }) });
+	await db.update(users).set({ email, username, passwordHash, isTeacher }).where(eq(users.id, user.id));
+	if (body.newPassword !== undefined) {
+		await deleteOtherSessions(db, user.id, token);
+	}
+	return c.json({ user: toPublicUser({ ...row, email, username, isTeacher }) });
 });

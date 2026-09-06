@@ -116,6 +116,19 @@ export function reduce(state: QuizMachineState, event: QuizEvent): TransitionRes
 
 		case "end_quiz":
 			if (state.phase === "FINISHED") return ok(state, []);
+			if (state.phase !== "QUESTION_CLOSED" && state.phase !== "RESULTS_SHOWN") {
+				return fail("Cannot end quiz in this phase");
+			}
 			return ok({ ...state, phase: "FINISHED" }, [{ type: "cancel_deadline" }, { type: "broadcast_finished" }]);
 	}
+}
+
+export function studentMayReveal(phase: Phase): boolean {
+	return phase === "RESULTS_SHOWN" || phase === "FINISHED";
+}
+
+export function scoreAnswer(correct: boolean, remainingMs: number, totalMs: number): number {
+	if (!correct) return 0;
+	const ratio = totalMs > 0 ? Math.max(0, Math.min(1, remainingMs / totalMs)) : 0;
+	return Math.round(500 + 500 * ratio);
 }

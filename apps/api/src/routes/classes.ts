@@ -1,13 +1,16 @@
-import { and, count, desc, eq, isNull, notInArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, notInArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { createDb } from "../db";
 import { cards, classBans, classMaterials, classMembers, classes, quizSessions, setEditors, sets, users } from "../db/schema";
 import { nowIso, randomId } from "../lib/crypto";
-import { insertInChunks } from "../lib/d1";
 import { jsonError, readJson } from "../lib/http";
 import { randomJoinCode } from "../lib/join-code";
+import { createSetWithCards } from "../lib/sets";
 import { requireAuth } from "../middleware/auth";
 import type { AppEnv } from "../types";
+
+// isTeacher is a self-declared UX gate, not a security boundary.
+// Real authorization is class_members.role and resource ownership.
 
 type CreateClassBody = { name?: unknown };
 type JoinBody = { joinCode?: unknown };
@@ -80,6 +83,7 @@ classRoutes.post("/", async (c) => {
 		return jsonError(c, 400, "Name is required");
 	}
 	const user = c.get("user");
+	if (!user.isTeacher) return jsonError(c, 403, "Teacher only");
 	const db = createDb(c.env.DB);
 	const createdAt = nowIso();
 	let joinCode = randomJoinCode();
@@ -124,14 +128,31 @@ classRoutes.get("/", async (c) => {
 		.where(eq(classMembers.userId, user.id))
 		.all();
 
-	const result = [];
-	for (const row of rows) {
-		const [{ value: memberCount }] = await db
-			.select({ value: count() })
-			.from(classMembers)
-			.where(eq(classMembers.classId, row.id));
-		const active = await activeQuizForClass(db, row.id);
-		result.push({
+	const classIds = rows.map((row) => row.id);
+	const countRows = classIds.length
+		? await db
+				.select({ classId: classMembers.classId, value: count() })
+				.from(classMembers)
+				.where(inArray(classMembers.classId, classIds))
+				.groupBy(classMembers.classId)
+		: [];
+	const countByClass = new Map(countRows.map((row) => [row.classId, row.value]));
+	const quizRows = classIds.length
+		? await db
+				.select()
+				.from(quizSessions)
+				.where(and(inArray(quizSessions.classId, classIds), notInArray(quizSessions.status, ["FINISHED"])))
+				.orderBy(desc(quizSessions.createdAt))
+				.all()
+		: [];
+	const quizByClass = new Map<string, (typeof quizRows)[number]>();
+	for (const quiz of quizRows) {
+		if (!quizByClass.has(quiz.classId)) quizByClass.set(quiz.classId, quiz);
+	}
+
+	const result = rows.map((row) => {
+		const active = quizByClass.get(row.id);
+		return {
 			id: row.id,
 			name: row.name,
 			ownerId: row.ownerId,
@@ -139,11 +160,11 @@ classRoutes.get("/", async (c) => {
 			createdAt: row.createdAt,
 			role: row.role,
 			joinCode: row.role === "teacher" ? row.joinCode : undefined,
-			memberCount,
+			memberCount: countByClass.get(row.id) ?? 0,
 			activeQuizId: active?.id,
 			activeQuizStatus: active?.status,
-		});
-	}
+		};
+	});
 	return c.json({ classes: result });
 });
 
@@ -158,28 +179,22 @@ classRoutes.post("/join", async (c) => {
 	if (await banRow(db, classroom.id, user.id)) {
 		return jsonError(c, 403, "You are banned from this class");
 	}
+	await db
+		.insert(classMembers)
+		.values({
+			classId: classroom.id,
+			userId: user.id,
+			role: "student",
+			joinedAt: nowIso(),
+		})
+		.onConflictDoNothing();
 	const existing = await membership(db, classroom.id, user.id);
-	if (existing) {
-		return c.json({
-			class: {
-				id: classroom.id,
-				name: classroom.name,
-				role: existing.role,
-				allowStudentSets: classroom.allowStudentSets === 1,
-			},
-		});
-	}
-	await db.insert(classMembers).values({
-		classId: classroom.id,
-		userId: user.id,
-		role: "student",
-		joinedAt: nowIso(),
-	});
+	if (!existing) return jsonError(c, 500, "Could not join class");
 	return c.json({
 		class: {
 			id: classroom.id,
 			name: classroom.name,
-			role: "student" as const,
+			role: existing.role,
 			allowStudentSets: classroom.allowStudentSets === 1,
 		},
 	});
@@ -415,6 +430,39 @@ classRoutes.delete("/:id/materials/:materialId", async (c) => {
 	return c.json({ ok: true });
 });
 
+classRoutes.patch("/:id/materials/:materialId", async (c) => {
+	const user = c.get("user");
+	const db = createDb(c.env.DB);
+	const classId = c.req.param("id");
+	const materialId = c.req.param("materialId");
+	const member = await membership(db, classId, user.id);
+	if (!member) return jsonError(c, 403, "Not a member of this class");
+	const row = await db
+		.select()
+		.from(classMaterials)
+		.where(and(eq(classMaterials.id, materialId), eq(classMaterials.classId, classId)))
+		.get();
+	if (!row) return jsonError(c, 404, "Material not found");
+	if (row.createdBy !== user.id) return jsonError(c, 403, "Not the author");
+	const body = await readJson<MaterialBody>(c);
+	const title = typeof body?.title === "string" ? body.title.trim() : row.title;
+	if (title.length < 1) return jsonError(c, 400, "Title is required");
+	const note = typeof body?.note === "string" ? body.note.trim() : (row.note ?? "");
+	const url =
+		body?.url === undefined
+			? row.url
+			: body.url === null || body.url === ""
+				? null
+				: asHttpUrl(body.url);
+	if (body?.url && body.url !== "" && !url) return jsonError(c, 400, "Invalid URL");
+	if (!url && !note) return jsonError(c, 400, "Add a link or a note");
+	await db
+		.update(classMaterials)
+		.set({ title, url, note: note || null })
+		.where(eq(classMaterials.id, materialId));
+	return c.json({ material: { ...row, title, url, note: note || null } });
+});
+
 classRoutes.post("/:id/sets", async (c) => {
 	const user = c.get("user");
 	const db = createDb(c.env.DB);
@@ -451,40 +499,15 @@ classRoutes.post("/:id/sets", async (c) => {
 		});
 	}
 
-	const createdAt = nowIso();
-	const setRow = {
-		id: randomId(),
+	const created = await createSetWithCards(db, {
 		ownerId: user.id,
 		classId,
 		name: body.name.trim(),
 		subject: body.subject.trim(),
-		visibility: "classroom" as const,
-		createdAt,
-		updatedAt: createdAt,
-		deletedAt: null as string | null,
-		revision: 1,
-		clientId: randomId(),
-	};
-	await db.insert(sets).values(setRow);
-	const cardRows = cardInputs.map((card, index) => ({
-		id: randomId(),
-		setId: setRow.id,
-		front: card.front,
-		back: card.back,
-		hint: card.hint,
-		example: card.example,
-		sortOrder: index,
-		updatedAt: createdAt,
-		revision: 1,
-		clientId: randomId(),
-	}));
-	try {
-		await insertInChunks(cardRows, 10, (chunk) => db.insert(cards).values(chunk));
-	} catch (error) {
-		await db.delete(sets).where(eq(sets.id, setRow.id));
-		throw error;
-	}
-	return c.json({ set: { ...setRow, cards: cardRows } }, 201);
+		cards: cardInputs,
+	});
+	const setRow = await db.select().from(sets).where(eq(sets.id, created.setId)).get();
+	return c.json({ set: { ...setRow, cards: created.cards } }, 201);
 });
 
 classRoutes.get("/:id/sets", async (c) => {
@@ -501,8 +524,11 @@ classRoutes.get("/:id/sets", async (c) => {
 		.from(sets)
 		.where(and(eq(sets.classId, classId), isNull(sets.deletedAt)))
 		.all();
-	const editorRows = await db.select().from(setEditors).all();
-	const editorIds = new Set(editorRows.filter((row) => rows.some((set) => set.id === row.setId)).map((row) => `${row.setId}:${row.userId}`));
+	const setIds = rows.map((row) => row.id);
+	const editorRows = setIds.length
+		? await db.select().from(setEditors).where(inArray(setEditors.setId, setIds)).all()
+		: [];
+	const editorIds = new Set(editorRows.map((row) => `${row.setId}:${row.userId}`));
 	return c.json({
 		sets: rows.map((row) => ({
 			...row,
@@ -585,6 +611,8 @@ classRoutes.delete("/:id/sets/:setId/editors/:userId", async (c) => {
 	const classId = c.req.param("id");
 	const setId = c.req.param("setId");
 	const targetId = c.req.param("userId");
+	const member = await membership(db, classId, user.id);
+	if (!member) return jsonError(c, 403, "Not a member of this class");
 	const setRow = await db
 		.select()
 		.from(sets)
@@ -593,6 +621,24 @@ classRoutes.delete("/:id/sets/:setId/editors/:userId", async (c) => {
 	if (!setRow) return jsonError(c, 404, "Set not found");
 	if (setRow.ownerId !== user.id) return jsonError(c, 403, "Only the owner can remove editors");
 	await db.delete(setEditors).where(and(eq(setEditors.setId, setId), eq(setEditors.userId, targetId)));
+	return c.json({ ok: true });
+});
+
+classRoutes.delete("/:id/sets/:setId", async (c) => {
+	const user = c.get("user");
+	const db = createDb(c.env.DB);
+	const classId = c.req.param("id");
+	const setId = c.req.param("setId");
+	const member = await membership(db, classId, user.id);
+	if (!member) return jsonError(c, 403, "Not a member of this class");
+	const setRow = await db
+		.select()
+		.from(sets)
+		.where(and(eq(sets.id, setId), eq(sets.classId, classId), isNull(sets.deletedAt)))
+		.get();
+	if (!setRow) return jsonError(c, 404, "Set not found");
+	if (setRow.ownerId !== user.id) return jsonError(c, 403, "Not the owner");
+	await db.update(sets).set({ deletedAt: nowIso() }).where(eq(sets.id, setId));
 	return c.json({ ok: true });
 });
 
@@ -641,6 +687,8 @@ classRoutes.post("/:id/quiz/start", async (c) => {
 	const classId = c.req.param("id");
 	const member = await membership(db, classId, user.id);
 	if (!member || member.role !== "teacher") return jsonError(c, 403, "Teacher only");
+	const running = await activeQuizForClass(db, classId);
+	if (running) return jsonError(c, 409, "A quiz is already running");
 
 	const body = await readJson<StartQuizBody>(c);
 	if (!body || typeof body.setId !== "string") return jsonError(c, 400, "setId is required");

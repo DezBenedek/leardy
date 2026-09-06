@@ -3,6 +3,7 @@ export type AuthUser = {
 	username: string;
 	email: string | null;
 	createdAt: string;
+	isTeacher: boolean;
 };
 
 export type AppEnv = {

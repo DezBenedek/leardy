@@ -9,7 +9,17 @@ apps/mobile   Flutter (iOS + Android)
 apps/api      Hono + Cloudflare Workers (D1, Durable Objects)
 ```
 
-## Mobil
+## Indítás
+
+A gyökérből, egy parancs: API + app, IP / `adb reverse` automatikus.
+
+```bash
+./start.sh
+```
+
+Ne futtass mellé külön `wrangler dev`-et (D1 `SQLITE_BUSY`).
+
+## Mobil (kézzel)
 
 ```bash
 cd apps/mobile
@@ -33,5 +43,7 @@ Az app alapból `http://127.0.0.1:8787`-re hív (Android emulátoron `10.0.2.2`)
 cd apps/mobile && flutter test && dart analyze lib test
 
 # API
-cd apps/api && pnpm test
+cd apps/api && pnpm test && pnpm typecheck
 ```
+
+Schema changes in `apps/api` are handwritten SQL in `apps/api/drizzle/`. `pnpm db:generate` is disabled so Drizzle Kit cannot emit a duplicate `CREATE TABLE` migration from an empty snapshot.

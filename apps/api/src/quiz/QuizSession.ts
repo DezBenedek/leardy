@@ -3,6 +3,8 @@ import {
 	initialMachineState,
 	QUESTION_DURATION_MS,
 	reduce,
+	scoreAnswer,
+	studentMayReveal,
 	type Phase,
 	type QuizEvent,
 	type QuizMachineState,
@@ -45,7 +47,10 @@ export type QuizSnapshot = {
 		expected?: string;
 		answers: { userId: string; displayName: string; choice: number; typed?: string | null; correct: boolean }[];
 	} | null;
+	scores: { userId: string; displayName: string; points: number }[];
 };
+
+const RESULTS_HOLD_MS = 2500;
 
 type StateRow = {
 	session_id: string;
@@ -56,6 +61,7 @@ type StateRow = {
 	question_index: number;
 	question_count: number;
 	deadline_at: number | null;
+	remaining_ms: number | null;
 	pace: "teacher" | "timed" | "auto";
 	seconds: number;
 };
@@ -117,6 +123,16 @@ export class QuizSession extends DurableObject<Env> {
 			this.ctx.storage.sql.exec(`ALTER TABLE quiz_questions ADD COLUMN expected TEXT NOT NULL DEFAULT ''`);
 			this.ctx.storage.sql.exec(`ALTER TABLE quiz_answers ADD COLUMN typed TEXT`);
 			this.ctx.storage.sql.exec(`INSERT INTO _sql_schema_migrations (id) VALUES (2)`);
+		}
+		if (currentVersion < 3) {
+			this.ctx.storage.sql.exec(`ALTER TABLE quiz_state ADD COLUMN remaining_ms INTEGER`);
+			this.ctx.storage.sql.exec(`
+				CREATE TABLE IF NOT EXISTS quiz_scores (
+					user_id TEXT PRIMARY KEY,
+					points INTEGER NOT NULL DEFAULT 0
+				)
+			`);
+			this.ctx.storage.sql.exec(`INSERT INTO _sql_schema_migrations (id) VALUES (3)`);
 		}
 	}
 
@@ -230,6 +246,11 @@ export class QuizSession extends DurableObject<Env> {
 			ws.send(JSON.stringify({ type: "error", error: "Teacher only" }));
 			return;
 		}
+		const hostId = this.stateRow()?.teacher_id;
+		if (!hostId || attachment.userId !== hostId) {
+			ws.send(JSON.stringify({ type: "error", error: "Host only" }));
+			return;
+		}
 
 		if (type === "next") {
 			await this.hostNext(ws);
@@ -252,8 +273,11 @@ export class QuizSession extends DurableObject<Env> {
 		await this.apply({ type: type as Exclude<QuizEvent["type"], "answer"> }, ws);
 	}
 
-	async webSocketClose(ws: WebSocket, code: number, reason: string) {
-		ws.close(code, reason);
+	async webSocketClose(_ws: WebSocket, _code: number, _reason: string) {
+		this.broadcast({ type: "presence", participants: this.connectedParticipants() });
+	}
+
+	async webSocketError(_ws: WebSocket, _error: unknown) {
 		this.broadcast({ type: "presence", participants: this.connectedParticipants() });
 	}
 
@@ -268,7 +292,7 @@ export class QuizSession extends DurableObject<Env> {
 			if (machine && (pace === "auto" || pace === "timed")) {
 				await this.apply({ type: "show_results" });
 				if (pace === "auto") {
-					await this.ctx.storage.setAlarm(Date.now() + 2500);
+					await this.ctx.storage.setAlarm(Date.now() + RESULTS_HOLD_MS);
 				}
 			}
 			return;
@@ -307,6 +331,24 @@ export class QuizSession extends DurableObject<Env> {
 				Date.now(),
 				event.typed ?? null,
 			);
+			if (question) {
+				const correct =
+					question.kind === "type"
+						? typedMatches(event.typed ?? "", question.expected)
+						: choice === question.correctIndex;
+				const row = this.stateRow();
+				const remaining = row?.deadline_at ? Math.max(0, row.deadline_at - Date.now()) : 0;
+				const total = (row?.seconds && row.seconds > 0 ? row.seconds : QUESTION_DURATION_MS / 1000) * 1000;
+				const points = scoreAnswer(correct, remaining, total);
+				if (points > 0) {
+					this.ctx.storage.sql.exec(
+						`INSERT INTO quiz_scores (user_id, points) VALUES (?, ?)
+						 ON CONFLICT(user_id) DO UPDATE SET points = points + excluded.points`,
+						event.userId,
+						points,
+					);
+				}
+			}
 		}
 
 		this.persistMachine(result.state);
@@ -315,11 +357,21 @@ export class QuizSession extends DurableObject<Env> {
 		for (const effect of result.effects) {
 			if (effect.type === "schedule_deadline") {
 				if (pace === "teacher") continue;
-				const deadline = Date.now() + (seconds > 0 ? seconds : QUESTION_DURATION_MS / 1000) * 1000;
+				const row = this.stateRow();
+				const durationMs = (seconds > 0 ? seconds : QUESTION_DURATION_MS / 1000) * 1000;
+				const remaining = event.type === "resume_question" ? row?.remaining_ms : null;
+				const useMs = remaining != null && remaining > 0 ? remaining : durationMs;
+				const deadline = Date.now() + useMs;
 				this.setDeadline(deadline);
+				this.ctx.storage.sql.exec(`UPDATE quiz_state SET remaining_ms = NULL WHERE id = 1`);
 				await this.ctx.storage.setAlarm(deadline);
 			}
 			if (effect.type === "cancel_deadline") {
+				const row = this.stateRow();
+				if (row?.deadline_at) {
+					const remaining = Math.max(0, row.deadline_at - Date.now());
+					this.ctx.storage.sql.exec(`UPDATE quiz_state SET remaining_ms = ? WHERE id = 1`, remaining);
+				}
 				await this.ctx.storage.deleteAlarm();
 				this.clearDeadline();
 			}
@@ -336,7 +388,7 @@ export class QuizSession extends DurableObject<Env> {
 				this.broadcastProgress(result.state);
 			}
 			if (effect.type === "broadcast_finished") {
-				this.broadcast({ type: "finished", phase: "FINISHED" });
+				this.broadcast({ type: "finished", phase: "FINISHED", scores: this.leaderboard() });
 			}
 		}
 		await this.persistStatus(result.state.phase);
@@ -348,7 +400,7 @@ export class QuizSession extends DurableObject<Env> {
 	private stateRow(): StateRow | null {
 		const rows = this.ctx.storage.sql
 			.exec<StateRow>(
-				`SELECT session_id, class_id, set_id, teacher_id, phase, question_index, question_count, deadline_at, pace, seconds FROM quiz_state WHERE id = 1`,
+				`SELECT session_id, class_id, set_id, teacher_id, phase, question_index, question_count, deadline_at, remaining_ms, pace, seconds FROM quiz_state WHERE id = 1`,
 			)
 			.toArray();
 		return rows[0] ?? null;
@@ -546,11 +598,8 @@ export class QuizSession extends DurableObject<Env> {
 		if (!row || !machine) return null;
 		const isTeacher = viewer?.role === "teacher";
 		const question = machine.questionIndex >= 0 ? (this.questions()[machine.questionIndex] ?? null) : null;
-		const revealKey =
-			isTeacher ||
-			(machine.phase !== "QUESTION_OPEN" && machine.phase !== "QUIZ_READY" && machine.phase !== "LOBBY");
-		const showResults =
-			isTeacher || machine.phase === "RESULTS_SHOWN" || machine.phase === "QUESTION_CLOSED";
+		const revealKey = isTeacher || studentMayReveal(machine.phase);
+		const showResults = isTeacher || studentMayReveal(machine.phase);
 		return {
 			sessionId: row.session_id,
 			phase: machine.phase,
@@ -572,7 +621,19 @@ export class QuizSession extends DurableObject<Env> {
 				: null,
 			participants: this.connectedParticipants(),
 			results: showResults ? this.resultsFor(machine) : null,
+			scores: this.leaderboard(),
 		};
+	}
+
+	private leaderboard() {
+		return this.ctx.storage.sql
+			.exec<{ user_id: string; points: number }>(`SELECT user_id, points FROM quiz_scores ORDER BY points DESC`)
+			.toArray()
+			.map((row) => ({
+				userId: row.user_id,
+				displayName: this.displayName(row.user_id),
+				points: row.points,
+			}));
 	}
 
 	private async persistStatus(phase: Phase) {

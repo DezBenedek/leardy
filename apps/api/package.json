@@ -5,8 +5,9 @@
 	"scripts": {
 		"dev": "wrangler dev --ip 0.0.0.0 --port 8787",
 		"test": "vitest",
+		"typecheck": "tsc --noEmit",
 		"types": "wrangler types",
-		"db:generate": "drizzle-kit generate",
+		"db:generate": "echo 'Write SQL by hand in drizzle/. Schema snapshots are not used.' && exit 1",
 		"db:migrate": "wrangler d1 migrations apply leardy --local",
 		"db:migrate:remote": "wrangler d1 migrations apply leardy --remote"
 	},
