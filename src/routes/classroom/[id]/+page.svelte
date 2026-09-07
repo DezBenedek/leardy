@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { ArrowLeft, BookOpen, Crown, Layers, Play, Plus, Share2, Ticket, Trash2, Trophy, Users } from 'lucide-svelte';
@@ -6,9 +7,12 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
 	import { Dialog } from '$lib/components/ui/dialog/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
+	import { Avatar } from '$lib/components/ui/avatar/index.js';
 	import { store } from '$lib/db.svelte.js';
 	import { t } from '$lib/i18n.js';
-	import { toasts } from '$lib/components/ui/toast/toast.svelte.js';
 	import { cn } from '$lib/utils.js';
 
 	const id = $derived(page.params.id ?? '');
@@ -18,7 +22,6 @@
 	const results = $derived(
 		store.data.results.filter((r) => r.scope === 'doga' && group?.sharedDeckIds.includes(r.refId))
 	);
-	const lang = $derived(store.data.profile.lang);
 
 	let shareOpen = $state(false);
 	let dogaOpen = $state(false);
@@ -30,14 +33,19 @@
 	let dogaCount = $state(10);
 	let dogaSecs = $state(20);
 
+	const deckOptions = $derived(sharedDecks.map((d) => ({ value: d.id, label: d.name })));
+
 	$effect(() => {
-		if (dogaOpen && !dogaDeck && sharedDecks.length > 0) dogaDeck = sharedDecks[0].id;
+		if (!dogaOpen) return;
+		// Elavult választás ejtése (pl. törölt pakli), különben érvénytelen doga indulna.
+		if (dogaDeck && !sharedDecks.some((d) => d.id === dogaDeck)) dogaDeck = '';
+		if (!dogaDeck && sharedDecks.length > 0) dogaDeck = sharedDecks[0].id;
 	});
 
 	function share(deckId: string) {
 		if (!group) return;
 		store.shareDeck(group.id, deckId);
-		toasts.show(t('toast.added'));
+		toast.success(t('toast.added'));
 		shareOpen = false;
 	}
 
@@ -55,8 +63,11 @@
 
 	function submitMaterial() {
 		if (!group || !matTitle.trim()) return;
-		store.addMaterial(group.id, matTitle.trim(), matUrl.trim(), matNote.trim());
-		toasts.show(t('toast.added'));
+		let url = matUrl.trim();
+		// Csupa domain jellegű bevitelnél pótoljuk a sémát, különben relatív linkként törne.
+		if (url && !/^[a-z][a-z0-9+.-]*:/i.test(url)) url = `https://${url}`;
+		store.addMaterial(group.id, matTitle.trim(), url, matNote.trim());
+		toast.success(t('toast.added'));
 		matOpen = false;
 	}
 
@@ -75,7 +86,12 @@
 	</a>
 
 	{#if !group}
-		<p class="text-muted-foreground text-sm">…</p>
+		<Card class="py-10">
+			<CardContent class="flex flex-col items-center gap-2 text-center">
+				<p class="text-muted-foreground text-sm">…</p>
+				<Button variant="outline" href="/classroom">{t('common.back')}</Button>
+			</CardContent>
+		</Card>
 	{:else}
 		<!-- Fejléc -->
 		<Card class="hero border-0 py-5 text-white">
@@ -87,7 +103,7 @@
 					<h1 class="font-display truncate text-xl font-extrabold">{group.name}</h1>
 					<p class="mt-0.5 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-white/80">
 						<span class="inline-flex items-center gap-1"><Users class="size-3.5" /> {group.members.length} {t('class.members').toLowerCase()}</span>
-						<span class="inline-flex items-center gap-1 rounded-lg bg-white/20 px-2 py-0.5 font-mono"><Ticket class="size-3.5" /> {group.code}</span>
+						<Badge class="border-white/30 bg-white/20 font-mono text-white"><Ticket class="size-3.5" /> {group.code}</Badge>
 					</p>
 				</div>
 			</CardContent>
@@ -100,10 +116,8 @@
 				<CardContent class="flex flex-col px-2">
 					{#each [...group.members].sort((a, b) => b.xp - a.xp) as m, i (m.id)}
 						<div class="flex items-center gap-3 rounded-xl px-3 py-2.5">
-							<span class={cn('w-5 text-center text-sm font-extrabold', medal(i))}>{i + 1}</span>
-							<span class="bg-muted grid size-9 shrink-0 place-items-center rounded-full text-sm font-extrabold">
-								{(m.name || '?').charAt(0).toUpperCase()}
-							</span>
+							<span class={cn('w-5 text-center text-sm font-extrabold tabular-nums', medal(i))}>{i + 1}</span>
+							<Avatar initials={(m.name || '?').charAt(0).toUpperCase()} />
 							<span class="min-w-0 flex-1 truncate text-sm font-bold">
 								{m.you ? (m.name || t('common.you')) : m.name}
 								{#if m.you}<Badge variant="secondary" class="ml-1.5">{t('common.you')}</Badge>{/if}
@@ -111,7 +125,7 @@
 							{#if group.ownerId === m.id}
 								<Crown class="size-4 text-amber-500" aria-label={t('class.owner')} />
 							{/if}
-							<span class="text-muted-foreground text-xs font-bold">{m.xp} XP</span>
+							<span class="text-muted-foreground text-xs font-bold tabular-nums">{m.xp} XP</span>
 						</div>
 					{/each}
 				</CardContent>
@@ -138,7 +152,7 @@
 								</span>
 								<span class="min-w-0">
 									<span class="block truncate text-sm font-bold">{d.name}</span>
-									<span class="text-muted-foreground block text-xs font-semibold">
+									<span class="text-muted-foreground block text-xs font-semibold tabular-nums">
 										{store.data.cards.filter((c) => c.deckId === d.id).length} {t('decks.cards.n')}
 									</span>
 								</span>
@@ -179,14 +193,15 @@
 									{/if}
 									{#if m.note}<span class="text-muted-foreground block truncate text-xs">{m.note}</span>{/if}
 								</span>
-								<button
-									type="button"
+								<Button
+									variant="ghost"
+									size="icon"
 									aria-label={t('common.delete')}
 									onclick={() => group && store.deleteMaterial(group.id, m.id)}
-									class="hover:bg-destructive/10 hover:text-destructive grid size-8 shrink-0 place-items-center rounded-lg transition-colors"
+									class="hover:bg-destructive/10 hover:text-destructive size-8 shrink-0"
 								>
 									<Trash2 class="size-4" />
-								</button>
+								</Button>
 							</div>
 						{/each}
 					</CardContent>
@@ -211,10 +226,10 @@
 								<span class="min-w-0 flex-1 truncate text-sm font-semibold">
 									{r.refName} <span class="text-muted-foreground font-normal">· {r.memberName}</span>
 								</span>
-								<span class="text-xs font-extrabold {r.score / r.total >= 0.7 ? 'text-forest' : 'text-muted-foreground'}">
+								<span class="text-xs font-extrabold tabular-nums {r.score / r.total >= 0.7 ? 'text-forest' : 'text-muted-foreground'}">
 									{r.score}{t('common.of')}{r.total}
 								</span>
-								<span class="text-xp text-xs font-bold">+{r.xp}</span>
+								<span class="text-xp text-xs font-bold tabular-nums">+{r.xp}</span>
 							</div>
 						{/each}
 					</CardContent>
@@ -237,7 +252,7 @@
 				</span>
 				<span class="min-w-0">
 					<span class="block truncate text-sm font-bold">{d.name}</span>
-					<span class="text-muted-foreground block text-xs">{store.data.cards.filter((c) => c.deckId === d.id).length} {t('decks.cards.n')}</span>
+					<span class="text-muted-foreground block text-xs tabular-nums">{store.data.cards.filter((c) => c.deckId === d.id).length} {t('decks.cards.n')}</span>
 				</span>
 			</button>
 		{:else}
@@ -249,21 +264,17 @@
 <Dialog bind:open={dogaOpen} title={t('class.doga.t')}>
 	<div class="flex flex-col gap-4">
 		<div>
-			<label class="field-label" for="doga-deck">{t('class.deck')}</label>
-			<select id="doga-deck" class="field" bind:value={dogaDeck}>
-				{#each sharedDecks as d (d.id)}
-					<option value={d.id}>{d.name}</option>
-				{/each}
-			</select>
+			<Label>{t('class.deck')}</Label>
+			<Select bind:value={dogaDeck} options={deckOptions} />
 		</div>
 		<div>
-			<span class="field-label">{t('class.count')}</span>
+			<Label>{t('class.count')}</Label>
 			<div class="grid grid-cols-3 gap-2">
 				{#each [5, 10, 15] as n (n)}
 					<button
 						type="button"
 						onclick={() => (dogaCount = n)}
-						class={cn('press rounded-xl border py-2.5 text-sm font-extrabold', dogaCount === n ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
+						class={cn('press rounded-xl border py-2.5 text-sm font-extrabold tabular-nums', dogaCount === n ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
 					>
 						{n}
 					</button>
@@ -271,13 +282,13 @@
 			</div>
 		</div>
 		<div>
-			<span class="field-label">{t('class.time')}</span>
+			<Label>{t('class.time')}</Label>
 			<div class="grid grid-cols-3 gap-2">
 				{#each [10, 20, 30] as s (s)}
 					<button
 						type="button"
 						onclick={() => (dogaSecs = s)}
-						class={cn('press rounded-xl border py-2.5 text-sm font-extrabold', dogaSecs === s ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
+						class={cn('press rounded-xl border py-2.5 text-sm font-extrabold tabular-nums', dogaSecs === s ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
 					>
 						{s} {t('class.sec')}
 					</button>
@@ -293,16 +304,16 @@
 <Dialog bind:open={matOpen} title={t('class.addMaterial')}>
 	<div class="flex flex-col gap-3">
 		<div>
-			<label class="field-label" for="mat-title">{t('class.matTitle')}</label>
-			<input id="mat-title" class="field" bind:value={matTitle} maxlength={80} />
+			<Label for="mat-title">{t('class.matTitle')}</Label>
+			<Input id="mat-title" bind:value={matTitle} maxlength={80} />
 		</div>
 		<div>
-			<label class="field-label" for="mat-url">{t('class.matUrl')}</label>
-			<input id="mat-url" class="field" bind:value={matUrl} inputmode="url" placeholder="https://" maxlength={200} />
+			<Label for="mat-url">{t('class.matUrl')}</Label>
+			<Input id="mat-url" bind:value={matUrl} inputmode="url" placeholder="https://" maxlength={200} />
 		</div>
 		<div>
-			<label class="field-label" for="mat-note">{t('class.matNote')}</label>
-			<input id="mat-note" class="field" bind:value={matNote} maxlength={140} />
+			<Label for="mat-note">{t('class.matNote')}</Label>
+			<Input id="mat-note" bind:value={matNote} maxlength={140} />
 		</div>
 		<Button onclick={submitMaterial} disabled={!matTitle.trim()} class="w-full">{t('common.create')}</Button>
 	</div>

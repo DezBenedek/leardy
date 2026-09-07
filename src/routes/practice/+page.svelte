@@ -1,15 +1,16 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { ArrowLeft, Check, ListMusic, PartyPopper, RotateCcw, SkipForward, Zap } from 'lucide-svelte';
+	import { ArrowLeft, Check, ListMusic, PartyPopper, RotateCcw, SkipForward, X, Zap } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card } from '$lib/components/ui/card/index.js';
 	import { Dialog } from '$lib/components/ui/dialog/index.js';
-	import EmptyState from '$lib/components/empty-state.svelte';
-	import FeedbackPill from '$lib/components/feedback-pill.svelte';
-	import KnowledgeSignal from '$lib/components/knowledge-signal.svelte';
-	import ZsoKartya from '$lib/components/zso-kartya.svelte';
-	import { levelKeyFor, gradeFromChoice, gradeFromTyped, type Grade } from '$lib/srs.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Progress } from '$lib/components/ui/progress/index.js';
+	import { Alert, AlertTitle } from '$lib/components/ui/alert/index.js';
+	import { Empty } from '$lib/components/ui/empty/index.js';
+	import { levelKeyFor, gradeFromChoice, gradeFromTyped, fuzzyMatch, xpForGrade, type Grade } from '$lib/srs.js';
 	import { store, type Card as CardType } from '$lib/db.svelte.js';
 	import { t } from '$lib/i18n.js';
 
@@ -40,11 +41,54 @@
 	let howOpen = $state(false);
 	let shownAt = 0;
 	let sessionStarted = 0;
+	let sessionXp = $state(0);
 	let elapsedMs = $state(0);
 	let bootKey = $state('');
+	let pendingTimers: ReturnType<typeof setTimeout>[] = [];
 
+	// ---- Húzható kártya állapota (shadcn Card-ra építve) ----
+	let swipeEl = $state<HTMLDivElement | null>(null);
+	let drag = $state(0);
+	let dragging = $state(false);
+	let flying = $state<0 | 1 | -1>(0);
+	let startX = 0;
+	let startY = 0;
+	let moved = 0;
+	let lastX = 0;
+	let lastT = 0;
+	let velocity = 0;
+	let downT = 0;
+
+	onDestroy(() => {
+		for (const id of pendingTimers) clearTimeout(id);
+		pendingTimers = [];
+	});
+
+	function later(ms: number, fn: () => void) {
+		const id = setTimeout(() => {
+			pendingTimers = pendingTimers.filter((x) => x !== id);
+			fn();
+		}, ms);
+		pendingTimers.push(id);
+	}
+
+	function clearPending() {
+		for (const id of pendingTimers) clearTimeout(id);
+		pendingTimers = [];
+	}
+
+	const deckExists = $derived(!deckFilter || store.data.decks.some((d) => d.id === deckFilter));
 	const total = $derived(queue.length);
 	const current = $derived(queue[idx] ?? null);
+
+	// Kártyaváltáskor a húzás-állapot alaphelyzetbe.
+	$effect(() => {
+		current?.id;
+		drag = 0;
+		dragging = false;
+		flying = 0;
+		velocity = 0;
+	});
 
 	function effectiveMode(at: number): Mode {
 		if (baseMode !== 'quiz') return baseMode;
@@ -61,6 +105,7 @@
 	}
 
 	function boot() {
+		clearPending();
 		const now = Date.now();
 		let pool: CardType[];
 		if (deckFilter) {
@@ -71,10 +116,10 @@
 				const sb = store.data.srs[b.id];
 				return (sb?.lapses ?? 0) - (sa?.lapses ?? 0) || (sa?.reps ?? 0) - (sb?.reps ?? 0);
 			});
+			pool = pool.slice(0, 10);
 		} else {
 			pool = store.dueCards(undefined, now, 20);
 		}
-		if (flashMode && !deckFilter) pool = pool.slice(0, Math.min(10, Math.max(pool.length, 5)));
 		pool = shuffle(pool).slice(0, 20);
 		const rotation: Mode[] = ['flip', 'type', 'choice'];
 		modes = shuffle(pool.map((_, i) => rotation[i % rotation.length]));
@@ -82,6 +127,7 @@
 		idx = 0;
 		correct = 0;
 		wrong = 0;
+		sessionXp = 0;
 		wrongCards = [];
 		revealed = false;
 		typedOk = false;
@@ -111,13 +157,24 @@
 			choices = [];
 			return;
 		}
-		const others = shuffle(queue.filter((c) => c.id !== card.id).map((c) => c.back)).slice(0, 3);
+		// Először a soron belüli kártyákból, kevés kártyánál a teljes gyűjteményből.
+		const inQueue = shuffle(queue.filter((c) => c.id !== card.id).map((c) => c.back));
+		const extras =
+			inQueue.length >= 3
+				? inQueue
+				: [
+						...inQueue,
+						...shuffle(
+							store.data.cards.filter((c) => c.id !== card.id && !inQueue.includes(c.back)).map((c) => c.back)
+						)
+					];
+		const others = [...new Set(extras.filter((b) => b !== card.back))].slice(0, 3);
 		choices = shuffle([card.back, ...others]);
 		picked = null;
 	}
 
 	function record(card: CardType, grade: Grade, wasCorrect: boolean) {
-		const elapsed = Date.now() - shownAt;
+		sessionXp += xpForGrade(grade);
 		store.gradeCard(card.id, grade);
 		if (wasCorrect) correct += 1;
 		else {
@@ -138,7 +195,7 @@
 				memberName: store.data.profile.name || t('common.you'),
 				score: correct,
 				total: queue.length,
-				xp: 0,
+				xp: sessionXp,
 				at: Date.now(),
 				ms
 			});
@@ -166,41 +223,23 @@
 		record(card, 0, false);
 	}
 
+	function gradeFlip(g: Grade) {
+		const card = current;
+		if (!card || finished) return;
+		record(card, g, g > 0);
+	}
+
 	function submitTyped() {
 		const card = current;
 		if (!card || revealed || !typed.trim()) return;
 		const elapsed = Date.now() - shownAt;
-		const ok = card.back.toLowerCase().trim() === typed.toLowerCase().trim() || fuzzy(card);
+		const ok = fuzzyMatch(typed, card.back);
 		revealed = true;
 		typedOk = ok;
 		feedback = { correct: ok, text: ok ? t('common.correct') : `${t('practice.correctIs')} ${card.back}` };
-		setTimeout(() => {
+		later(1200, () => {
 			record(card, gradeFromTyped(ok, elapsed), ok);
-		}, 1200);
-	}
-
-	function fuzzy(card: CardType): boolean {
-		const a = typed.toLowerCase().trim().replace(/\s+/g, ' ');
-		const b = card.back.toLowerCase().trim().replace(/\s+/g, ' ');
-		if (a === b) return true;
-		if (!a) return false;
-		let dist: number;
-		{
-			const m = a.length;
-			const n = b.length;
-			const dp: number[] = Array.from({ length: n + 1 }, (_, j) => j);
-			for (let i = 1; i <= m; i++) {
-				let prev = dp[0];
-				dp[0] = i;
-				for (let j = 1; j <= n; j++) {
-					const tmp = dp[j];
-					dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
-					prev = tmp;
-				}
-			}
-			dist = dp[n];
-		}
-		return dist <= (b.length <= 4 ? 1 : 2);
+		});
 	}
 
 	function submitChoice(choice: string) {
@@ -210,18 +249,21 @@
 		picked = choice;
 		const ok = choice === card.back;
 		feedback = { correct: ok, text: ok ? t('common.correct') : `${t('practice.correctIs')} ${card.back}` };
-		setTimeout(() => {
+		later(1000, () => {
 			record(card, gradeFromChoice(ok, elapsed), ok);
-		}, 1000);
+		});
 	}
 
 	function retry(list: CardType[]) {
-		queue = shuffle([...list]);
+		clearPending();
+		const fresh = shuffle([...list]);
 		const rotation: Mode[] = ['flip', 'type', 'choice'];
-		modes = shuffle(queue.map((_, i) => rotation[i % rotation.length]));
+		modes = shuffle(fresh.map((_, i) => rotation[i % rotation.length]));
+		queue = fresh;
 		idx = 0;
 		correct = 0;
 		wrong = 0;
+		sessionXp = 0;
 		wrongCards = [];
 		revealed = false;
 		typedOk = false;
@@ -244,6 +286,64 @@
 		goto(`/practice?${params.toString()}`);
 	}
 
+	// ---- Húzás-kezelők ----
+	function swipeWidth(): number {
+		return swipeEl?.offsetWidth ?? 320;
+	}
+
+	function onPointerDown(e: PointerEvent, canSwipe: boolean) {
+		if (flying !== 0 || !canSwipe) return;
+		startX = e.clientX;
+		startY = e.clientY;
+		lastX = e.clientX;
+		lastT = performance.now();
+		downT = lastT;
+		moved = 0;
+		velocity = 0;
+		dragging = true;
+		swipeEl?.setPointerCapture?.(e.pointerId);
+	}
+
+	function onPointerMove(e: PointerEvent, canSwipe: boolean) {
+		if (!dragging || flying !== 0) return;
+		const dx = e.clientX - startX;
+		const dy = e.clientY - startY;
+		moved = Math.max(moved, Math.abs(dx) + Math.abs(dy));
+		const now = performance.now();
+		if (now > lastT) {
+			velocity = (e.clientX - lastX) / ((now - lastT) / 1000);
+			lastX = e.clientX;
+			lastT = now;
+		}
+		if (canSwipe) drag = dx;
+	}
+
+	function onPointerUp(canFlip: boolean, canSwipe: boolean, onKnow: (() => void) | null, onDont: (() => void) | null) {
+		if (!dragging || flying !== 0) return;
+		dragging = false;
+		const w = swipeWidth();
+		const threshold = w * 0.2;
+		const goRight = onKnow !== null && (drag > threshold || (velocity > 850 && drag > 20));
+		const goLeft = onDont !== null && (drag < -threshold || (velocity < -850 && drag < -20));
+
+		if (canSwipe && (goRight || goLeft)) {
+			flying = goRight ? 1 : -1;
+			drag = flying * (w + 120);
+			later(300, () => {
+				if (goRight) onKnow?.();
+				else onDont?.();
+			});
+			return;
+		}
+		if (moved < 10 && performance.now() - downT < 500 && canFlip) {
+			revealed = !revealed;
+		}
+		drag = 0;
+	}
+
+	const swipeProgress = $derived(Math.min(1, Math.max(-1, drag / 90)));
+	const swipeOverlay = $derived(swipeProgress > 0 ? 'var(--forest)' : 'var(--wine)');
+
 	const nextDeck = $derived.by(() => {
 		const rest = store
 			.dueDeckIds()
@@ -259,12 +359,12 @@
 		return t(`practice.level.${key}` as 'practice.level.zero');
 	});
 
-	const modeRows: { m: Mode; title: string; desc: string }[] = [
+	const modeRows: { m: Mode; title: string; desc: string }[] = $derived([
 		{ m: 'flip', title: t('practice.mode.flip'), desc: t('practice.mode.flip.d') },
 		{ m: 'type', title: t('practice.mode.type'), desc: t('practice.mode.type.d') },
 		{ m: 'choice', title: t('practice.mode.choice'), desc: t('practice.mode.choice.d') },
 		{ m: 'quiz', title: t('practice.mode.quiz'), desc: t('practice.mode.quiz.d') }
-	];
+	]);
 
 	const pct = $derived(total === 0 ? 0 : Math.round((correct / total) * 100));
 	const timeLabel = $derived.by(() => {
@@ -286,16 +386,18 @@
 			<h1 class="text-[26px] font-bold tracking-tight">{deckFilter ? t('practice.deckSession') : t('practice.title')}</h1>
 			<p class="text-muted-foreground mt-1 text-sm">{t('practice.sub')}</p>
 		</div>
-		<EmptyState icon={PartyPopper} title={t('practice.empty.t')} desc={t('practice.empty.d')}>
-			<Button variant="outline" size="sm" href="/practice?mode=flash"><Zap class="size-4" /> {t('practice.flash')}</Button>
-		</EmptyState>
+		<Empty icon={PartyPopper} title={deckExists ? t('practice.empty.t') : t('decks.title')} description={deckExists ? t('practice.empty.d') : ''} />
+		<div class="flex flex-col gap-2">
+			<Button variant="outline" class="w-full" href="/practice?mode=flash"><Zap class="size-4" /> {t('practice.flash')}</Button>
+			<Button variant="ghost" class="w-full" href="/decks">{t('common.back')}</Button>
+		</div>
 	</div>
 {:else if finished}
 	<!-- Eredményképernyő -->
 	<div class="mx-auto flex min-h-[70dvh] w-full max-w-2xl flex-col items-center justify-center gap-2 px-6 text-center">
 		<p class="text-muted-foreground text-sm font-semibold">{t('common.score')}</p>
-		<p class="text-[40px] leading-none font-extrabold tracking-tight">{correct}/{total}</p>
-		<p class="text-muted-foreground text-base">{pct}% · {timeLabel}</p>
+		<p class="text-[40px] leading-none font-extrabold tracking-tight tabular-nums">{correct}/{total}</p>
+		<p class="text-muted-foreground text-base tabular-nums">{pct}% · {timeLabel} · <span class="text-xp font-bold">+{sessionXp} XP</span></p>
 		<div class="mt-5 flex w-full max-w-sm flex-col gap-2">
 			{#if nextDeck}
 				<Button size="xl" href="/practice?deck={nextDeck.id}&mod={baseMode}" class="w-full">
@@ -318,11 +420,10 @@
 {:else if current}
 	{@const mode = effectiveMode(idx)}
 	{@const flipMode = mode === 'flip'}
+	{@const canSwipe = flipMode && !finished}
 	<div class="mx-auto flex min-h-[calc(100dvh-220px)] w-full max-w-xl flex-col md:min-h-0">
-		<!-- SessionScaffold fejléc -->
-		<div class="h-[3px] w-full overflow-hidden rounded-full bg-secondary">
-			<div class="bg-primary h-full rounded-full transition-all" style="width: {((idx + 1) / total) * 100}%"></div>
-		</div>
+		<!-- Session-fejléc -->
+		<Progress value={idx + 1} max={total} class="h-[3px]" />
 		<div class="flex items-center gap-1 py-1">
 			<Button variant="ghost" size="icon" onclick={() => goto(deckFilter ? `/decks/${deckFilter}` : '/')} aria-label={t('common.back')}>
 				<ArrowLeft class="size-5" />
@@ -334,22 +435,65 @@
 		</div>
 
 		<div class="flex flex-1 flex-col justify-center gap-2 px-4 pt-1 pb-4">
-			{#key `${current.id}-${mode}`}
-				<ZsoKartya
-					front={current.front}
-					back={current.back}
-					stamp="{idx + 1} / {total}"
-					frontHint={flipMode ? t('common.tapToFlip') : null}
-					backHint={flipMode ? t('decks.back') : null}
-					canFlip={flipMode}
-					bind:showBack={revealed}
-					onKnow={flipMode ? swipeKnow : null}
-					onDontKnow={flipMode ? swipeDontKnow : null}
-				/>
-			{/key}
+			<div
+				bind:this={swipeEl}
+				role="button"
+				tabindex={0}
+				aria-label="{idx + 1} / {total}: {revealed ? current.back : current.front}"
+				onpointerdown={(e) => onPointerDown(e, canSwipe)}
+				onpointermove={(e) => onPointerMove(e, canSwipe)}
+				onpointerup={() => onPointerUp(flipMode, canSwipe, swipeKnow, swipeDontKnow)}
+				onpointercancel={() => {
+					dragging = false;
+					drag = 0;
+				}}
+				onkeydown={(e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						if (flipMode) revealed = !revealed;
+					}
+					if (e.key === 'ArrowRight' && canSwipe) swipeKnow();
+					if (e.key === 'ArrowLeft' && canSwipe) swipeDontKnow();
+				}}
+				class="zso-touch w-full cursor-grab outline-none active:cursor-grabbing"
+				style="transform: translateX({drag}px) rotate({drag * 0.04}deg); {dragging
+					? ''
+					: flying !== 0
+						? 'transition: transform 0.3s cubic-bezier(0.3, 0.7, 0.4, 1);'
+						: 'transition: transform 0.5s cubic-bezier(0.3, 1.35, 0.4, 1);'}"
+			>
+				<div class="relative">
+					<div class="flip-inner h-72 sm:h-80" class:flipped={revealed}>
+						<div class="flip-face">
+							<Card class="flex h-full flex-col px-6 py-5">
+								<p class="text-muted-foreground text-xs font-semibold tracking-wide tabular-nums">{idx + 1} / {total}</p>
+								<div class="flex flex-1 items-center justify-center overflow-hidden">
+									<p class="font-display text-center text-[28px] leading-[1.2] font-bold tracking-tight text-balance">{current.front}</p>
+								</div>
+								<p class="text-muted-foreground min-h-4 text-center text-xs font-medium">{flipMode ? t('common.tapToFlip') : ''}</p>
+							</Card>
+						</div>
+						<div class="flip-face flip-back">
+							<Card class="flex h-full flex-col px-6 py-5">
+								<p class="text-muted-foreground text-xs font-semibold tracking-wide tabular-nums">{idx + 1} / {total}</p>
+								<div class="flex flex-1 items-center justify-center overflow-hidden">
+									<p class="font-display text-center text-[28px] leading-[1.2] font-bold tracking-tight text-balance">{current.back}</p>
+								</div>
+								<p class="text-muted-foreground min-h-4 text-center text-xs font-medium">{flipMode ? t('decks.back') : ''}</p>
+							</Card>
+						</div>
+					</div>
+					{#if Math.abs(swipeProgress) > 0.12}
+						<div
+							class="pointer-events-none absolute inset-0 rounded-[18px]"
+							style="background: color-mix(in srgb, {swipeOverlay} {Math.round(Math.abs(swipeProgress) * 22)}%, transparent)"
+						></div>
+					{/if}
+				</div>
+			</div>
 
-			<div class="flex h-5 items-center justify-center gap-1.5">
-				<KnowledgeSignal level={current.level} height={12} />
+			<div class="flex h-5 items-center justify-center gap-2">
+				<Progress value={current.level} max={4} class="h-1.5 w-16" />
 				<span class="text-muted-foreground text-xs font-medium">{levelLabel}</span>
 			</div>
 
@@ -357,6 +501,21 @@
 				<div class="flex items-center justify-between px-1">
 					<span class="text-sm font-semibold" style="color: var(--wine)">{t('practice.swipeDont')}</span>
 					<span class="text-sm font-semibold" style="color: var(--forest)">{t('practice.swipeKnow')}</span>
+				</div>
+				<div class="grid grid-cols-4 gap-2">
+					{#each [0, 1, 2, 3] as g (g)}
+						<Button
+							variant="outline"
+							onclick={() => gradeFlip(g as Grade)}
+							class="py-2.5 text-[13px] {g === 0
+								? 'text-wine hover:text-wine'
+								: g === 3
+									? 'text-forest hover:text-forest'
+									: ''}"
+						>
+							{t(`practice.g.${g}` as 'practice.g.0')}
+						</Button>
+					{/each}
 				</div>
 			{/if}
 
@@ -376,8 +535,7 @@
 					}}
 					class="flex flex-col gap-3"
 				>
-					<input
-						class="field"
+					<Input
 						bind:value={typed}
 						disabled={revealed}
 						placeholder={t('practice.otherSide')}
@@ -388,8 +546,13 @@
 						<Check class="size-5" /> {t('common.check')}
 					</Button>
 				</form>
-				<div class="flex h-[60px] items-center justify-center">
-					{#if feedback}<FeedbackPill correct={feedback.correct} text={feedback.text} />{/if}
+				<div class="flex min-h-[60px] items-center justify-center">
+					{#if feedback}
+						<Alert variant={feedback.correct ? 'success' : 'destructive'} class="w-auto">
+							{#if feedback.correct}<Check />{:else}<X />{/if}
+							<AlertTitle>{feedback.text}</AlertTitle>
+						</Alert>
+					{/if}
 				</div>
 			{:else if mode === 'choice'}
 				<div class="flex flex-col gap-2">
@@ -397,23 +560,32 @@
 						{@const answered = picked !== null}
 						{@const isRight = answered && choice === current.back}
 						{@const isWrongPick = answered && choice === picked && choice !== current.back}
-						<button
-							type="button"
+						<Button
+							variant="outline"
 							disabled={answered}
 							onclick={() => submitChoice(choice)}
-							class="press flex min-h-[52px] items-center justify-center gap-2 rounded-[14px] border bg-card px-4 text-center text-[15px] font-semibold"
-							style={isRight
-								? 'border-color: var(--forest); border-width: 2px; color: var(--forest)'
+							class="min-h-[52px] h-auto px-4 py-3 text-[15px] whitespace-normal {isRight
+								? 'border-forest border-2 text-forest hover:text-forest'
 								: isWrongPick
-									? 'border-color: var(--wine); border-width: 2px; color: var(--wine)'
+									? 'border-wine border-2 text-wine hover:text-wine'
+									: ''}"
+							style={isRight
+								? 'background: color-mix(in srgb, var(--forest) 12%, transparent)'
+								: isWrongPick
+									? 'background: color-mix(in srgb, var(--wine) 12%, transparent)'
 									: undefined}
 						>
 							{choice}
-						</button>
+						</Button>
 					{/each}
 				</div>
-				<div class="flex h-[60px] items-center justify-center">
-					{#if feedback}<FeedbackPill correct={feedback.correct} text={feedback.text} />{/if}
+				<div class="flex min-h-[60px] items-center justify-center">
+					{#if feedback}
+						<Alert variant={feedback.correct ? 'success' : 'destructive'} class="w-auto">
+							{#if feedback.correct}<Check />{:else}<X />{/if}
+							<AlertTitle>{feedback.text}</AlertTitle>
+						</Alert>
+					{/if}
 				</div>
 			{/if}
 		</div>

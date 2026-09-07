@@ -1,13 +1,17 @@
 <script lang="ts">
+	import { toast } from 'svelte-sonner';
 	import { Bell, Check, ChevronRight, CircleUserRound, Download, Globe, Palette, Target, Trash2, Upload } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card } from '$lib/components/ui/card/index.js';
 	import { Dialog } from '$lib/components/ui/dialog/index.js';
-	import { Toggle } from '$lib/components/ui/toggle/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
+	import { Switch } from '$lib/components/ui/switch/index.js';
+	import { Avatar } from '$lib/components/ui/avatar/index.js';
 	import { applyTheme, type ThemeMode } from '$lib/theme.svelte.js';
 	import { store, type Lang } from '$lib/db.svelte.js';
 	import { t } from '$lib/i18n.js';
-	import { toasts } from '$lib/components/ui/toast/toast.svelte.js';
 	import { cn } from '$lib/utils.js';
 
 	const profile = $derived(store.data.profile);
@@ -20,8 +24,9 @@
 	let goalOpen = $state(false);
 	let aboutOpen = $state(false);
 	let name = $state('');
-	let remHour = $state(19);
-	let remMin = $state(0);
+	let remHour = $state('19');
+	let remMin = $state('0');
+	let reminderOn = $state(false);
 	let fileInput: HTMLInputElement | null = null;
 
 	const themeLabel = $derived(
@@ -34,6 +39,15 @@
 			: t('set.reminderOff')
 	);
 
+	const hourOptions = Array.from({ length: 24 }, (_, h) => ({
+		value: String(h),
+		label: String(h).padStart(2, '0')
+	}));
+	const minOptions = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => ({
+		value: String(m),
+		label: String(m).padStart(2, '0')
+	}));
+
 	function openName() {
 		name = profile.name;
 		nameOpen = true;
@@ -41,7 +55,7 @@
 
 	function saveName() {
 		store.setProfile({ name: name.trim() });
-		toasts.show(t('set.saved'));
+		toast.success(t('set.saved'));
 		nameOpen = false;
 	}
 
@@ -62,18 +76,15 @@
 	}
 
 	function openReminder() {
-		remHour = profile.reminder.hour;
-		remMin = profile.reminder.minute;
+		remHour = String(profile.reminder.hour);
+		remMin = String(profile.reminder.minute);
+		reminderOn = profile.reminder.enabled;
 		reminderOpen = true;
 	}
 
 	function saveReminder() {
-		store.setProfile({ reminder: { ...profile.reminder, hour: remHour, minute: remMin } });
+		store.setProfile({ reminder: { enabled: reminderOn, hour: Number(remHour), minute: Number(remMin) } });
 		reminderOpen = false;
-	}
-
-	function toggleReminder(v: boolean) {
-		store.setProfile({ reminder: { ...profile.reminder, enabled: v } });
 	}
 
 	function setGoal(n: number) {
@@ -87,8 +98,10 @@
 		const a = document.createElement('a');
 		a.href = url;
 		a.download = `leardy-export-${new Date().toISOString().slice(0, 10)}.json`;
+		document.body.appendChild(a);
 		a.click();
-		URL.revokeObjectURL(url);
+		a.remove();
+		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
 
 	function doImport(e: Event) {
@@ -104,9 +117,9 @@
 				}
 				store.replace(parsed);
 				applyTheme(store.data.profile.theme);
-				toasts.show(t('set.imported'));
+				toast.success(t('set.imported'));
 			} catch {
-				toasts.show(t('set.importFail'));
+				toast.error(t('set.importFail'));
 			}
 			input.value = '';
 		};
@@ -117,15 +130,15 @@
 		store.reset();
 		applyTheme(store.data.profile.theme);
 		resetOpen = false;
-		toasts.show(t('toast.deleted'));
+		toast.success(t('toast.deleted'));
 	}
 
 	const goals = [5, 10, 15, 20];
-	const themes: { m: ThemeMode; label: string }[] = [
+	const themes: { m: ThemeMode; label: string }[] = $derived([
 		{ m: 'system', label: t('set.system') },
 		{ m: 'light', label: t('set.light') },
 		{ m: 'dark', label: t('set.dark') }
-	];
+	]);
 </script>
 
 <svelte:head>
@@ -136,12 +149,10 @@
 	<!-- Fiók-kártya -->
 	<button type="button" onclick={openName} class="press block w-full text-left">
 		<Card class="card-lift flex-row items-center gap-3.5 px-4 py-4">
-			<span
-				class="grid size-[52px] shrink-0 place-items-center rounded-full"
-				style="background: color-mix(in srgb, var(--primary) 14%, transparent)"
-			>
-				<CircleUserRound class="text-primary size-6" />
-			</span>
+			<Avatar
+				initials={(profile.name || 'L').charAt(0).toUpperCase()}
+				class="size-[52px] bg-primary/14 text-lg text-primary"
+			/>
 			<span class="min-w-0 flex-1">
 				<span class="block truncate text-base font-semibold">{profile.name || t('set.guest')}</span>
 				<span class="text-muted-foreground mt-0.5 block truncate text-sm">{t('set.guest.d')}</span>
@@ -183,7 +194,7 @@
 					<Target class="text-muted-foreground size-5 shrink-0" />
 					<span class="flex-1">
 						<span class="block text-[15px] font-semibold">{t('set.goal')}</span>
-						<span class="text-muted-foreground block text-[13px]">{profile.dailyGoal} {t('set.goal.d')}</span>
+						<span class="text-muted-foreground block text-[13px] tabular-nums">{profile.dailyGoal} {t('set.goal.d')}</span>
 					</span>
 					<ChevronRight class="text-muted-foreground size-5" />
 				</button>
@@ -255,7 +266,7 @@
 <!-- Név -->
 <Dialog bind:open={nameOpen} title={t('set.name')}>
 	<div class="flex flex-col gap-3">
-		<input class="field" bind:value={name} placeholder={t('set.namePh')} maxlength={30} />
+		<Input bind:value={name} placeholder={t('set.namePh')} maxlength={30} />
 		<Button onclick={saveName} disabled={!name.trim()} class="w-full">{t('set.login')}</Button>
 	</div>
 </Dialog>
@@ -296,25 +307,17 @@
 <Dialog bind:open={reminderOpen} title={t('set.reminders')}>
 	<div class="flex flex-col gap-4">
 		<div class="flex items-center justify-between gap-3">
-			<span class="text-[15px] font-semibold">
-				{profile.reminder.enabled ? t('set.reminderOn') : t('set.reminderOff')}
-			</span>
-			<Toggle value={profile.reminder.enabled} onChanged={toggleReminder} label={t('set.reminders')} />
+			<Label for="reminder-switch" class="!mb-0 text-[15px] font-semibold">
+				{reminderOn ? t('set.reminderOn') : t('set.reminderOff')}
+			</Label>
+			<Switch id="reminder-switch" bind:checked={reminderOn} />
 		</div>
 		<div>
-			<span class="field-label">{t('set.reminderTime')}</span>
+			<Label>{t('set.reminderTime')}</Label>
 			<div class="flex items-center gap-2">
-				<select class="field" bind:value={remHour} aria-label="Óra">
-					{#each Array.from({ length: 24 }, (_, h) => h) as h (h)}
-						<option value={h}>{String(h).padStart(2, '0')}</option>
-					{/each}
-				</select>
+				<Select bind:value={remHour} options={hourOptions} />
 				<span class="text-xl font-bold">:</span>
-				<select class="field" bind:value={remMin} aria-label="Perc">
-					{#each [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55] as m (m)}
-						<option value={m}>{String(m).padStart(2, '0')}</option>
-					{/each}
-				</select>
+				<Select bind:value={remMin} options={minOptions} />
 			</div>
 		</div>
 		<Button onclick={saveReminder} class="w-full">{t('common.save')}</Button>
@@ -328,7 +331,7 @@
 			<button
 				type="button"
 				onclick={() => setGoal(g)}
-				class={cn('press rounded-xl border py-2.5 text-sm font-extrabold', profile.dailyGoal === g ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
+				class={cn('press rounded-xl border py-2.5 text-sm font-extrabold tabular-nums', profile.dailyGoal === g ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
 			>
 				{g}
 			</button>

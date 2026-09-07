@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
-	import { fly } from 'svelte/transition';
+	import { fly, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { page } from '$app/state';
 	import { Flame, House, Languages, Layers, School, Settings, Star, Zap } from 'lucide-svelte';
@@ -9,7 +9,8 @@
 	import { store } from '$lib/db.svelte.js';
 	import { t } from '$lib/i18n.js';
 	import { applyTheme, resolveTheme, storedTheme } from '$lib/theme.svelte.js';
-	import Toaster from '$lib/components/ui/toast/toaster.svelte';
+	import { Sonner } from '$lib/components/ui/sonner/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -26,9 +27,18 @@
 	const xp = $derived(store.data.profile.xp);
 	const themeMode = $derived(store.data.profile.theme);
 
-	// Téma alkalmazása + rendszer-váltás követése (régi themeModeProvider).
+	// Téma alkalmazása + rendszer-váltás követése.
 	$effect(() => {
 		applyTheme(themeMode);
+	});
+
+	// A <html lang> szinkronja a profil nyelvével (képernyőolvasók, fordítók miatt).
+	$effect(() => {
+		try {
+			document.documentElement.lang = store.data.profile.lang === 'en' ? 'en' : 'hu';
+		} catch {
+			/* ssr */
+		}
 	});
 
 	onMount(() => {
@@ -58,7 +68,7 @@
 </svelte:head>
 
 <div class="mx-auto flex min-h-dvh w-full max-w-5xl md:gap-6">
-	<!-- Desktop oldalsáv: 212px fiók a régi NavigationDrawer alapján -->
+	<!-- Desktop oldalsáv -->
 	<aside class="sticky top-0 hidden h-dvh w-[212px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r py-3 pr-3 md:flex">
 		<a href="/" class="mb-2 flex items-center gap-2.5 px-5 pt-3 pb-2">
 			<span class="bg-primary text-primary-foreground grid size-9 place-items-center rounded-xl">
@@ -83,12 +93,8 @@
 		{/each}
 
 		<div class="mt-auto flex items-center gap-2 px-4 pt-6">
-			<span class="bg-streak/15 text-streak inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold">
-				<Flame class="size-3.5" fill="currentColor" /> {streak}
-			</span>
-			<span class="bg-xp/15 text-xp inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold">
-				<Star class="size-3.5" fill="currentColor" /> {xp} XP
-			</span>
+			<Badge variant="streak"><Flame class="size-3.5" fill="currentColor" /> {streak}</Badge>
+			<Badge variant="xp"><Star class="size-3.5" fill="currentColor" /> {xp} XP</Badge>
 		</div>
 	</aside>
 
@@ -104,25 +110,21 @@
 					<span class="font-display text-lg font-bold tracking-tight">Leardy</span>
 				</a>
 				<div class="flex items-center gap-1.5">
-					<span class="bg-streak/15 text-streak inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold">
-						<Flame class="size-3.5" fill="currentColor" /> {streak}
-					</span>
-					<span class="bg-xp/15 text-xp inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold">
-						<Star class="size-3.5" fill="currentColor" /> {xp}
-					</span>
+					<Badge variant="streak"><Flame class="size-3.5" fill="currentColor" /> {streak}</Badge>
+					<Badge variant="xp"><Star class="size-3.5" fill="currentColor" /> {xp}</Badge>
 				</div>
 			</div>
 		</header>
 
-		<main class="flex-1 px-4 pb-28 pt-2 md:px-2 md:pb-12 md:pt-6">
+		<main class="flex-1 px-4 pt-2 pb-28 md:px-2 md:pt-6 md:pb-12">
 			{#key page.url.pathname}
-				<div in:fly={{ y: 16, duration: 300, easing: cubicOut }}>
+				<div in:fly={{ y: 16, duration: 300, easing: cubicOut }} out:fade={{ duration: 120 }}>
 					{@render children()}
 				</div>
 			{/key}
 		</main>
 
-		<!-- Mobil alsó sáv: 68px, jelző-pill a régi NavigationBar alapján -->
+		<!-- Mobil alsó sáv -->
 		<nav
 			aria-label="Fő navigáció"
 			class="bg-background/95 fixed inset-x-0 bottom-0 z-50 border-t backdrop-blur-md md:hidden"
@@ -159,4 +161,4 @@
 	</div>
 </div>
 
-<Toaster />
+<Sonner />

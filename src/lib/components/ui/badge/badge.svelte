@@ -7,6 +7,7 @@
 			variant: {
 				default: 'bg-primary text-primary-foreground border-transparent',
 				secondary: 'bg-secondary text-secondary-foreground border-transparent',
+				destructive: 'bg-destructive text-destructive-foreground border-transparent',
 				outline: 'text-foreground',
 				streak: 'bg-streak/15 text-streak border-streak/25',
 				xp: 'bg-xp/15 text-xp border-xp/25'

@@ -1,13 +1,16 @@
 <script lang="ts">
+	import { toast } from 'svelte-sonner';
 	import { ChevronRight, Layers, Pencil, Play, Plus, Search, Trash2 } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card } from '$lib/components/ui/card/index.js';
 	import { Dialog } from '$lib/components/ui/dialog/index.js';
-	import EmptyState from '$lib/components/empty-state.svelte';
-	import SubjectTab from '$lib/components/subject-tab.svelte';
-	import { store, type DeckColor, type SubjectColorKey } from '$lib/db.svelte.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
+	import { Tabs } from '$lib/components/ui/tabs/index.js';
+	import { Empty } from '$lib/components/ui/empty/index.js';
+	import { store, type DeckColor } from '$lib/db.svelte.js';
 	import { t } from '$lib/i18n.js';
-	import { toasts } from '$lib/components/ui/toast/toast.svelte.js';
 	import { cn } from '$lib/utils.js';
 
 	export const TILE: Record<DeckColor, string> = {
@@ -19,7 +22,6 @@
 	};
 
 	const COLORS: DeckColor[] = ['emerald', 'sky', 'violet', 'amber', 'rose'];
-	const SUBJ_COLORS: SubjectColorKey[] = ['slate', 'ochre', 'forest', 'wine'];
 
 	let mode = $state<'new' | 'edit'>('new');
 	let formOpen = $state(false);
@@ -31,16 +33,26 @@
 	let color = $state<DeckColor>('emerald');
 	let subjectId = $state('');
 	let subjName = $state('');
-	let subjColor = $state<SubjectColorKey>('slate');
 	let search = $state('');
-	let activeSubject = $state<string | null>(null);
+	let subjectFilter = $state('all');
 
 	const subjects = $derived(store.data.subjects);
 	const dueMap = $derived(new Map(store.dueDeckIds().map((r) => [r.id, r.due])));
+	const activeSubject = $derived(subjectFilter === 'all' ? null : subjectFilter);
 
 	$effect(() => {
 		if (!subjectId && subjects.length > 0) subjectId = subjects[0].id;
 	});
+
+	const subjectTabs = $derived([
+		{ value: 'all', label: `${t('decks.allSubjects')} · ${store.data.decks.length}` },
+		...subjects.map((s) => ({
+			value: s.id,
+			label: `${s.name} · ${store.data.decks.filter((d) => d.subjectId === s.id).length}`
+		}))
+	]);
+
+	const subjectOptions = $derived(subjects.map((s) => ({ value: s.id, label: s.name })));
 
 	const filtered = $derived.by(() => {
 		const q = search.trim().toLowerCase();
@@ -87,28 +99,32 @@
 		if (!name.trim() || !subjectId) return;
 		if (mode === 'new') {
 			store.addDeck(name.trim(), description.trim(), color, subjectId);
-			toasts.show(t('toast.added'));
+			toast.success(t('toast.added'));
 		} else if (targetId) {
 			store.updateDeck(targetId, { name: name.trim(), description: description.trim(), color, subjectId });
-			toasts.show(t('toast.saved'));
+			toast.success(t('toast.saved'));
 		}
 		formOpen = false;
-	}
-
-	function submitSubject() {
-		if (!subjName.trim()) return;
-		store.addSubject(subjName.trim(), subjColor);
-		toasts.show(t('toast.added'));
-		subjOpen = false;
-		subjName = '';
 	}
 
 	function confirmDelete() {
 		if (!targetId) return;
 		store.deleteDeck(targetId);
-		toasts.show(t('toast.deleted'));
+		toast.success(t('toast.deleted'));
 		delOpen = false;
 		targetId = null;
+	}
+
+	const SUBJ_COLORS = ['slate', 'ochre', 'forest', 'wine'] as const;
+
+	function submitSubject() {
+		if (!subjName.trim()) return;
+		const nextColor = SUBJ_COLORS[subjects.length % SUBJ_COLORS.length];
+		const created = store.addSubject(subjName.trim(), nextColor);
+		subjectFilter = created.id;
+		toast.success(t('toast.added'));
+		subjOpen = false;
+		subjName = '';
 	}
 </script>
 
@@ -131,47 +147,26 @@
 	<!-- Keresés -->
 	<div class="relative">
 		<Search class="text-muted-foreground pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2" />
-		<input class="field pr-4 pl-10" bind:value={search} placeholder={t('decks.searchPh')} autocomplete="off" />
+		<Input bind:value={search} placeholder={t('decks.searchPh')} autocomplete="off" class="pr-4 pl-10" />
 	</div>
 
-	<!-- Tantárgy-fülek -->
+	<!-- Tantárgy-szűrő -->
 	{#if subjects.length > 0}
-		<div class="-mx-1 flex gap-2 overflow-x-auto px-1 py-1.5">
-			<SubjectTab
-				label={t('decks.allSubjects')}
-				colorKey="all"
-				selected={activeSubject === null}
-				count={store.data.decks.length}
-				onTap={() => (activeSubject = null)}
-			/>
-			{#each subjects as s (s.id)}
-				<SubjectTab
-					label={s.name}
-					colorKey={s.colorKey}
-					selected={activeSubject === s.id}
-					count={store.data.decks.filter((d) => d.subjectId === s.id).length}
-					onTap={() => (activeSubject = activeSubject === s.id ? null : s.id)}
-				/>
-			{/each}
-		</div>
+		<Tabs bind:value={subjectFilter} tabs={subjectTabs} />
 	{/if}
 
 	{#if filtered.length === 0}
-		<EmptyState
+		<Empty
 			icon={Layers}
 			title={search.trim() ? t('decks.noResults') : t('decks.empty.t')}
-			desc={search.trim() ? '' : t('decks.empty.d')}
-		>
-			{#if !search.trim()}
-				<Button size="sm" onclick={openNew}><Plus class="size-4" /> {t('decks.new')}</Button>
-			{/if}
-		</EmptyState>
+			description={search.trim() ? '' : t('decks.empty.d')}
+		/>
 	{:else}
 		<div class="stagger flex flex-col gap-2">
 			{#each filtered as deck (deck.id)}
 				{@const due = dueMap.get(deck.id) ?? 0}
-				<Card class="card-lift group relative px-4 py-3.5">
-					<a href="/decks/{deck.id}" class="press flex items-center gap-3">
+				<Card class="card-lift group relative flex-row items-center gap-2 px-4 py-3.5">
+					<a href="/decks/{deck.id}" class="press flex min-w-0 flex-1 items-center gap-3">
 						<span class="grid size-11 shrink-0 place-items-center rounded-2xl {TILE[deck.color]}">
 							<Layers class="size-5" strokeWidth={2.2} />
 						</span>
@@ -184,29 +179,18 @@
 								{t('decks.cards.n')}{due > 0 ? ` · ${due} ${t('home.dueLabel')}` : ''}
 							</span>
 						</span>
-						{#if due > 0}
-							<span
-								role="button"
-								tabindex={0}
-								aria-label={t('home.startPractice')}
-								onclick={(e) => {
-									e.preventDefault();
-									window.location.href = `/practice?deck=${deck.id}`;
-								}}
-								onkeydown={(e) => {
-									if (e.key === 'Enter' || e.key === ' ') {
-										e.preventDefault();
-										window.location.href = `/practice?deck=${deck.id}`;
-									}
-								}}
-								class="press text-primary grid size-10 place-items-center rounded-full"
-								style="background: color-mix(in srgb, var(--primary) 12%, transparent)"
-							>
-								<Play class="size-5" fill="currentColor" />
-							</span>
-						{/if}
 						<ChevronRight class="text-muted-foreground size-5 shrink-0" />
 					</a>
+					{#if due > 0}
+						<a
+							href="/practice?deck={deck.id}"
+							aria-label="{t('home.startPractice')}: {deck.name}"
+							class="press text-primary grid size-10 shrink-0 place-items-center rounded-full"
+							style="background: color-mix(in srgb, var(--primary) 12%, transparent)"
+						>
+							<Play class="size-5" fill="currentColor" />
+						</a>
+					{/if}
 					<span class="absolute top-2.5 right-2.5 flex gap-1 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
 						<button
 							type="button"
@@ -237,23 +221,19 @@
 <Dialog bind:open={formOpen} title={mode === 'new' ? t('decks.new.t') : t('decks.edit.t')}>
 	<div class="flex flex-col gap-3">
 		<div>
-			<label class="field-label" for="deck-name">{t('decks.name')}</label>
-			<input id="deck-name" class="field" bind:value={name} placeholder={t('decks.namePh')} maxlength={60} />
+			<Label for="deck-name">{t('decks.name')}</Label>
+			<Input id="deck-name" bind:value={name} placeholder={t('decks.namePh')} maxlength={60} />
 		</div>
 		<div>
-			<label class="field-label" for="deck-desc">{t('decks.desc')}</label>
-			<input id="deck-desc" class="field" bind:value={description} placeholder={t('decks.descPh')} maxlength={120} />
+			<Label for="deck-desc">{t('decks.desc')}</Label>
+			<Input id="deck-desc" bind:value={description} placeholder={t('decks.descPh')} maxlength={120} />
 		</div>
 		<div>
-			<label class="field-label" for="deck-subj">{t('decks.assignSubject')}</label>
-			<select id="deck-subj" class="field" bind:value={subjectId}>
-				{#each subjects as s (s.id)}
-					<option value={s.id}>{s.name}</option>
-				{/each}
-			</select>
+			<Label for="deck-subj">{t('decks.assignSubject')}</Label>
+			<Select bind:value={subjectId} options={subjectOptions} />
 		</div>
 		<div>
-			<span class="field-label">Szín</span>
+			<Label>Szín</Label>
 			<div class="flex gap-2">
 				{#each COLORS as c (c)}
 					<button
@@ -280,22 +260,8 @@
 <Dialog bind:open={subjOpen} title={t('decks.newSubject')}>
 	<div class="flex flex-col gap-3">
 		<div>
-			<label class="field-label" for="subj-name">{t('decks.subjectName')}</label>
-			<input id="subj-name" class="field" bind:value={subjName} placeholder={t('decks.subjectNamePh')} maxlength={40} />
-		</div>
-		<div class="flex gap-2">
-			{#each SUBJ_COLORS as c (c)}
-				<button
-					type="button"
-					aria-label={c}
-					onclick={() => (subjColor = c)}
-					class={cn(
-						'h-10 flex-1 rounded-xl transition-all',
-						subjColor === c ? 'ring-ring ring-2 ring-offset-2 ring-offset-card' : 'opacity-50 hover:opacity-90'
-					)}
-					style="background: color-mix(in srgb, var(--subj-{c}) 35%, transparent)"
-				></button>
-			{/each}
+			<Label for="subj-name">{t('decks.subjectName')}</Label>
+			<Input id="subj-name" bind:value={subjName} placeholder={t('decks.subjectNamePh')} maxlength={40} />
 		</div>
 		<Button onclick={submitSubject} disabled={!subjName.trim()} class="w-full">{t('common.create')}</Button>
 	</div>
@@ -307,12 +273,3 @@
 		<Button variant="destructive" class="flex-1" onclick={confirmDelete}>{t('common.delete')}</Button>
 	{/snippet}
 </Dialog>
-
-<style>
-	button {
-		--subj-ochre: var(--brass);
-		--subj-slate: var(--rule);
-		--subj-forest: var(--forest);
-		--subj-wine: var(--wine);
-	}
-</style>

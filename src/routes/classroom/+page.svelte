@@ -1,12 +1,14 @@
 <script lang="ts">
+	import { toast } from 'svelte-sonner';
 	import { Plus, School, Ticket, UserPlus, Users } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Card, CardContent } from '$lib/components/ui/card/index.js';
+	import { Card } from '$lib/components/ui/card/index.js';
 	import { Dialog } from '$lib/components/ui/dialog/index.js';
-	import EmptyState from '$lib/components/empty-state.svelte';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Empty } from '$lib/components/ui/empty/index.js';
 	import { store } from '$lib/db.svelte.js';
 	import { t } from '$lib/i18n.js';
-	import { toasts } from '$lib/components/ui/toast/toast.svelte.js';
 
 	let joinOpen = $state(false);
 	let createOpen = $state(false);
@@ -18,15 +20,15 @@
 	function join() {
 		const res = store.joinGroup(code);
 		if (!res.ok && res.reason === 'invalid') {
-			toasts.show(t('class.invalid'));
+			toast.error(t('class.invalid'));
 			return;
 		}
 		if (!res.ok) {
-			toasts.show(t('class.already'));
+			toast.info(t('class.already'));
 			joinOpen = false;
 			return;
 		}
-		toasts.show(t('class.joined'));
+		toast.success(t('class.joined'));
 		joinOpen = false;
 		code = '';
 	}
@@ -34,7 +36,7 @@
 	function create() {
 		if (!groupName.trim()) return;
 		const g = store.createGroup(groupName.trim());
-		toasts.show(`${t('class.created')} ${g.code}`, g.name);
+		toast.success(`${t('class.created')} ${g.code}`, { description: g.name });
 		createOpen = false;
 		groupName = '';
 	}
@@ -57,11 +59,10 @@
 	</div>
 
 	{#if groups.length === 0}
-		<EmptyState icon={School} title={t('class.empty.t')} desc={t('class.empty.d')}>
-			<Button size="sm" onclick={() => (joinOpen = true)}><Ticket class="size-4" /> {t('class.join')}</Button>
-		</EmptyState>
+		<Empty icon={School} title={t('class.empty.t')} description={t('class.empty.d')} />
+		<Button size="sm" class="w-fit self-center" onclick={() => (joinOpen = true)}><Ticket class="size-4" /> {t('class.join')}</Button>
 	{:else}
-		<div class="grid gap-3">
+		<div class="stagger grid gap-3">
 			{#each groups as g (g.id)}
 				<a href="/classroom/{g.id}" class="group press">
 					<Card class="card-lift flex-row items-center gap-4 py-4">
@@ -72,7 +73,7 @@
 							<p class="truncate font-bold">{g.name}</p>
 							<p class="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs font-semibold">
 								<span class="inline-flex items-center gap-1"><Users class="size-3.5" /> {g.members.length}</span>
-								<span class="inline-flex items-center gap-1"><Ticket class="size-3.5" /> {g.code}</span>
+								<span class="inline-flex items-center gap-1 font-mono"><Ticket class="size-3.5" /> {g.code}</span>
 							</p>
 						</div>
 					</Card>
@@ -91,8 +92,8 @@
 		class="flex flex-col gap-3"
 	>
 		<div>
-			<label class="field-label" for="join-code">{t('class.code')}</label>
-			<input id="join-code" class="field uppercase" bind:value={code} placeholder={t('class.codePh')} maxlength={12} autocomplete="off" />
+			<Label for="join-code">{t('class.code')}</Label>
+			<Input id="join-code" bind:value={code} placeholder={t('class.codePh')} maxlength={12} autocomplete="off" class="uppercase" />
 		</div>
 		<Button type="submit" disabled={!code.trim()} class="w-full">{t('common.join')}</Button>
 		<p class="text-muted-foreground text-xs">Demo kód: <button type="button" class="font-bold text-primary" onclick={() => (code = 'A1-ESTI')}>A1-ESTI</button></p>
@@ -102,8 +103,8 @@
 <Dialog bind:open={createOpen} title={t('class.new.t')}>
 	<div class="flex flex-col gap-3">
 		<div>
-			<label class="field-label" for="group-name">{t('class.groupName')}</label>
-			<input id="group-name" class="field" bind:value={groupName} placeholder={t('class.groupNamePh')} maxlength={60} />
+			<Label for="group-name">{t('class.groupName')}</Label>
+			<Input id="group-name" bind:value={groupName} placeholder={t('class.groupNamePh')} maxlength={60} />
 		</div>
 		<Button onclick={create} disabled={!groupName.trim()} class="w-full">{t('common.create')}</Button>
 	</div>

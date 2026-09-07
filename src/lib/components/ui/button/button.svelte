@@ -47,12 +47,18 @@
 		$props();
 
 	const isLink = $derived('href' in rest && rest.href !== undefined);
+	const linkDisabled = $derived(isLink && (rest as { disabled?: unknown }).disabled === true);
+	const linkRest = $derived.by(() => {
+		const { disabled: _dropped, ...r } = rest as Record<string, unknown>;
+		return r;
+	});
 </script>
 
 {#if isLink}
 	<a
-		class={cn(buttonVariants({ variant, size }), className)}
-		{...rest as HTMLAnchorAttributes}
+		class={cn(buttonVariants({ variant, size }), linkDisabled && 'pointer-events-none opacity-50', className)}
+		aria-disabled={linkDisabled || undefined}
+		{...linkRest as HTMLAnchorAttributes}
 	>
 		{@render children?.()}
 	</a>

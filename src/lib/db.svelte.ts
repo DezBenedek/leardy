@@ -129,8 +129,17 @@ export function dayKey(d: Date = new Date()): string {
 	return `${d.getFullYear()}-${m}-${day}`;
 }
 
-function yesterdayKey(): string {
-	return dayKey(new Date(Date.now() - 86_400_000));
+function yesterdayKey(from = new Date()): string {
+	const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+	d.setDate(d.getDate() - 1);
+	return dayKey(d);
+}
+
+/** Naptári napokkal lép — DST-átálláskor is pontos (nem 24 órával von ki). */
+function shiftDay(d: Date, delta: number): Date {
+	const out = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+	out.setDate(out.getDate() + delta);
+	return out;
 }
 
 /** Sorozat a tényleges aktív napokból (régi streak.dart: streakFromDates). */
@@ -139,13 +148,13 @@ export function streakFromDates(days: Iterable<string>, today = new Date()): num
 	let cursor = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 	const fmt = (d: Date) => dayKey(d);
 	if (!set.has(fmt(cursor))) {
-		cursor = new Date(cursor.getTime() - 86_400_000);
+		cursor = shiftDay(cursor, -1);
 		if (!set.has(fmt(cursor))) return 0;
 	}
 	let streak = 0;
 	while (set.has(fmt(cursor))) {
 		streak += 1;
-		cursor = new Date(cursor.getTime() - 86_400_000);
+		cursor = shiftDay(cursor, -1);
 	}
 	return streak;
 }
@@ -154,7 +163,7 @@ export function streakFromDates(days: Iterable<string>, today = new Date()): num
 export function last28Counts(byDate: Record<string, number>, today = new Date()): number[] {
 	const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 	return Array.from({ length: 28 }, (_, i) => {
-		const d = new Date(base.getTime() - (27 - i) * 86_400_000);
+		const d = shiftDay(base, i - 27);
 		return byDate[dayKey(d)] ?? 0;
 	});
 }
@@ -356,7 +365,13 @@ function migrate(old: Record<string, unknown>): DB {
 		if (Array.isArray(o.cards)) {
 			fresh.cards = o.cards.map((c) => {
 				const cc = c as Card;
-				return { ...cc, hint: cc.hint ?? '', level: cc.level ?? 0 };
+				return {
+					...cc,
+					hint: cc.hint ?? '',
+					example: cc.example ?? '',
+					exampleHu: (cc as Partial<Card>).exampleHu ?? '',
+					level: cc.level ?? 0
+				};
 			});
 		}
 		if (o.srs && typeof o.srs === 'object') fresh.srs = o.srs;
@@ -546,8 +561,14 @@ class Store {
 		let mastered = 0;
 		for (const c of cards) {
 			const s = this.data.srs[c.id];
-			if (!s) fresh += 1;
-			else if (s.due <= now) due += 1;
+			// Az esedékesbe az új (még nem látott) kártyák is beleszámítanak —
+			// ugyanúgy, mint a home és a paklilista számlálóiban.
+			if (!s) {
+				fresh += 1;
+				due += 1;
+			} else if (s.due <= now) {
+				due += 1;
+			}
 			if (c.level >= 4) mastered += 1;
 		}
 		return { total: cards.length, due, fresh, mastered };
@@ -612,7 +633,7 @@ class Store {
 		return cur && cur.stars > 0 ? 'done' : 'open';
 	}
 
-	completeLesson(lessonId: string, pct: number): { stars: number; xp: number; isRecord: boolean } {
+	completeLesson(lessonId: string, pct: number, cardsReviewed = 0): { stars: number; xp: number; isRecord: boolean } {
 		const stars = pct >= 90 ? 3 : pct >= 70 ? 2 : pct >= 50 ? 1 : 0;
 		const prev = this.data.lessons[lessonId] ?? { stars: 0, best: 0, doneAt: null };
 		const isRecord = pct > prev.best;
@@ -622,7 +643,7 @@ class Store {
 			best: Math.max(prev.best, pct),
 			doneAt: stars > 0 ? Date.now() : prev.doneAt
 		};
-		this.addXp(xp, 0);
+		this.addXp(xp, cardsReviewed);
 		return { stars, xp, isRecord };
 	}
 

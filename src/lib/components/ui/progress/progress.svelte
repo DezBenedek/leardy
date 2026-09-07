@@ -1,25 +1,25 @@
 <script lang="ts">
+	import { Progress as ProgressPrimitive } from 'bits-ui';
 	import { cn } from '$lib/utils.js';
-	import type { HTMLAttributes } from 'svelte/elements';
 
 	let {
 		class: className,
 		value = 0,
 		max = 100,
 		...restProps
-	}: HTMLAttributes<HTMLDivElement> & { value?: number; max?: number } = $props();
-
-	const pct = $derived(Math.min(100, Math.max(0, (value / max) * 100)));
+	}: ProgressPrimitive.RootProps & { value?: number; max?: number } = $props();
 </script>
 
-<div
+<ProgressPrimitive.Root
 	data-slot="progress"
-	role="progressbar"
-	aria-valuemin={0}
-	aria-valuemax={max}
-	aria-valuenow={Math.round(value)}
-	class={cn('bg-secondary h-2 w-full overflow-hidden rounded-full', className)}
+	{value}
+	{max}
+	class={cn('bg-secondary relative h-2 w-full overflow-hidden rounded-full', className)}
 	{...restProps}
 >
-	<div class="bg-primary h-full rounded-full transition-[width] duration-500 ease-out" style="width: {pct}%"></div>
-</div>
+	<div
+		data-slot="progress-indicator"
+		class="bg-primary h-full flex-1 rounded-full transition-transform duration-500 ease-out"
+		style="transform: translateX(-{100 - (max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0)}%)"
+	></div>
+</ProgressPrimitive.Root>

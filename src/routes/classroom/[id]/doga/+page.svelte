@@ -6,6 +6,8 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
+	import { Progress } from '$lib/components/ui/progress/index.js';
+	import { Avatar } from '$lib/components/ui/avatar/index.js';
 	import { store, type Card as CardType, type Member } from '$lib/db.svelte.js';
 	import { t } from '$lib/i18n.js';
 	import { cn } from '$lib/utils.js';
@@ -35,6 +37,7 @@
 	let timeLeft = $state(0);
 	let timeouts: ReturnType<typeof setTimeout>[] = [];
 	let interval: ReturnType<typeof setInterval> | null = null;
+	let round = 0;
 
 	const mates = $derived((group?.members ?? []).filter((m) => !m.you));
 	const q = $derived(questions[qIdx] ?? null);
@@ -42,26 +45,36 @@
 
 	onDestroy(cleanup);
 
-	function cleanup() {
+	function clearTimers() {
 		for (const id of timeouts) clearTimeout(id);
 		timeouts = [];
 		if (interval) clearInterval(interval);
 		interval = null;
 	}
 
+	function cleanup() {
+		round += 1;
+		clearTimers();
+	}
+
 	function later(ms: number, fn: () => void) {
 		timeouts.push(setTimeout(fn, ms));
 	}
 
-	// ---- lobby: csapattársak "csatlakoznak" ----
+	// ---- lobby: csapattársak "csatlakoznak" (kilépéskor/fázisváltáskor takarítva) ----
 	$effect(() => {
 		if (phase === 'lobby' && group) {
 			present = [];
+			const lobbyRound = round;
 			mates.forEach((m, i) => {
 				later(700 + i * 900 + Math.random() * 600, () => {
+					if (phase !== 'lobby' || lobbyRound !== round) return;
 					present = [...present, m];
 				});
 			});
+			return () => {
+				if (phase !== 'lobby') clearTimers();
+			};
 		}
 	});
 
@@ -86,6 +99,7 @@
 	}
 
 	function start() {
+		cleanup();
 		questions = buildQs();
 		if (questions.length === 0) return;
 		qIdx = 0;
@@ -101,15 +115,16 @@
 	}
 
 	function runRound() {
+		round += 1;
+		const myRound = round;
 		phase = 'run';
 		picked = null;
 		timeLeft = secs;
-		const current = questions[qIdx];
-		// csapattársak válaszai
+		// csapattársak válaszai — csak az aktuális körben számítanak
 		for (const m of mates) {
 			const delay = 1500 + Math.random() * Math.max(500, (secs - 2) * 1000);
 			later(delay, () => {
-				if (phase !== 'run') return;
+				if (phase !== 'run' || myRound !== round) return;
 				if (Math.random() < mateSkill(m)) {
 					board = { ...board, [m.id]: (board[m.id] ?? 0) + 10 };
 				}
@@ -132,8 +147,11 @@
 	}
 
 	function reveal() {
+		if (phase !== 'run') return;
 		phase = 'reveal';
+		const myRound = round;
 		later(1800, () => {
+			if (myRound !== round) return;
 			if (qIdx + 1 >= questions.length) finish();
 			else {
 				qIdx += 1;
@@ -143,6 +161,9 @@
 	}
 
 	function finish() {
+		round += 1;
+		if (interval) clearInterval(interval);
+		interval = null;
 		phase = 'done';
 		const total = questions.length;
 		const xp = mine * 10;
@@ -162,13 +183,17 @@
 		}
 	}
 
+	const presentIds = $derived(new Set(present.map((m) => m.id)));
+
 	const standings = $derived.by(() => {
-		const rows = mates.map((m) => ({ id: m.id, name: m.name || '?', score: board[m.id] ?? 0, you: false }));
+		const rows = mates
+			.filter((m) => presentIds.has(m.id))
+			.map((m) => ({ id: m.id, name: m.name || '?', score: board[m.id] ?? 0, you: false }));
 		rows.push({ id: 'm-you', name: me?.name || store.data.profile.name || t('common.you'), score: mine * 10, you: true });
 		return rows.sort((a, b) => b.score - a.score);
 	});
 
-	const deckReady = $derived((store.data.cards.filter((c) => c.deckId === deckId).length ?? 0) > 0);
+	const deckReady = $derived(store.data.cards.some((c) => c.deckId === deckId));
 </script>
 
 <svelte:head>
@@ -177,28 +202,29 @@
 
 <div class="mx-auto flex w-full max-w-2xl flex-col gap-4">
 	{#if !group || !deck}
-		<p class="text-muted-foreground text-sm">…</p>
+		<Card class="py-10">
+			<CardContent class="flex flex-col items-center gap-2 text-center">
+				<p class="text-muted-foreground text-sm">…</p>
+				<Button variant="outline" href="/classroom">{t('common.back')}</Button>
+			</CardContent>
+		</Card>
 	{:else if phase === 'lobby'}
 		<div class="text-center">
 			<Badge class="mb-2 font-mono text-sm">{group.code}</Badge>
 			<h1 class="font-display text-2xl font-extrabold">{t('class.lobby.t')}</h1>
-			<p class="text-muted-foreground mt-1 text-sm">{deck.name} · {qCount} {t('common.question')} · {secs} {t('class.sec')}</p>
+			<p class="text-muted-foreground mt-1 text-sm tabular-nums">{deck.name} · {qCount} {t('common.question')} · {secs} {t('class.sec')}</p>
 			<p class="text-muted-foreground mt-1 text-xs">{t('class.lobby.d')}</p>
 		</div>
 		<Card class="py-3">
 			<CardContent class="flex flex-col gap-1 px-3">
 				<div class="flex items-center gap-3 rounded-xl bg-primary/8 px-3 py-2.5">
-					<span class="bg-primary text-primary-foreground grid size-9 shrink-0 place-items-center rounded-full text-sm font-extrabold">
-						{(me?.name || '?').charAt(0).toUpperCase()}
-					</span>
+					<Avatar initials={(me?.name || '?').charAt(0).toUpperCase()} class="bg-primary text-primary-foreground" />
 					<span class="flex-1 text-sm font-bold">{me?.name || store.data.profile.name || t('common.you')}</span>
 					<Crown class="size-4 text-amber-500" />
 				</div>
 				{#each present as m (m.id)}
 					<div class="anim-pop-in flex items-center gap-3 rounded-xl px-3 py-2.5">
-						<span class="bg-muted grid size-9 shrink-0 place-items-center rounded-full text-sm font-extrabold">
-							{(m.name || '?').charAt(0).toUpperCase()}
-						</span>
+						<Avatar initials={(m.name || '?').charAt(0).toUpperCase()} />
 						<span class="flex-1 text-sm font-semibold">{m.name}</span>
 					</div>
 				{/each}
@@ -209,28 +235,20 @@
 				{/if}
 			</CardContent>
 		</Card>
-		<Button size="xl" class="w-full text-base" disabled={!deckReady} onclick={start}>
+		<Button size="xl" class="w-full text-base tabular-nums" disabled={!deckReady} onclick={start}>
 			<Play class="size-4" fill="currentColor" /> {t('class.lobbyStart')} ({1 + present.length})
 		</Button>
 		<Button variant="ghost" href="/classroom/{group.id}">{t('common.back')}</Button>
 	{:else if (phase === 'run' || phase === 'reveal') && q}
-		<div class="h-[3px] w-full overflow-hidden rounded-full bg-secondary">
-			<div class="bg-primary h-full rounded-full transition-all" style="width: {((qIdx + (phase === 'reveal' ? 1 : 0)) / questions.length) * 100}%"></div>
-		</div>
+		<Progress value={qIdx + (phase === 'reveal' ? 1 : 0)} max={questions.length} class="h-[3px]" />
 		<div class="flex items-center gap-3">
-			<span class="text-muted-foreground text-xs font-bold whitespace-nowrap">{qIdx + 1}{t('common.of')}{questions.length}</span>
+			<span class="text-muted-foreground text-xs font-bold whitespace-nowrap tabular-nums">{qIdx + 1}{t('common.of')}{questions.length}</span>
 			<span class="flex-1"></span>
-			<span class={cn('inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold tabular-nums', timeLeft <= 5 ? 'text-wine' : 'bg-muted text-muted-foreground')}
-				style={timeLeft <= 5 ? 'background: color-mix(in srgb, var(--wine) 15%, transparent)' : undefined}>
+			<Badge variant={timeLeft <= 5 ? 'destructive' : 'secondary'} class="tabular-nums">
 				<Timer class="size-3.5" /> {Math.ceil(timeLeft)}
-			</span>
+			</Badge>
 		</div>
-		<div class="bg-secondary h-1.5 overflow-hidden rounded-full">
-			<div
-				class="h-full rounded-full transition-[width] duration-200"
-				style="width: {(timeLeft / secs) * 100}%; background: {timeLeft <= 5 ? 'var(--wine)' : 'var(--primary)'}"
-			></div>
-		</div>
+		<Progress value={timeLeft} max={secs} class="h-1.5" />
 
 		<Card class="py-6">
 			<div class="flex flex-col items-center gap-1 px-5 text-center">
@@ -243,26 +261,28 @@
 				{@const show = phase === 'reveal'}
 				{@const isAnswer = show && i === q.answer}
 				{@const isWrongPick = show && picked === i && i !== q.answer}
-				<button
-					type="button"
+				<Button
+					variant="outline"
 					disabled={phase !== 'run' || picked !== null}
 					onclick={() => pick(i)}
 					class={cn(
-						'press flex min-h-[52px] items-center justify-between gap-2 rounded-[14px] border bg-card px-4 text-center text-[15px] font-semibold transition-colors',
-						isAnswer || isWrongPick || picked === i ? '' : 'hover:border-primary/50'
+						'min-h-[52px] h-auto justify-between px-4 py-3 text-[15px] whitespace-normal',
+						isAnswer && 'border-forest border-2 text-forest hover:text-forest',
+						isWrongPick && 'border-wine border-2 text-wine hover:text-wine',
+						!show && picked === i && 'border-primary border-2 text-primary'
 					)}
 					style={isAnswer
-						? 'border-color: var(--forest); border-width: 2px; color: var(--forest); background: color-mix(in srgb, var(--forest) 12%, transparent)'
+						? 'background: color-mix(in srgb, var(--forest) 12%, transparent)'
 						: isWrongPick
-							? 'border-color: var(--wine); border-width: 2px; color: var(--wine); background: color-mix(in srgb, var(--wine) 12%, transparent)'
-							: picked === i
-								? 'border-color: var(--primary); border-width: 2px; color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent)'
+							? 'background: color-mix(in srgb, var(--wine) 12%, transparent)'
+							: !show && picked === i
+								? 'background: color-mix(in srgb, var(--primary) 10%, transparent)'
 								: undefined}
 				>
 					{opt}
 					{#if isAnswer}<Check class="size-5 shrink-0" />{/if}
 					{#if isWrongPick}<X class="size-5 shrink-0" />{/if}
-				</button>
+				</Button>
 			{/each}
 		</div>
 		{#if phase === 'reveal' && picked === null}
@@ -275,7 +295,7 @@
 				<p class="text-muted-foreground px-2 pb-1 text-xs font-bold tracking-wider uppercase">{t('class.board')}</p>
 				{#each standings as row, i (row.id)}
 					<div class="flex items-center gap-2.5 rounded-xl px-2 py-1.5 {row.you ? 'bg-primary/8' : ''}">
-						<span class="w-5 text-center text-sm font-extrabold text-muted-foreground">{i + 1}</span>
+						<span class="w-5 text-center text-sm font-extrabold text-muted-foreground tabular-nums">{i + 1}</span>
 						<span class="min-w-0 flex-1 truncate text-sm font-bold">{row.name}{row.you ? ` (${t('common.you')})` : ''}</span>
 						<span class="text-sm font-extrabold tabular-nums">{row.score}</span>
 					</div>
@@ -288,7 +308,7 @@
 				<Trophy class="size-8 text-amber-500" />
 			</span>
 			<h1 class="font-display mt-3 text-2xl font-extrabold">{t('class.finish.t')}</h1>
-			<p class="text-muted-foreground mt-1 text-sm font-semibold">
+			<p class="text-muted-foreground mt-1 text-sm font-semibold tabular-nums">
 				{mine}{t('common.of')}{questions.length} · <span class="text-xp font-extrabold">+{mine * 10} XP</span>
 			</p>
 		</div>
@@ -296,7 +316,7 @@
 			<CardContent class="flex flex-col gap-1 px-3">
 				{#each standings as row, i (row.id)}
 					<div class="flex items-center gap-2.5 rounded-xl px-2 py-2 {row.you ? 'bg-primary/8' : ''}">
-						<span class="w-6 text-center">{#if i === 0}<Crown class="mx-auto size-4 text-amber-500" />{:else}<span class="text-sm font-extrabold text-muted-foreground">{i + 1}</span>{/if}</span>
+						<span class="w-6 text-center">{#if i === 0}<Crown class="mx-auto size-4 text-amber-500" />{:else}<span class="text-sm font-extrabold text-muted-foreground tabular-nums">{i + 1}</span>{/if}</span>
 						<span class="min-w-0 flex-1 truncate text-sm font-bold">{row.name}{row.you ? ` (${t('common.you')})` : ''}</span>
 						<span class="text-sm font-extrabold tabular-nums">{row.score}</span>
 					</div>

@@ -1,11 +1,11 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
-@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant dark (&:is(.dark *));
 
 /*
- * Leardy design-rendszer: a régi app (LeardyInk) pontos színpalettája,
- * modern, letisztult felületekkel.
- * Display betű: Bricolage Grotesque · szöveg: Inter · olvasószöveg: Newsreader serif.
+ * Leardy design-rendszer shadcn alapokon.
+ * Display: Bricolage Grotesque · szöveg: Inter · olvasószöveg: Newsreader serif.
  */
 
 @theme {
@@ -98,12 +98,32 @@
 	--hero-to: #042f2e;
 }
 
+@keyframes accordion-down {
+	from {
+		height: 0;
+	}
+	to {
+		height: var(--bits-accordion-content-height);
+	}
+}
+
+@keyframes accordion-up {
+	from {
+		height: var(--bits-accordion-content-height);
+	}
+	to {
+		height: 0;
+	}
+}
+
 @theme inline {
+	--animate-accordion-down: accordion-down 0.25s ease-out;
+	--animate-accordion-up: accordion-up 0.25s ease-out;
+
 	--radius-lg: var(--radius);
 	--radius-md: calc(var(--radius) - 4px);
 	--radius-sm: calc(var(--radius) - 8px);
 	--radius-xl: calc(var(--radius) + 4px);
-
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
 	--color-card: var(--card);
@@ -161,25 +181,7 @@
 	}
 }
 
-/* ---- saját komponens-osztályok ---- */
-
 @layer components {
-	/* Űrlapmezők */
-	.field {
-		@apply bg-secondary/70 text-foreground placeholder:text-muted-foreground focus-visible:ring-ring/40 h-12 w-full rounded-xl border-transparent px-4 text-[15px] font-medium transition outline-none focus-visible:border-transparent focus-visible:ring-4;
-	}
-
-	textarea.field {
-		height: auto;
-		min-height: 5.5rem;
-		padding-top: 0.75rem;
-		padding-bottom: 0.75rem;
-	}
-
-	.field-label {
-		@apply text-muted-foreground mb-1.5 block text-[13px] font-semibold;
-	}
-
 	/* Nyomás-érzet minden interaktív elemen */
 	.press {
 		@apply transition-all duration-150 active:scale-[0.97];
@@ -209,13 +211,19 @@
 	.hero::after {
 		content: '';
 		position: absolute;
-		z-index: -1;
+		z-index: 0;
 		width: 22rem;
 		height: 22rem;
 		right: -7rem;
 		top: -7rem;
 		border-radius: 9999px;
 		background: radial-gradient(circle, rgb(255 255 255 / 0.16), transparent 65%);
+		pointer-events: none;
+	}
+
+	.hero > * {
+		position: relative;
+		z-index: 1;
 	}
 
 	/* Olvasószöveg leckékhez */
@@ -226,7 +234,7 @@
 	}
 }
 
-/* ---- 3D kártya-forgatás (ZsoKartya, leckejátszó) ---- */
+/* ---- 3D kártya-forgatás (leckejátszó, gyakorlás) ---- */
 
 .perspective-1200 {
 	perspective: 1200px;
@@ -263,15 +271,16 @@
 	-webkit-user-select: none;
 }
 
-/* ---- animációk ---- */
+/* ---- Belépő animációk (shadcn animate-kitte bővítve) ---- */
 
-@keyframes floaty {
-	0%,
-	100% {
-		transform: translateY(0);
+@keyframes rise {
+	from {
+		opacity: 0;
+		transform: translateY(16px);
 	}
-	50% {
-		transform: translateY(-8px);
+	to {
+		opacity: 1;
+		transform: translateY(0);
 	}
 }
 
@@ -290,6 +299,16 @@
 	}
 }
 
+@keyframes floaty {
+	0%,
+	100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-8px);
+	}
+}
+
 @keyframes pulse-ring {
 	0% {
 		box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent);
@@ -302,31 +321,19 @@
 	}
 }
 
-/* Belépő: finoman felúszik + befakul. Staggerhez: style="--i: n" */
-@keyframes rise {
-	from {
-		opacity: 0;
-		transform: translateY(16px);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
-
 .anim-floaty {
 	animation: floaty 4s ease-in-out infinite;
 }
 
 .anim-pop-in {
 	animation: pop-in 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-	animation-delay: calc(var(--i, 0) * 65ms);
 }
 
 .anim-pulse-ring {
 	animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* Belépő: finoman felúszik + befakul. Staggerhez: style="--i: n" */
 .rise {
 	animation: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 	animation-delay: calc(var(--i, 0) * 65ms);

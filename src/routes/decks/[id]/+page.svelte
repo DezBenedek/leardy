@@ -1,15 +1,19 @@
 <script lang="ts">
+	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
-	import { ArrowLeft, Ellipsis, Pencil, Play, Plus, StickyNote, Trash2 } from 'lucide-svelte';
+	import { goto } from '$app/navigation';
+	import { ArrowLeft, Ellipsis, Play, Plus, StickyNote, Trash2 } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card } from '$lib/components/ui/card/index.js';
 	import { Dialog } from '$lib/components/ui/dialog/index.js';
-	import EmptyState from '$lib/components/empty-state.svelte';
-	import KnowledgeSignal from '$lib/components/knowledge-signal.svelte';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Progress } from '$lib/components/ui/progress/index.js';
+	import { Empty } from '$lib/components/ui/empty/index.js';
+	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { levelKeyFor } from '$lib/srs.js';
 	import { store } from '$lib/db.svelte.js';
 	import { t } from '$lib/i18n.js';
-	import { toasts } from '$lib/components/ui/toast/toast.svelte.js';
 
 	const id = $derived(page.params.id ?? '');
 	const deck = $derived(store.data.decks.find((d) => d.id === id));
@@ -54,10 +58,10 @@
 		if (!front.trim() || !back.trim() || !deck) return;
 		if (mode === 'new') {
 			store.addCard(deck.id, front.trim(), back.trim(), example.trim(), hint.trim());
-			toasts.show(t('toast.added'));
+			toast.success(t('toast.added'));
 		} else if (targetId) {
 			store.updateCard(targetId, { front: front.trim(), back: back.trim(), example: example.trim(), hint: hint.trim() });
-			toasts.show(t('toast.saved'));
+			toast.success(t('toast.saved'));
 		}
 		formOpen = false;
 	}
@@ -65,7 +69,7 @@
 	function confirmDelete() {
 		if (!targetId) return;
 		store.deleteCard(targetId);
-		toasts.show(t('toast.deleted'));
+		toast.success(t('toast.deleted'));
 		delOpen = false;
 		targetId = null;
 	}
@@ -92,7 +96,7 @@
 	</div>
 
 	{#if !deck}
-		<EmptyState icon={StickyNote} title={t('decks.title')} desc={t('decks.empty.d')} />
+		<Empty icon={StickyNote} title={t('decks.title')} description={t('decks.empty.d')} actionLabel={t('common.back')} actionHref="/decks" />
 	{:else}
 		<div>
 			<h1 class="truncate text-[26px] leading-tight font-bold tracking-tight">{deck.name}</h1>
@@ -104,10 +108,11 @@
 		<!-- Tudásszint-fejléc -->
 		{#if cards.length > 0}
 			<Card class="px-3.5 py-3">
-				<p class="text-[15px] font-semibold">{t('decks.mastered')}: {pct}%</p>
-				<div class="bg-secondary mt-2 h-2 overflow-hidden rounded-full">
-					<div class="bg-primary h-full rounded-full transition-all" style="width: {pct}%"></div>
+				<div class="flex items-center justify-between gap-2">
+					<p class="text-[15px] font-semibold">{t('decks.mastered')}</p>
+					<p class="text-muted-foreground text-sm font-bold tabular-nums">{pct}%</p>
 				</div>
+				<Progress value={pct} max={100} class="mt-2" />
 			</Card>
 		{/if}
 
@@ -119,7 +124,7 @@
 		</div>
 
 		{#if cards.length === 0}
-			<EmptyState icon={StickyNote} title={t('decks.newCard')} desc={t('decks.noCards')} />
+			<Empty icon={StickyNote} title={t('decks.newCard')} description={t('decks.noCards')} />
 		{:else}
 			<div class="flex flex-col gap-2">
 				{#each cards as card (card.id)}
@@ -129,7 +134,10 @@
 								<span class="block truncate text-[15px] font-semibold">{card.front}</span>
 								<span class="text-muted-foreground mt-0.5 block truncate text-[13px]">{card.back}</span>
 							</span>
-							<KnowledgeSignal level={card.level} label={levelLabel(card.level)} />
+							<span class="flex w-20 shrink-0 flex-col items-end gap-1">
+								<Progress value={card.level} max={4} class="h-1.5 w-full" />
+								<span class="text-muted-foreground text-[11px] font-semibold">{levelLabel(card.level)}</span>
+							</span>
 						</button>
 					</Card>
 				{/each}
@@ -141,20 +149,20 @@
 <Dialog bind:open={formOpen} title={mode === 'new' ? t('decks.newCard') : t('decks.editCard')}>
 	<div class="flex flex-col gap-3">
 		<div>
-			<label class="field-label" for="card-front">{t('decks.front')}</label>
-			<input id="card-front" class="field" bind:value={front} placeholder={t('decks.frontPh')} maxlength={80} />
+			<Label for="card-front">{t('decks.front')}</Label>
+			<Input id="card-front" bind:value={front} placeholder={t('decks.frontPh')} maxlength={80} />
 		</div>
 		<div>
-			<label class="field-label" for="card-back">{t('decks.back')}</label>
-			<input id="card-back" class="field" bind:value={back} placeholder={t('decks.backPh')} maxlength={80} />
+			<Label for="card-back">{t('decks.back')}</Label>
+			<Input id="card-back" bind:value={back} placeholder={t('decks.backPh')} maxlength={80} />
 		</div>
 		<div>
-			<label class="field-label" for="card-hint">{t('decks.hint')}</label>
-			<input id="card-hint" class="field" bind:value={hint} placeholder={t('decks.hintPh')} maxlength={80} />
+			<Label for="card-hint">{t('decks.hint')}</Label>
+			<Input id="card-hint" bind:value={hint} placeholder={t('decks.hintPh')} maxlength={80} />
 		</div>
 		<div>
-			<label class="field-label" for="card-ex">{t('decks.example')}</label>
-			<input id="card-ex" class="field" bind:value={example} placeholder={t('decks.examplePh')} maxlength={140} />
+			<Label for="card-ex">{t('decks.example')}</Label>
+			<Input id="card-ex" bind:value={example} placeholder={t('decks.examplePh')} maxlength={140} />
 		</div>
 		{#if mode === 'edit' && targetId}
 			<button
@@ -187,10 +195,11 @@
 		<Button
 			variant="destructive"
 			class="flex-1"
-			href="/decks"
 			onclick={() => {
 				if (deck) store.deleteDeck(deck.id);
-				toasts.show(t('toast.deleted'));
+				toast.success(t('toast.deleted'));
+				deckDelOpen = false;
+				goto('/decks');
 			}}>{t('common.delete')}</Button
 		>
 	{/snippet}
@@ -201,10 +210,11 @@
 		{#if deck && stats}
 			<div class="flex items-center gap-3 rounded-xl px-1 py-2.5">
 				<StickyNote class="text-muted-foreground size-5" />
-				<span class="text-sm">
+				<span class="text-sm tabular-nums">
 					{cards.length} {t('decks.cards.n')} · {stats.due} {t('home.dueLabel')}
 				</span>
 			</div>
+			<Separator />
 			<button
 				type="button"
 				onclick={() => {
