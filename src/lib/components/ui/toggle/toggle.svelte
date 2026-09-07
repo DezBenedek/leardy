@@ -20,12 +20,12 @@
 	class="grid h-9 w-[58px] shrink-0 place-items-center rounded-full border-2 p-[3px] transition-all duration-200 disabled:opacity-45"
 	style={value
 		? 'background: var(--primary); border-color: var(--primary); justify-items: end;'
-		: 'background: var(--secondary); border-color: var(--graphite); justify-items: start;'}
+		: 'background: var(--secondary); border-color: var(--muted-foreground); justify-items: start;'}
 >
 	<span
 		class="block size-[26px] rounded-full"
 		style={value
 			? 'background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);'
-			: 'background: var(--graphite);'}
+			: 'background: var(--muted-foreground);'}
 	></span>
 </button>

@@ -2,7 +2,7 @@
 	import type { SubjectColorKey } from '$lib/db.svelte.js';
 	import { cn } from '$lib/utils.js';
 
-	/** Tantárgy-fül a régi SubjectTab alapján: színes alap, nagybetűs felirat. */
+	/** Tantárgy-szűrő pill: színes pötty + felirat + darabszám. */
 	interface Props {
 		label: string;
 		colorKey: SubjectColorKey | 'all';
@@ -13,10 +13,10 @@
 
 	let { label, colorKey, selected, count, onTap }: Props = $props();
 
-	const wash = $derived(
+	const dot = $derived(
 		colorKey === 'all'
-			? 'color-mix(in srgb, var(--graphite) 18%, transparent)'
-			: `color-mix(in srgb, var(--subj-${colorKey}) 18%, transparent)`
+			? 'var(--muted-foreground)'
+			: `var(--subj-${colorKey})`
 	);
 </script>
 
@@ -24,18 +24,22 @@
 	type="button"
 	onclick={onTap}
 	aria-pressed={selected}
-	class={cn('press flex h-9 shrink-0 items-center gap-2 pr-3 pl-2.5', selected && 'hard-shadow')}
-	style="background: {wash}"
+	class={cn(
+		'press flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[13px] font-semibold whitespace-nowrap transition-colors',
+		selected
+			? 'border-primary/40 bg-primary/[0.08] text-foreground'
+			: 'border-transparent bg-secondary/70 text-muted-foreground hover:text-foreground'
+	)}
 >
-	{#if selected}
-		<span class="mr-0.5 h-[18px] w-[3px]" style="background: var(--primary)"></span>
-	{/if}
-	<span class="text-[12px] font-semibold tracking-[0.08em] uppercase">{label}</span>
-	<span class="font-serif text-[13px] text-muted-foreground">{count}</span>
+	<span class="size-2 shrink-0 rounded-full" style="background: {dot}"></span>
+	{label}
+	<span class={cn('rounded-full px-1.5 text-xs font-bold tabular-nums', selected ? 'text-primary' : 'text-muted-foreground/70')}>
+		{count}
+	</span>
 </button>
 
 <style>
-	/* tantárgy-színek a régi subjectColor leképezés alapján */
+	/* tantárgy-színek */
 	button {
 		--subj-ochre: var(--brass);
 		--subj-slate: var(--rule);

@@ -193,7 +193,7 @@
 						<div class="flex flex-1 items-center justify-center overflow-hidden">
 							<p class="text-center text-[28px] leading-[1.2] font-bold tracking-tight text-balance">{studyCard.front}</p>
 						</div>
-						<p class="text-graphite min-h-4 text-center text-xs font-medium">{t('common.tapToFlip')}</p>
+						<p class="text-muted-foreground min-h-4 text-center text-xs font-medium">{t('common.tapToFlip')}</p>
 					</Card>
 				</div>
 				<div class="flip-face flip-back">

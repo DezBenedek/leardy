@@ -137,37 +137,31 @@
 		: 'transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.3, 1);'}"
 >
 	<div class="relative">
-		<div class="flip-inner" class:flipped={showBack}>
+		<div class="flip-inner h-72 sm:h-80" class:flipped={showBack}>
 			<div class="flip-face">
-				<Card class="flex h-72 flex-col px-[22px] py-[18px] sm:h-80">
-					<p class="text-muted-foreground text-xs font-semibold">{stamp}</p>
+				<Card class="flex h-full flex-col px-6 py-5">
+					<p class="text-muted-foreground text-xs font-semibold tracking-wide">{stamp}</p>
 					<div class="flex flex-1 items-center justify-center overflow-hidden">
-						<p class="text-center text-[28px] leading-[1.2] font-bold tracking-tight text-balance">{front}</p>
+						<p class="font-display text-center text-[28px] leading-[1.2] font-bold tracking-tight text-balance">{front}</p>
 					</div>
-					<p class="text-graphite min-h-4 text-center text-xs font-medium">{canFlip ? (frontHint ?? '') : ''}</p>
+					<p class="text-muted-foreground min-h-4 text-center text-xs font-medium">{canFlip ? (frontHint ?? '') : ''}</p>
 				</Card>
 			</div>
 			<div class="flip-face flip-back">
-				<Card class="flex h-72 flex-col px-[22px] py-[18px] sm:h-80">
-					<p class="text-muted-foreground text-xs font-semibold">{stamp}</p>
+				<Card class="flex h-full flex-col px-6 py-5">
+					<p class="text-muted-foreground text-xs font-semibold tracking-wide">{stamp}</p>
 					<div class="flex flex-1 items-center justify-center overflow-hidden">
-						<p class="text-center text-[28px] leading-[1.2] font-bold tracking-tight text-balance">{back}</p>
+						<p class="font-display text-center text-[28px] leading-[1.2] font-bold tracking-tight text-balance">{back}</p>
 					</div>
-					<p class="text-graphite min-h-4 text-center text-xs font-medium">{canFlip ? (backHint ?? '') : ''}</p>
+					<p class="text-muted-foreground min-h-4 text-center text-xs font-medium">{canFlip ? (backHint ?? '') : ''}</p>
 				</Card>
 			</div>
 		</div>
 		{#if Math.abs(progress) > 0.12}
 			<div
-				class="pointer-events-none absolute inset-0 rounded-[14px]"
+				class="pointer-events-none absolute inset-0 rounded-[18px]"
 				style="background: color-mix(in srgb, {overlayColor} {Math.round(Math.abs(progress) * 22)}%, transparent)"
 			></div>
 		{/if}
 	</div>
 </div>
-
-<style>
-	.flip-inner {
-		transition: transform 0.2s ease-out;
-	}
-</style>

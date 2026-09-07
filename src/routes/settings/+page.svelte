@@ -146,7 +146,7 @@
 				<span class="block truncate text-base font-semibold">{profile.name || t('set.guest')}</span>
 				<span class="text-muted-foreground mt-0.5 block truncate text-sm">{t('set.guest.d')}</span>
 			</span>
-			<ChevronRight class="text-graphite size-5 shrink-0" />
+			<ChevronRight class="text-muted-foreground size-5 shrink-0" />
 		</Card>
 	</button>
 
@@ -161,7 +161,7 @@
 						<span class="block text-[15px] font-semibold">{t('set.theme')}</span>
 						<span class="text-muted-foreground block text-[13px]">{themeLabel}</span>
 					</span>
-					<ChevronRight class="text-graphite size-5" />
+					<ChevronRight class="text-muted-foreground size-5" />
 				</button>
 				<button type="button" onclick={() => (langOpen = true)} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
 					<Globe class="text-muted-foreground size-5 shrink-0" />
@@ -169,7 +169,7 @@
 						<span class="block text-[15px] font-semibold">{t('set.lang')}</span>
 						<span class="text-muted-foreground block text-[13px]">{langLabel}</span>
 					</span>
-					<ChevronRight class="text-graphite size-5" />
+					<ChevronRight class="text-muted-foreground size-5" />
 				</button>
 				<button type="button" onclick={openReminder} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
 					<Bell class="text-muted-foreground size-5 shrink-0" />
@@ -177,7 +177,7 @@
 						<span class="block text-[15px] font-semibold">{t('set.reminders')}</span>
 						<span class="text-muted-foreground block text-[13px]">{reminderLabel}</span>
 					</span>
-					<ChevronRight class="text-graphite size-5" />
+					<ChevronRight class="text-muted-foreground size-5" />
 				</button>
 				<button type="button" onclick={() => (goalOpen = true)} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
 					<Target class="text-muted-foreground size-5 shrink-0" />
@@ -185,7 +185,7 @@
 						<span class="block text-[15px] font-semibold">{t('set.goal')}</span>
 						<span class="text-muted-foreground block text-[13px]">{profile.dailyGoal} {t('set.goal.d')}</span>
 					</span>
-					<ChevronRight class="text-graphite size-5" />
+					<ChevronRight class="text-muted-foreground size-5" />
 				</button>
 			</div>
 		</Card>
@@ -202,7 +202,7 @@
 						<span class="block text-[15px] font-semibold">{t('set.account')}</span>
 						<span class="text-muted-foreground block text-[13px]">{profile.name || t('set.guest')}</span>
 					</span>
-					<ChevronRight class="text-graphite size-5" />
+					<ChevronRight class="text-muted-foreground size-5" />
 				</button>
 				<button type="button" onclick={doExport} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
 					<Download class="text-muted-foreground size-5 shrink-0" />
@@ -210,7 +210,7 @@
 						<span class="block text-[15px] font-semibold">{t('set.export')}</span>
 						<span class="text-muted-foreground block text-[13px]">{t('set.export.d')}</span>
 					</span>
-					<ChevronRight class="text-graphite size-5" />
+					<ChevronRight class="text-muted-foreground size-5" />
 				</button>
 				<button type="button" onclick={() => fileInput?.click()} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
 					<Upload class="text-muted-foreground size-5 shrink-0" />
@@ -218,7 +218,7 @@
 						<span class="block text-[15px] font-semibold">{t('set.import')}</span>
 						<span class="text-muted-foreground block text-[13px]">{t('set.import.d')}</span>
 					</span>
-					<ChevronRight class="text-graphite size-5" />
+					<ChevronRight class="text-muted-foreground size-5" />
 				</button>
 				<input bind:this={fileInput} type="file" accept="application/json" class="hidden" onchange={doImport} />
 				<button
@@ -246,7 +246,7 @@
 					<span class="block text-[15px] font-semibold">Leardy</span>
 					<span class="text-muted-foreground block text-[13px]">{t('set.aboutTagline')}</span>
 				</span>
-				<ChevronRight class="text-graphite size-5" />
+				<ChevronRight class="text-muted-foreground size-5" />
 			</button>
 		</Card>
 	</div>

@@ -205,7 +205,7 @@
 								<Play class="size-5" fill="currentColor" />
 							</span>
 						{/if}
-						<ChevronRight class="text-graphite size-5 shrink-0" />
+						<ChevronRight class="text-muted-foreground size-5 shrink-0" />
 					</a>
 					<span class="absolute top-2.5 right-2.5 flex gap-1 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
 						<button

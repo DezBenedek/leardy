@@ -65,7 +65,7 @@
 			{#each groups as g (g.id)}
 				<a href="/classroom/{g.id}" class="group press">
 					<Card class="card-lift flex-row items-center gap-4 py-4">
-						<span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 font-display text-lg font-extrabold text-white shadow-md shadow-violet-500/25">
+						<span class="bg-primary text-primary-foreground font-display grid size-12 shrink-0 place-items-center rounded-2xl text-lg font-bold">
 							{g.name.charAt(0).toUpperCase()}
 						</span>
 						<div class="min-w-0 flex-1">

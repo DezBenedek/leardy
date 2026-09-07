@@ -11,7 +11,7 @@
 
 <div class="flex items-center gap-3">
 	<span
-		class="grid size-[52px] shrink-0 place-items-center rounded-[14px] text-[22px] font-bold"
+		class="font-display grid size-[52px] shrink-0 place-items-center rounded-2xl text-[22px] font-bold"
 		style="color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent)"
 	>
 		{days}

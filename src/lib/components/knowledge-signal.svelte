@@ -25,7 +25,7 @@
 	{#each [0, 1, 2, 3] as i (i)}
 		<span
 			class="w-[3px] rounded-full"
-			style="height: {height * (0.35 + (0.65 * (i + 1)) / 4)}px; background: {i < bars ? color : 'color-mix(in srgb, var(--graphite) 30%, transparent)'}"
+			style="height: {height * (0.35 + (0.65 * (i + 1)) / 4)}px; background: {i < bars ? color : 'color-mix(in srgb, var(--muted-foreground) 30%, transparent)'}"
 		></span>
 	{/each}
 </span>

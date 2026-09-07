@@ -38,11 +38,12 @@
 			aria-modal="true"
 			aria-label={title}
 			class={cn(
-				'bg-card relative flex max-h-[88dvh] w-full flex-col overflow-hidden rounded-t-3xl border shadow-xl sm:max-w-md sm:rounded-3xl',
+				'bg-card relative flex max-h-[88dvh] w-full flex-col overflow-hidden rounded-t-[20px] border shadow-xl sm:max-w-md sm:rounded-[20px]',
 				className
 			)}
 		>
-			<div class="flex items-start justify-between gap-3 px-5 pt-5">
+			<div class="mx-auto mt-2.5 h-1 w-10 shrink-0 rounded-full bg-border sm:hidden" aria-hidden="true"></div>
+			<div class="flex items-start justify-between gap-3 px-5 pt-3 sm:pt-5">
 				<div>
 					<h2 class="text-lg font-bold tracking-tight">{title}</h2>
 					{#if description}

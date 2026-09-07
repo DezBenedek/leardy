@@ -59,10 +59,10 @@
 	<!-- Desktop oldalsáv: 212px fiók a régi NavigationDrawer alapján -->
 	<aside class="sticky top-0 hidden h-dvh w-[212px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r py-3 pr-3 md:flex">
 		<a href="/" class="mb-2 flex items-center gap-2.5 px-5 pt-3 pb-2">
-			<span class="bg-primary text-primary-foreground grid size-9 place-items-center rounded-2xl">
+			<span class="bg-primary text-primary-foreground grid size-9 place-items-center rounded-xl">
 				<Languages class="size-5" strokeWidth={2.25} />
 			</span>
-			<span class="text-base font-semibold tracking-tight">Leardy</span>
+			<span class="font-display text-base font-bold tracking-tight">Leardy</span>
 		</a>
 		{#each tabs as tab (tab.href)}
 			{@const Icon = tab.icon}
@@ -72,11 +72,10 @@
 				aria-current={active ? 'page' : undefined}
 				class={cn(
 					'flex h-12 items-center gap-3 rounded-xl px-4 text-[15px] font-semibold transition-colors',
-					active ? 'text-primary' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+					active ? 'bg-primary/[0.08] text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
 				)}
-				style={active ? 'background: color-mix(in srgb, var(--primary) 14%, transparent)' : undefined}
 			>
-				<Icon class="size-5" strokeWidth={active ? 2.4 : 2} />
+				<Icon class={cn('size-5', active && 'text-primary')} strokeWidth={active ? 2.4 : 2} />
 				{tab.label}
 			</a>
 		{/each}
@@ -100,7 +99,7 @@
 					<span class="bg-primary text-primary-foreground grid size-8 place-items-center rounded-xl">
 						<Languages class="size-4" strokeWidth={2.25} />
 					</span>
-					<span class="text-lg font-bold tracking-tight">Leardy</span>
+					<span class="font-display text-lg font-bold tracking-tight">Leardy</span>
 				</a>
 				<div class="flex items-center gap-1.5">
 					<span class="bg-streak/15 text-streak inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold">
@@ -122,7 +121,7 @@
 			aria-label="Fő navigáció"
 			class="bg-background/95 fixed inset-x-0 bottom-0 z-50 border-t backdrop-blur-md md:hidden"
 		>
-			<div class="mx-auto grid h-[68px] max-w-lg grid-cols-5 px-1 pb-safe">
+			<div class="mx-auto grid min-h-[72px] max-w-lg grid-cols-5 px-1 pt-1 pb-safe">
 				{#each tabs as tab (tab.href)}
 					{@const Icon = tab.icon}
 					{@const active = isActive(tab.href)}
@@ -135,8 +134,10 @@
 						)}
 					>
 						<span
-							class="grid h-8 w-16 place-items-center rounded-full transition-colors"
-							style={active ? 'background: color-mix(in srgb, var(--primary) 14%, transparent)' : undefined}
+							class={cn(
+								'grid h-8 w-16 place-items-center rounded-full transition-colors',
+								active && 'bg-primary/[0.1]'
+							)}
 						>
 							<Icon class={cn('size-[22px]', active && 'text-primary')} strokeWidth={active ? 2.4 : 2} />
 						</span>

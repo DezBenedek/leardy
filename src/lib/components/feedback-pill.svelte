@@ -11,7 +11,7 @@
 </script>
 
 <div
-	class="inline-flex min-w-0 items-center gap-2 rounded-[14px] border-[1.5px] px-3.5 py-2.5"
+	class="inline-flex min-w-0 items-center gap-2 rounded-2xl border-[1.5px] px-3.5 py-2.5"
 	style="color: {correct ? 'var(--forest)' : 'var(--wine)'}; background: color-mix(in srgb, {correct
 		? 'var(--forest)'
 		: 'var(--wine)'} 12%, transparent); border-color: color-mix(in srgb, {correct

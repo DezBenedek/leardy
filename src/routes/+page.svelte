@@ -76,7 +76,7 @@
 
 <section class="mx-auto flex w-full max-w-2xl flex-col gap-4 px-1 pt-2">
 	<p class="text-muted-foreground text-sm">{dateLabel}</p>
-	<h1 class="-mt-3 text-[26px] leading-tight font-bold tracking-tight">
+	<h1 class="font-display -mt-3 text-[26px] leading-tight font-bold tracking-tight">
 		{firstName ? (lang === 'en' ? `Hi, ${firstName}` : `Szia, ${firstName}`) : t('home.ready')}
 	</h1>
 
@@ -117,18 +117,18 @@
 		</div>
 		<Progress value={today} max={goal} class="mt-2 h-2" />
 		<div class="mt-3 grid grid-cols-2 gap-2.5">
-			<Card class="bg-secondary/60 px-3.5 py-3">
-				<p class="text-[26px] leading-tight font-bold">{dueTotal}</p>
+			<div class="rounded-2xl bg-secondary/70 px-3.5 py-3">
+				<p class="font-display text-[26px] leading-tight font-bold">{dueTotal}</p>
 				<p class="text-muted-foreground mt-1 text-sm">{t('home.dueLabel')}</p>
-			</Card>
-			<Card class="bg-secondary/60 px-3.5 py-3">
-				<p class="text-[26px] leading-tight font-bold">{today}</p>
+			</div>
+			<div class="rounded-2xl bg-secondary/70 px-3.5 py-3">
+				<p class="font-display text-[26px] leading-tight font-bold">{today}</p>
 				<p class="text-muted-foreground mt-1 text-sm">{t('home.doneToday')}</p>
-			</Card>
+			</div>
 		</div>
-		<Card class="mt-2.5 px-3.5 py-3.5">
+		<div class="mt-2.5 rounded-2xl bg-secondary/70 px-3.5 py-3.5">
 			<StreakTally days={profile.streak} />
-		</Card>
+		</div>
 	</Card>
 
 	<!-- Esedékes szettek -->
@@ -164,7 +164,7 @@
 							>
 								<Play class="size-5" fill="currentColor" />
 							</span>
-							<ChevronRight class="text-graphite size-5" />
+							<ChevronRight class="text-muted-foreground size-5" />
 						</Card>
 					</a>
 				{/each}
@@ -183,7 +183,7 @@
 						{currentIdx + 1}. {lang === 'en' ? currentMeta.en : currentMeta.hu}
 					</span>
 				</span>
-				<ChevronRight class="text-graphite size-5 transition-transform group-hover:translate-x-0.5" />
+				<ChevronRight class="text-muted-foreground size-5 transition-transform group-hover:translate-x-0.5" />
 			</Card>
 		</a>
 	{/if}
@@ -194,7 +194,7 @@
 			<summary class="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
 				<BookOpen class="text-primary size-5 shrink-0" />
 				<span class="flex-1 text-[15px] font-semibold">{t('home.last28')}</span>
-				<ChevronRight class="text-graphite size-5 transition-transform group-open:rotate-90" />
+				<ChevronRight class="text-muted-foreground size-5 transition-transform group-open:rotate-90" />
 			</summary>
 			<div class="pt-3">
 				<div class="grid grid-cols-7 gap-1.5">
