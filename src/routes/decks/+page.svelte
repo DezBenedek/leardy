@@ -167,7 +167,7 @@
 			{/if}
 		</EmptyState>
 	{:else}
-		<div class="flex flex-col gap-2">
+		<div class="stagger flex flex-col gap-2">
 			{#each filtered as deck (deck.id)}
 				{@const due = dueMap.get(deck.id) ?? 0}
 				<Card class="card-lift group relative px-4 py-3.5">

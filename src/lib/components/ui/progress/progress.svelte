@@ -21,5 +21,5 @@
 	class={cn('bg-secondary h-2 w-full overflow-hidden rounded-full', className)}
 	{...restProps}
 >
-	<div class="bg-primary h-full rounded-full transition-all" style="width: {pct}%"></div>
+	<div class="bg-primary h-full rounded-full transition-[width] duration-500 ease-out" style="width: {pct}%"></div>
 </div>

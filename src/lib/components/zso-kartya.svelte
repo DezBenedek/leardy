@@ -91,7 +91,7 @@
 			setTimeout(() => {
 				if (goRight) onKnow?.();
 				else onDontKnow?.();
-			}, 230);
+			}, 300);
 			return;
 		}
 		// tap = fordítás
@@ -132,9 +132,11 @@
 		if (e.key === 'ArrowLeft') onDontKnow?.();
 	}}
 	class="zso-touch w-full cursor-grab outline-none active:cursor-grabbing"
-	style="transform: translateX({drag}px) rotate({drag * 0.04}deg); {dragging || flying !== 0
+	style="transform: translateX({drag}px) rotate({drag * 0.04}deg); {dragging
 		? ''
-		: 'transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.3, 1);'}"
+		: flying !== 0
+			? 'transition: transform 0.3s cubic-bezier(0.3, 0.7, 0.4, 1);'
+			: 'transition: transform 0.5s cubic-bezier(0.3, 1.35, 0.4, 1);'}"
 >
 	<div class="relative">
 		<div class="flip-inner h-72 sm:h-80" class:flipped={showBack}>

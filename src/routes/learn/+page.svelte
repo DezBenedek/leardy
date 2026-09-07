@@ -64,7 +64,7 @@
 						style="background: linear-gradient(to bottom, var(--primary), color-mix(in srgb, var(--primary) 70%, black))"
 						aria-label="{t('learn.start')}: {meta.hu}"
 					>
-						<Play class="size-8 translate-x-0.5" fill="currentColor" />
+						<Play class="anim-pop-in size-8 translate-x-0.5" style="--i: {i}" fill="currentColor" />
 						<span class="bg-card text-primary border-primary/30 absolute -top-2 left-1/2 -translate-x-1/2 rounded-lg border px-2 py-0.5 text-[11px] font-extrabold whitespace-nowrap shadow-md">
 							{t('learn.start').toUpperCase()}
 						</span>
@@ -76,7 +76,7 @@
 						style="background: linear-gradient(to bottom, var(--forest), color-mix(in srgb, var(--forest) 70%, black))"
 						aria-label="{meta.hu}"
 					>
-						<Check class="size-7" strokeWidth={3} />
+						<Check class="anim-pop-in size-7" style="--i: {i}" strokeWidth={3} />
 					</a>
 				{:else}
 					<div
@@ -84,10 +84,10 @@
 						title={t('learn.locked')}
 						aria-label={t('learn.locked')}
 					>
-						<Lock class="size-6" />
+						<Lock class="anim-pop-in size-6" style="--i: {i}" />
 					</div>
 				{/if}
-				<div class="mt-1.5 mb-4 flex flex-col items-center gap-1 rounded-2xl px-3 py-1.5 text-center">
+				<div class="rise mt-1.5 mb-4 flex flex-col items-center gap-1 rounded-2xl px-3 py-1.5 text-center" style="--i: {i}">
 					<p class={cn('text-sm leading-tight font-bold', st === 'locked' && 'text-muted-foreground')}>
 						{i + 1}. {lang === 'en' ? meta.en : meta.hu}
 					</p>

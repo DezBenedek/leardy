@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
+	import CountUp from '$lib/components/count-up.svelte';
 	import StreakTally from '$lib/components/streak-tally.svelte';
 	import { last28Counts, lessonMeta, store } from '$lib/db.svelte.js';
 	import { t } from '$lib/i18n.js';
@@ -74,7 +75,7 @@
 	<title>Leardy — nyelvtanulás játékosan</title>
 </svelte:head>
 
-<section class="mx-auto flex w-full max-w-2xl flex-col gap-4 px-1 pt-2">
+<section class="stagger mx-auto flex w-full max-w-2xl flex-col gap-4 px-1 pt-2">
 	<p class="text-muted-foreground text-sm">{dateLabel}</p>
 	<h1 class="font-display -mt-3 text-[26px] leading-tight font-bold tracking-tight">
 		{firstName ? (lang === 'en' ? `Hi, ${firstName}` : `Szia, ${firstName}`) : t('home.ready')}
@@ -93,7 +94,11 @@
 	<Card class="px-[22px] py-5">
 		<p class="text-base font-semibold">{t('home.today')}</p>
 		<p class="mt-2 text-[38px] leading-none font-extrabold tracking-tight">
-			{dueTotal === 0 ? t('home.caughtUp') : `${dueTotal} ${t('home.dueLabel')}`}
+			{#if dueTotal === 0}
+				{t('home.caughtUp')}
+			{:else}
+				<CountUp value={dueTotal} /> {t('home.dueLabel')}
+			{/if}
 		</p>
 		<p class="text-muted-foreground mt-1 text-base">
 			{dueTotal === 0 ? t('home.ready') : `${today} / ${goal} ${t('home.doneToday')}`}
@@ -118,11 +123,11 @@
 		<Progress value={today} max={goal} class="mt-2 h-2" />
 		<div class="mt-3 grid grid-cols-2 gap-2.5">
 			<div class="rounded-2xl bg-secondary/70 px-3.5 py-3">
-				<p class="font-display text-[26px] leading-tight font-bold">{dueTotal}</p>
+				<p class="font-display text-[26px] leading-tight font-bold"><CountUp value={dueTotal} /></p>
 				<p class="text-muted-foreground mt-1 text-sm">{t('home.dueLabel')}</p>
 			</div>
 			<div class="rounded-2xl bg-secondary/70 px-3.5 py-3">
-				<p class="font-display text-[26px] leading-tight font-bold">{today}</p>
+				<p class="font-display text-[26px] leading-tight font-bold"><CountUp value={today} /></p>
 				<p class="text-muted-foreground mt-1 text-sm">{t('home.doneToday')}</p>
 			</div>
 		</div>
@@ -205,11 +210,11 @@
 				<div class="mt-2 grid grid-cols-7 gap-1.5">
 					{#each heat as n, i (i)}
 						<span
-							class="aspect-square rounded-[6px]"
-							title={`${n}`}
-							style={n === 0
+							class="rise rise-quick aspect-square rounded-[6px]"
+							style="--i: {i}; {n === 0
 								? 'background: var(--secondary)'
-								: `background: color-mix(in srgb, var(--primary) ${Math.round((0.22 + (n / heatMax) * 0.78) * 100)}%, transparent)`}
+								: `background: color-mix(in srgb, var(--primary) ${Math.round((0.22 + (n / heatMax) * 0.78) * 100)}%, transparent)`}"
+							title={`${n}`}
 						></span>
 					{/each}
 				</div>

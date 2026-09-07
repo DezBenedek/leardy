@@ -1,6 +1,8 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import { fly } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	import { page } from '$app/state';
 	import { Flame, House, Languages, Layers, School, Settings, Star, Zap } from 'lucide-svelte';
 	import { cn } from '$lib/utils.js';
@@ -113,7 +115,11 @@
 		</header>
 
 		<main class="flex-1 px-4 pb-28 pt-2 md:px-2 md:pb-12 md:pt-6">
-			{@render children()}
+			{#key page.url.pathname}
+				<div in:fly={{ y: 16, duration: 300, easing: cubicOut }}>
+					{@render children()}
+				</div>
+			{/key}
 		</main>
 
 		<!-- Mobil alsó sáv: 68px, jelző-pill a régi NavigationBar alapján -->
@@ -135,11 +141,15 @@
 					>
 						<span
 							class={cn(
-								'grid h-8 w-16 place-items-center rounded-full transition-colors',
+								'grid h-8 w-16 place-items-center rounded-full transition-all duration-300',
 								active && 'bg-primary/[0.1]'
 							)}
 						>
-							<Icon class={cn('size-[22px]', active && 'text-primary')} strokeWidth={active ? 2.4 : 2} />
+							{#key `${tab.href}-${active}`}
+								<span class={cn(active && 'anim-pop-in', 'grid place-items-center')}>
+									<Icon class={cn('size-[22px]', active && 'text-primary')} strokeWidth={active ? 2.4 : 2} />
+								</span>
+							{/key}
 						</span>
 						{tab.label}
 					</a>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { fade, scale } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	import { X } from 'lucide-svelte';
 	import { cn } from '$lib/utils.js';
 	import type { Snippet } from 'svelte';
@@ -28,12 +29,12 @@
 		<button
 			type="button"
 			aria-label="Bezárás"
-			transition:fade={{ duration: 150 }}
+			transition:fade={{ duration: 200, easing: cubicOut }}
 			class="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
 			onclick={() => (open = false)}
 		></button>
 		<div
-			transition:scale={{ duration: 180, start: 0.96 }}
+			transition:scale={{ duration: 320, start: 0.92, easing: cubicOut }}
 			role="dialog"
 			aria-modal="true"
 			aria-label={title}
