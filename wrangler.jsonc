@@ -8,15 +8,14 @@
 		"binding": "ASSETS",
 		"directory": ".svelte-kit/cloudflare"
 	},
-	// D1 adatbázis — ha kész, hozd létre: `npm run cf:db:create`,
-	// majd írd be ide a database_id-t:
-	// "d1_databases": [
-	//   {
-	//     "binding": "DB",
-	//     "database_name": "leardy-db",
-	//     "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-	//   }
-	// ],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "leardy-db",
+			"database_id": "627afc2a-b302-42a3-ba0b-b2aa6143e89e",
+			"migrations_dir": "migrations"
+		}
+	],
 	"observability": {
 		"enabled": true
 	}

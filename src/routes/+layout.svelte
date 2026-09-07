@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { cubicOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
+	import AuthDrawer from '$lib/components/AuthDrawer.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import { TAB_ORDER } from '$lib/navigation';
@@ -51,11 +52,12 @@
 			</main>
 		{/key}
 		<footer class="hidden px-8 pb-8 lg:block">
-			<p class="mx-auto max-w-3xl text-xs text-ink-400">
+			<p class="mx-auto max-w-3xl text-xs text-ink-400 dark:text-stone-500">
 				Leardy · Cloudflare Workers + D1 alapon készül · PWA-ként telepíthető
 			</p>
 		</footer>
 	</div>
 </div>
 
+<AuthDrawer />
 <BottomNav />

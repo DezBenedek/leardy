@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { Check, ChevronRight, Flame, Play, Settings } from '@lucide/svelte';
+	import { auth } from '$lib/auth.svelte';
 
 	const now = new Date();
 	const today = now.toLocaleDateString('hu-HU', {
@@ -9,6 +10,8 @@
 		day: 'numeric'
 	});
 	const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+	let firstName = $derived(auth.user?.name.split(' ')[0] ?? null);
 
 	// --- Széria: a hét napjai (hétfői kezdéssel) ---
 	const weekDays = ['H', 'K', 'Sze', 'Cs', 'P', 'Szo', 'V'];
@@ -68,7 +71,10 @@
 		if (browser) localStorage.setItem('leardy-todos', JSON.stringify({ date: todayKey, done }));
 	});
 
-	let doneCount = $derived(todos.filter((t) => done[t.id]).length);
+	// Tanterem-teendő csak bejelentkezve látszik
+	let visibleTodos = $derived(auth.user ? todos : todos.filter((t) => t.id !== 'tanterem'));
+	let doneCount = $derived(visibleTodos.filter((t) => done[t.id]).length);
+	let allDone = $derived(doneCount === visibleTodos.length);
 </script>
 
 <svelte:head>
@@ -76,137 +82,148 @@
 	<meta name="description" content="Leardy főoldal: széria, haladás és mai teendők egy helyen." />
 </svelte:head>
 
-<!-- Köszöntés -->
-<section class="flex items-center justify-between gap-3">
+<!-- Fejléc -->
+<header class="flex items-start justify-between gap-3 px-1">
 	<div>
-		<p class="text-[13px] font-medium text-ink-400 capitalize">{today}</p>
-		<h1 class="mt-0.5 text-[26px] font-extrabold tracking-tight text-ink-900 sm:text-3xl">
-			Szia!
+		<p class="text-[13px] font-semibold capitalize text-stone-500 dark:text-stone-400">{today}</p>
+		<h1 class="font-display mt-1.5 text-[38px] leading-[1.02] font-extrabold tracking-tight text-ink-900 dark:text-white">
+			{#if firstName}
+				Szia,<br />{firstName}!
+			{:else}
+				Szia!
+			{/if}
 		</h1>
 	</div>
 	<a
 		href="/beallitasok"
 		aria-label="Beállítások"
-		class="grid size-10 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-ink-600 transition hover:bg-slate-50 active:scale-90"
+		class="mt-1 grid size-11 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-600 transition hover:bg-stone-50 active:scale-90 dark:border-white/10 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-white/10"
 	>
-		<Settings size={20} />
+		<Settings size={21} />
 	</a>
-</section>
+</header>
 
 <!-- Széria -->
-<section class="mt-4 rounded-2xl border border-slate-200 bg-white p-5" aria-label="Széria">
-	<div class="flex items-center gap-3.5">
-		<span class="grid size-11 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-500">
-			<Flame size={22} />
-		</span>
-		<div class="min-w-0 flex-1">
-			<h2 class="text-[16px] font-bold text-ink-900">Széria</h2>
-			<p class="truncate text-[13px] text-ink-600">7 napja folyamatosan tanulsz</p>
-		</div>
-		<span class="shrink-0 text-[26px] font-extrabold tracking-tight text-ink-900">7</span>
+<section class="mt-9 px-1" aria-label="Széria">
+	<p class="text-xs font-bold tracking-[0.18em] text-stone-500 uppercase dark:text-stone-400">Széria</p>
+	<div class="mt-2 flex items-center gap-3">
+		<Flame size={46} fill="currentColor" strokeWidth={1} class="shrink-0 text-amber-500" />
+		<p class="font-display text-[64px] leading-none font-extrabold tracking-tight text-ink-900 dark:text-white">
+			7 <span class="text-[26px] font-bold text-stone-400 dark:text-stone-500">nap</span>
+		</p>
 	</div>
-	<div class="mt-4 grid grid-cols-7 gap-1.5" aria-label="E heti aktivitás">
+	<p class="mt-2.5 text-[15px] text-stone-600 dark:text-stone-400">Zsinórban tanulsz — a mai is számít.</p>
+	<div class="mt-4 grid grid-cols-7 gap-2" aria-label="E heti aktivitás">
 		{#each weekDays as day, i (day)}
-			<div class="flex flex-col items-center gap-1">
-				<span
-					class={[
-						'grid size-9 place-items-center rounded-full text-xs font-bold transition-colors',
-						i < todayIdx
-							? 'bg-brand-500 text-white'
-							: i === todayIdx
-								? 'bg-amber-100 text-amber-700 ring-2 ring-amber-400'
-								: 'bg-slate-100 text-slate-400'
-					]}
-				>
-					{day}
-				</span>
-			</div>
+			<span
+				class={[
+					'grid h-11 place-items-center rounded-full border text-sm font-extrabold',
+					i < todayIdx
+						? 'border-ink-900 bg-ink-900 text-white dark:border-white dark:bg-white dark:text-stone-950'
+						: i === todayIdx
+							? 'border-amber-500 bg-amber-400 text-ink-900'
+							: 'border-stone-300 text-stone-400 dark:border-white/15 dark:text-stone-500'
+				]}
+			>
+				{day}
+			</span>
 		{/each}
 	</div>
 </section>
 
+<div class="my-8 border-t border-stone-200 dark:border-white/10" aria-hidden="true"></div>
+
 <!-- Haladás -->
-<section class="mt-3 rounded-2xl border border-slate-200 bg-white p-5" aria-label="Haladás">
-	<h2 class="text-[16px] font-bold text-ink-900">Haladás</h2>
-	<div class="mt-4 space-y-4">
+<section class="px-1" aria-label="Haladás">
+	<div class="flex items-baseline justify-between">
+		<h2 class="font-display text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">Haladás</h2>
+		<p class="text-[13px] font-bold text-amber-600 dark:text-amber-400">12. szint</p>
+	</div>
+	<div class="mt-5 space-y-6">
 		<div>
-			<div class="flex items-baseline justify-between text-sm">
-				<p class="font-semibold text-ink-900">Heti XP</p>
-				<p class="text-[13px] font-medium text-ink-400">320 / 500</p>
+			<div class="flex items-baseline justify-between gap-3">
+				<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Heti XP</p>
+				<p class="font-display text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">
+					320<span class="text-sm font-bold text-stone-400 dark:text-stone-500"> / 500</span>
+				</p>
 			</div>
-			<div class="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
+			<div class="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-200 dark:bg-white/10">
 				<div class="h-full w-[64%] rounded-full bg-brand-500"></div>
 			</div>
 		</div>
 		<div>
-			<div class="flex items-baseline justify-between text-sm">
-				<p class="font-semibold text-ink-900">Leckék</p>
-				<p class="text-[13px] font-medium text-ink-400">12 / 40</p>
+			<div class="flex items-baseline justify-between gap-3">
+				<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Leckék</p>
+				<p class="font-display text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">
+					12<span class="text-sm font-bold text-stone-400 dark:text-stone-500"> / 40</span>
+				</p>
 			</div>
-			<div class="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
+			<div class="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-200 dark:bg-white/10">
 				<div class="h-full w-[30%] rounded-full bg-emerald-500"></div>
 			</div>
 		</div>
 	</div>
 </section>
 
+<div class="my-8 border-t border-stone-200 dark:border-white/10" aria-hidden="true"></div>
+
 <!-- Mai teendők -->
-<section class="mt-6" aria-label="Mai teendők">
+<section class="px-1" aria-label="Mai teendők">
 	<div class="flex items-baseline justify-between">
-		<h2 class="text-lg font-bold text-ink-900">Mai teendők</h2>
-		<p class="text-[13px] font-semibold text-ink-400">{doneCount} / {todos.length} kész</p>
+		<h2 class="font-display text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">Mai teendők</h2>
+		<p class={['text-[13px] font-bold', allDone ? 'text-emerald-600 dark:text-emerald-400' : 'text-stone-400 dark:text-stone-500']}>
+			{doneCount} / {visibleTodos.length}
+		</p>
 	</div>
-	<ul class="mt-3 space-y-2.5">
-		{#each todos as todo (todo.id)}
+	<ul class="mt-1 divide-y divide-stone-200 dark:divide-white/10">
+		{#each visibleTodos as todo (todo.id)}
 			{@const isDone = done[todo.id]}
-			<li
-				class={[
-					'flex items-center gap-3.5 rounded-2xl border bg-white p-4 transition',
-					isDone ? 'border-slate-100 opacity-60' : 'border-slate-200'
-				]}
-			>
+			<li class={['flex items-center gap-4 py-4 transition-opacity', isDone ? 'opacity-55' : '']}>
 				<button
 					onclick={() => (done[todo.id] = !isDone)}
 					aria-label={isDone ? `${todo.title} — kész, visszavonás` : `${todo.title} — készre jelölés`}
 					aria-pressed={isDone}
 					class={[
-						'grid size-6 shrink-0 place-items-center rounded-full border-2 transition-all active:scale-90',
+						'grid size-8 shrink-0 place-items-center rounded-full border-2 transition-all active:scale-90',
 						isDone
 							? 'border-emerald-500 bg-emerald-500 text-white'
-							: 'border-slate-300 bg-white hover:border-brand-500'
+							: 'border-stone-300 bg-transparent hover:border-brand-500 dark:border-white/25'
 					]}
 				>
 					{#if isDone}
-						<Check size={14} strokeWidth={3} />
+						<Check size={16} strokeWidth={3.2} />
 					{/if}
 				</button>
 				<a href={todo.href} class="min-w-0 flex-1">
-					<p class={['truncate text-[15px] font-semibold', isDone ? 'text-ink-400 line-through' : 'text-ink-900']}>
+					<p class={['truncate text-[16px] font-semibold', isDone ? 'text-stone-400 line-through dark:text-stone-500' : 'text-ink-900 dark:text-white']}>
 						{todo.title}
 					</p>
-					<p class="truncate text-[13px] text-ink-400">{todo.sub}</p>
+					<p class="mt-0.5 truncate text-[13px] text-stone-500 dark:text-stone-400">{todo.sub}</p>
 				</a>
-				<span class="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-ink-600">
-					+{todo.xp} XP
-				</span>
+				<span class="shrink-0 text-sm font-bold text-stone-400 dark:text-stone-500">+{todo.xp} XP</span>
 			</li>
 		{/each}
 	</ul>
+	{#if allDone}
+		<p class="flex items-center gap-2 pt-1 text-[15px] font-bold text-emerald-600 dark:text-emerald-400">
+			<Check size={17} strokeWidth={3} /> Szép munka, mára végeztél!
+		</p>
+	{/if}
 </section>
 
 <!-- Napi gyakorlás -->
-<section class="mt-6" aria-label="Napi gyakorlás">
+<section class="mt-9" aria-label="Napi gyakorlás">
 	<a
 		href="/szokartyak"
-		class="flex items-center gap-4 rounded-2xl bg-brand-500 p-5 text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-[0.98]"
+		class="group flex items-center gap-4 rounded-[28px] bg-ink-900 p-6 text-white transition active:scale-[0.99] dark:bg-white dark:text-ink-900"
 	>
-		<span class="grid size-12 shrink-0 place-items-center rounded-xl bg-white/20">
-			<Play size={24} strokeWidth={2.4} class="ml-0.5" />
+		<span class="grid size-14 shrink-0 place-items-center rounded-full bg-amber-400 text-ink-900">
+			<Play size={24} strokeWidth={2.2} fill="currentColor" class="ml-0.5" />
 		</span>
 		<span class="min-w-0 flex-1">
-			<span class="block text-[17px] font-bold">Napi gyakorlás</span>
-			<span class="block truncate text-[13px] text-white/75">13 kártya · kb. 5 perc</span>
+			<span class="font-display block text-[22px] font-bold tracking-tight">Napi gyakorlás</span>
+			<span class="mt-0.5 block text-sm text-white/60 dark:text-stone-600">13 kártya · kb. 5 perc</span>
 		</span>
-		<ChevronRight size={22} class="shrink-0 text-white/70" />
+		<ChevronRight size={24} class="shrink-0 text-white/40 transition-transform duration-200 group-hover:translate-x-1 dark:text-stone-400" />
 	</a>
 </section>

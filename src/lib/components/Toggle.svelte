@@ -15,7 +15,7 @@
 	onclick={() => (checked = !checked)}
 	class={[
 		'relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200',
-		checked ? 'bg-brand-500' : 'bg-slate-200'
+		checked ? 'bg-brand-500' : 'bg-stone-200 dark:bg-white/15'
 	]}
 >
 	<span
