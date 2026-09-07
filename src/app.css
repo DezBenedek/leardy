@@ -3,75 +3,88 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Leardy téma — shadcn-szerű tokenrendszer, saját színvilággal:
- * semleges stone alap + smaragd (emerald) primary + borostyán akcentus.
+ * Leardy design system — shadcn-szerű tokenek + saját karakter:
+ * meleg papír háttér, smaragd primary, játékos-lekerekített formák,
+ * Bricolage Grotesque display + Inter szöveg.
  */
-:root {
-	--radius: 0.75rem;
 
-	--background: oklch(0.991 0.002 286);
-	--foreground: oklch(0.21 0.006 285.9);
+@theme {
+	--font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-display: 'Bricolage Grotesque', 'Inter', system-ui, sans-serif;
+}
+
+:root {
+	--radius: 0.9rem;
+
+	--background: oklch(0.982 0.004 100);
+	--foreground: oklch(0.22 0.02 150);
 
 	--card: oklch(1 0 0);
-	--card-foreground: oklch(0.21 0.006 285.9);
+	--card-foreground: oklch(0.22 0.02 150);
 
 	--popover: oklch(1 0 0);
-	--popover-foreground: oklch(0.21 0.006 285.9);
+	--popover-foreground: oklch(0.22 0.02 150);
 
 	--primary: oklch(0.548 0.15 163.4);
 	--primary-foreground: oklch(0.99 0.01 166);
 
-	--secondary: oklch(0.962 0.004 286);
-	--secondary-foreground: oklch(0.27 0.008 286);
+	--secondary: oklch(0.945 0.012 150);
+	--secondary-foreground: oklch(0.3 0.04 160);
 
-	--muted: oklch(0.962 0.004 286);
-	--muted-foreground: oklch(0.552 0.016 285.9);
+	--muted: oklch(0.95 0.008 120);
+	--muted-foreground: oklch(0.52 0.02 150);
 
-	--accent: oklch(0.962 0.004 286);
-	--accent-foreground: oklch(0.27 0.008 286);
+	--accent: oklch(0.945 0.012 150);
+	--accent-foreground: oklch(0.3 0.04 160);
 
 	--destructive: oklch(0.577 0.245 27.3);
 	--destructive-foreground: oklch(0.99 0 0);
 
-	--border: oklch(0.915 0.006 286);
-	--input: oklch(0.915 0.006 286);
+	--border: oklch(0.9 0.012 140);
+	--input: oklch(0.88 0.015 140);
 	--ring: oklch(0.548 0.15 163.4);
 
-	--streak: oklch(0.705 0.187 47.6);
-	--xp: oklch(0.795 0.184 86.05);
+	--streak: oklch(0.68 0.19 45);
+	--xp: oklch(0.72 0.16 85);
+
+	--hero-from: oklch(0.6 0.16 162);
+	--hero-to: oklch(0.45 0.12 190);
 }
 
 .dark {
-	--background: oklch(0.17 0.007 286);
-	--foreground: oklch(0.96 0.004 286);
+	--background: oklch(0.16 0.015 160);
+	--foreground: oklch(0.94 0.01 150);
 
-	--card: oklch(0.21 0.008 286);
-	--card-foreground: oklch(0.96 0.004 286);
+	--card: oklch(0.2 0.018 160);
+	--card-foreground: oklch(0.94 0.01 150);
 
-	--popover: oklch(0.21 0.008 286);
-	--popover-foreground: oklch(0.96 0.004 286);
+	--popover: oklch(0.2 0.018 160);
+	--popover-foreground: oklch(0.94 0.01 150);
 
-	--primary: oklch(0.696 0.17 162.5);
-	--primary-foreground: oklch(0.15 0.03 166);
+	--primary: oklch(0.72 0.17 162.5);
+	--primary-foreground: oklch(0.14 0.03 165);
 
-	--secondary: oklch(0.26 0.01 286);
-	--secondary-foreground: oklch(0.96 0.004 286);
+	--secondary: oklch(0.25 0.025 160);
+	--secondary-foreground: oklch(0.92 0.01 150);
 
-	--muted: oklch(0.26 0.01 286);
-	--muted-foreground: oklch(0.705 0.015 286);
+	--muted: oklch(0.24 0.02 160);
+	--muted-foreground: oklch(0.7 0.02 155);
 
-	--accent: oklch(0.26 0.01 286);
-	--accent-foreground: oklch(0.96 0.004 286);
+	--accent: oklch(0.25 0.025 160);
+	--accent-foreground: oklch(0.92 0.01 150);
 
 	--destructive: oklch(0.637 0.237 25.3);
 	--destructive-foreground: oklch(0.99 0 0);
 
-	--border: oklch(0.29 0.012 286);
-	--input: oklch(0.29 0.012 286);
-	--ring: oklch(0.696 0.17 162.5);
+	--border: oklch(0.28 0.025 160);
+	--input: oklch(0.3 0.025 160);
+	--ring: oklch(0.72 0.17 162.5);
 
 	--streak: oklch(0.75 0.18 55);
-	--xp: oklch(0.85 0.16 90);
+	--xp: oklch(0.82 0.15 90);
+
+	--hero-from: oklch(0.5 0.15 163);
+	--hero-to: oklch(0.35 0.1 200);
 }
 
 @theme inline {
@@ -110,12 +123,158 @@
 
 	html {
 		-webkit-tap-highlight-color: transparent;
+		scroll-behavior: smooth;
 	}
 
 	body {
 		@apply bg-background font-sans text-foreground antialiased;
 		min-height: 100dvh;
+		background-image:
+			radial-gradient(60rem 30rem at 110% -10%, oklch(0.548 0.15 163.4 / 0.08), transparent 60%),
+			radial-gradient(50rem 26rem at -10% 0%, oklch(0.72 0.16 85 / 0.07), transparent 60%);
+		background-attachment: fixed;
 	}
+
+	.dark body {
+		background-image:
+			radial-gradient(60rem 30rem at 110% -10%, oklch(0.72 0.17 162.5 / 0.1), transparent 60%),
+			radial-gradient(50rem 26rem at -10% 0%, oklch(0.7 0.15 200 / 0.08), transparent 60%);
+	}
+
+	::selection {
+		background: oklch(0.548 0.15 163.4 / 0.25);
+	}
+}
+
+/* ---- saját komponens-osztályok ---- */
+
+@layer components {
+	/* Űrlapmezők shadcn-hangulatban */
+	.field {
+		@apply bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-ring/40 w-full rounded-xl border px-3.5 py-2.5 text-[15px] font-medium shadow-xs transition outline-none focus-visible:ring-4;
+	}
+
+	.field-label {
+		@apply mb-1.5 block text-[13px] font-semibold tracking-wide;
+	}
+
+	/* Nyomógomb-érzet minden kattintható kártyán */
+	.press {
+		@apply transition-all duration-150 active:scale-[0.98];
+	}
+
+	.card-lift {
+		@apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md;
+	}
+
+	/* Hero kártya: smaragd → tenger átmenet + mintázat */
+	.hero {
+		background: linear-gradient(135deg, var(--hero-from), var(--hero-to));
+		position: relative;
+		overflow: hidden;
+		isolation: isolate;
+	}
+
+	.hero::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+		opacity: 0.16;
+		background-image: radial-gradient(circle at 1px 1px, white 1.5px, transparent 0);
+		background-size: 22px 22px;
+	}
+
+	.hero::after {
+		content: '';
+		position: absolute;
+		z-index: -1;
+		width: 22rem;
+		height: 22rem;
+		right: -7rem;
+		top: -7rem;
+		border-radius: 9999px;
+		background: radial-gradient(circle, rgb(255 255 255 / 0.25), transparent 65%);
+	}
+}
+
+/* ---- 3D kártya-forgatás ---- */
+
+.perspective-1200 {
+	perspective: 1200px;
+}
+
+.flip-inner {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	transform-style: preserve-3d;
+	transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.3, 1.2);
+}
+
+.flip-inner.flipped {
+	transform: rotateY(180deg);
+}
+
+.flip-face {
+	position: absolute;
+	inset: 0;
+	backface-visibility: hidden;
+	-webkit-backface-visibility: hidden;
+}
+
+.flip-back {
+	transform: rotateY(180deg);
+}
+
+/* ---- animációk ---- */
+
+@keyframes floaty {
+	0%,
+	100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-8px);
+	}
+}
+
+@keyframes pulse-ring {
+	0% {
+		box-shadow: 0 0 0 0 oklch(0.548 0.15 163.4 / 0.45);
+	}
+	70% {
+		box-shadow: 0 0 0 14px transparent;
+	}
+	100% {
+		box-shadow: 0 0 0 0 transparent;
+	}
+}
+
+@keyframes pop-in {
+	0% {
+		transform: scale(0.6);
+		opacity: 0;
+	}
+	60% {
+		transform: scale(1.06);
+	}
+	100% {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+.anim-floaty {
+	animation: floaty 4s ease-in-out infinite;
+}
+
+.anim-pulse-ring {
+	animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.anim-pop-in {
+	animation: pop-in 0.35s cubic-bezier(0.2, 0.7, 0.3, 1.2) both;
 }
 
 /* iPhone home-indicator safe-area a mobil tabbarhoz */
