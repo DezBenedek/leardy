@@ -70,7 +70,7 @@
 	<button
 		type="submit"
 		disabled={busy}
-		class="w-full rounded-xl bg-brand-500 py-3 text-[15px] font-bold text-white transition hover:bg-brand-600 active:scale-[0.99] disabled:opacity-60"
+		class="w-full rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white transition hover:bg-brand-600 active:scale-[0.99] disabled:opacity-60"
 	>
 		{busy ? 'Belépés…' : 'Bejelentkezés'}
 	</button>

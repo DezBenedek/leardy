@@ -64,9 +64,9 @@
 							<p class="text-[13px] text-ink-400 dark:text-stone-500">{l.meta}</p>
 						</div>
 						{#if l.current}
-							<span class="shrink-0 rounded-lg bg-brand-500 px-3.5 py-1.5 text-[13px] font-semibold text-white">Folytatás</span>
+							<span class="shrink-0 rounded-full bg-brand-500 px-3.5 py-1.5 text-[13px] font-semibold text-white">Folytatás</span>
 						{:else if !l.locked && !l.done}
-							<span class="shrink-0 rounded-lg bg-stone-100 px-3.5 py-1.5 text-[13px] font-semibold text-ink-600 dark:bg-white/10 dark:text-stone-300">Start</span>
+							<span class="shrink-0 rounded-full bg-stone-100 px-3.5 py-1.5 text-[13px] font-semibold text-ink-600 dark:bg-white/10 dark:text-stone-300">Start</span>
 						{/if}
 					</li>
 				{/each}

@@ -33,7 +33,7 @@
 				<p class="text-sm text-ink-600 dark:text-stone-400">Élő szobák, kihívások, ranglista.</p>
 			</div>
 		</div>
-		<button class="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2.5 text-[15px] font-semibold text-white transition hover:bg-brand-600">
+		<button class="mt-4 flex w-full items-center justify-center gap-1.5 rounded-full bg-brand-500 px-4 py-2.5 text-[15px] font-semibold text-white transition hover:bg-brand-600">
 			<Bell size={16} /> Értesítést kérek az indulásról
 		</button>
 	</section>
@@ -52,7 +52,7 @@
 						<p class="truncate text-[15px] font-semibold text-ink-900 dark:text-white">{e.title}</p>
 						<p class="text-[13px] text-ink-400 dark:text-stone-500">{e.time} · {e.meta}</p>
 					</div>
-					<span class="shrink-0 rounded-lg bg-ink-900 px-3 py-1.5 text-[13px] font-semibold text-white dark:bg-white dark:text-ink-900">Jelentkezem</span>
+					<span class="shrink-0 rounded-full bg-ink-900 px-3 py-1.5 text-[13px] font-semibold text-white dark:bg-white dark:text-ink-900">Jelentkezem</span>
 				</li>
 			{/each}
 		</ul>
@@ -91,13 +91,13 @@
 		</p>
 		<button
 			onclick={() => authUI.show('login')}
-			class="mt-5 w-full rounded-xl bg-brand-500 py-3 text-[15px] font-bold text-white transition hover:bg-brand-600 active:scale-[0.99]"
+			class="mt-5 w-full rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white transition hover:bg-brand-600 active:scale-[0.99]"
 		>
 			Bejelentkezés
 		</button>
 		<button
 			onclick={() => authUI.show('register')}
-			class="mt-2 w-full rounded-xl border border-stone-200 bg-white py-3 text-[15px] font-bold text-ink-900 transition hover:bg-stone-50 active:scale-[0.99] dark:border-white/10 dark:bg-transparent dark:text-white dark:hover:bg-white/5"
+			class="mt-2 w-full rounded-full border border-stone-200 bg-white py-3 text-[15px] font-bold text-ink-900 transition hover:bg-stone-50 active:scale-[0.99] dark:border-white/10 dark:bg-transparent dark:text-white dark:hover:bg-white/5"
 		>
 			Regisztráció
 		</button>

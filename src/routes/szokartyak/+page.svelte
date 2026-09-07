@@ -37,7 +37,7 @@
 				<p class="text-sm text-ink-600 dark:text-stone-400">Ma 13 kártya vár ismétlésre.</p>
 			</div>
 		</div>
-		<button class="inline-flex items-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600">
+		<button class="inline-flex items-center gap-1.5 rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600">
 			<Play size={15} strokeWidth={2.5} /> Ismétlés
 		</button>
 	</div>
@@ -70,13 +70,13 @@
 	<div class="mt-4 grid grid-cols-2 gap-2.5">
 		<button
 			onclick={next}
-			class="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 dark:border-white/10 dark:bg-transparent dark:text-stone-300 dark:hover:bg-white/5"
+			class="rounded-full border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 dark:border-white/10 dark:bg-transparent dark:text-stone-300 dark:hover:bg-white/5"
 		>
 			Még gyakorlom
 		</button>
 		<button
 			onclick={next}
-			class="rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600"
+			class="rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600"
 		>
 			Tudtam
 		</button>
@@ -104,7 +104,7 @@
 			</li>
 		{/each}
 	</ul>
-	<button class="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 p-3 text-sm font-semibold text-stone-400 transition hover:border-brand-500 hover:text-brand-600 dark:border-white/15 dark:text-stone-500 dark:hover:border-brand-400 dark:hover:text-white">
+	<button class="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-dashed border-stone-300 p-3 text-sm font-semibold text-stone-400 transition hover:border-brand-500 hover:text-brand-600 dark:border-white/15 dark:text-stone-500 dark:hover:border-brand-400 dark:hover:text-white">
 		<Plus size={16} /> Új pakli
 	</button>
 </section>

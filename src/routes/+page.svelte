@@ -184,7 +184,7 @@
 					aria-label={isDone ? `${todo.title} — kész, visszavonás` : `${todo.title} — készre jelölés`}
 					aria-pressed={isDone}
 					class={[
-						'grid size-8 shrink-0 place-items-center rounded-full border-2 transition-all active:scale-90',
+						'grid size-8 shrink-0 place-items-center rounded-[9px] border-2 transition-all active:scale-90',
 						isDone
 							? 'border-emerald-500 bg-emerald-500 text-white'
 							: 'border-stone-300 bg-transparent hover:border-brand-500 dark:border-white/25'

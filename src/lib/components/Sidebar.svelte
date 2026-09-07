@@ -73,7 +73,7 @@
 				<p class="mt-2 text-xs text-ink-600 dark:text-stone-400">Még 5 perc a mai célhoz.</p>
 				<a
 					href="/szokartyak"
-					class="mt-3 block rounded-xl bg-brand-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-600"
+					class="mt-3 block rounded-full bg-brand-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-600"
 				>
 					Gyakorlás
 				</a>
@@ -84,13 +84,13 @@
 				<p class="mt-1 text-xs leading-relaxed text-ink-600 dark:text-stone-400">Így a Tanterem is megnyílik előtted.</p>
 				<button
 					onclick={() => authUI.show('register')}
-					class="mt-3 block w-full rounded-xl bg-brand-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-600 active:scale-[0.98]"
+					class="mt-3 block w-full rounded-full bg-brand-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-600 active:scale-[0.98]"
 				>
 					Regisztráció
 				</button>
 				<button
 					onclick={() => authUI.show('login')}
-					class="mt-1.5 block w-full rounded-xl px-3 py-2 text-center text-sm font-semibold text-ink-600 transition hover:bg-stone-200/60 dark:text-stone-300 dark:hover:bg-white/10"
+					class="mt-1.5 block w-full rounded-full px-3 py-2 text-center text-sm font-semibold text-ink-600 transition hover:bg-stone-200/60 dark:text-stone-300 dark:hover:bg-white/10"
 				>
 					Bejelentkezés
 				</button>
