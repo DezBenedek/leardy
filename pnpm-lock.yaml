@@ -15,7 +15,7 @@ importers:
         specifier: ^0.44.4
         version: 0.44.7(@cloudflare/workers-types@4.20260702.1)
       lucide-svelte:
-        specifier: ^0.577.0
+        specifier: 0.577.0
         version: 0.577.0(svelte@5.57.0)
       tailwind-variants:
         specifier: ^3.3.1
