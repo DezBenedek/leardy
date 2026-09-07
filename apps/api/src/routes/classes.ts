@@ -168,6 +168,40 @@ classRoutes.get("/", async (c) => {
 	return c.json({ classes: result });
 });
 
+// Könnyű long-poll végpont az élő doga-meghívókhoz.
+// A mobil kliens ezt kérdezi le rendszeresen a nehéz GET / helyett,
+// így nem spammeli a teljes osztálylistát néhány másodpercenként.
+classRoutes.get("/live", async (c) => {
+	const user = c.get("user");
+	const db = createDb(c.env.DB);
+	const rows = await db
+		.select({ id: classes.id, name: classes.name })
+		.from(classMembers)
+		.innerJoin(classes, eq(classMembers.classId, classes.id))
+		.where(and(eq(classMembers.userId, user.id), notInArray(classMembers.role, ["teacher"])))
+		.all();
+	if (!rows.length) return c.json({ live: [] });
+	const classIds = rows.map((row) => row.id);
+	const quizRows = await db
+		.select()
+		.from(quizSessions)
+		.where(and(inArray(quizSessions.classId, classIds), notInArray(quizSessions.status, ["FINISHED"])))
+		.orderBy(desc(quizSessions.createdAt))
+		.all();
+	const quizByClass = new Map<string, (typeof quizRows)[number]>();
+	for (const quiz of quizRows) {
+		if (!quizByClass.has(quiz.classId)) quizByClass.set(quiz.classId, quiz);
+	}
+	return c.json({
+		live: rows.flatMap((row) => {
+			const active = quizByClass.get(row.id);
+			return active
+				? [{ classId: row.id, className: row.name, sessionId: active.id, status: active.status }]
+				: [];
+		}),
+	});
+});
+
 classRoutes.post("/join", async (c) => {
 	const body = await readJson<JoinBody>(c);
 	const raw = typeof body?.joinCode === "string" ? body.joinCode.trim().toUpperCase() : "";

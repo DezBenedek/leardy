@@ -420,6 +420,19 @@ bundleRoutes.patch("/:id", async (c) => {
 	const body = await readJson<SnapshotBody>(c);
 	if (!body) return jsonError(c, 400, "Invalid body");
 	if (body.status === "public" && !user.isTeacher) return jsonError(c, 403, "Teacher only");
+	const isStatusOnly =
+		typeof body.status === "string" &&
+		body.kind === undefined &&
+		body.title === undefined &&
+		body.subject === undefined &&
+		body.lessons === undefined &&
+		body.activities === undefined;
+	if (isStatusOnly) {
+		const status = body.status === "public" ? "public" : "draft";
+		await db.update(bundles).set({ status, updatedAt: nowIso() }).where(eq(bundles.id, row.id));
+		const snap = await bundleSnapshot(db, row.id, user.id);
+		return c.json({ bundle: snap });
+	}
 	const result = await upsertBundleFromSnapshot(db, user.id, { ...body, id: row.id });
 	if ("error" in result) return jsonError(c, result.status, result.error);
 	const snap = await bundleSnapshot(db, row.id, user.id);
