@@ -2,7 +2,12 @@
 	"extends": "./.svelte-kit/tsconfig.json",
 	"compilerOptions": {
 		"allowJs": true,
-		"checkJs": true,
+		// checkJs szándékosan false: a generált worker-configuration.d.ts
+		// `typeof import("../.svelte-kit/cloudflare/_worker")` típusa
+		// import-láncon behúzná a build-output minifikált JS-eit a programba,
+		// amikben több ezer implicit-any hiba lenne. A .svelte/.ts
+		// fájlokat a svelte-check továbbra is teljesen ellenőrzi.
+		"checkJs": false,
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
