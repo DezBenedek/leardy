@@ -198,7 +198,7 @@
 			</summary>
 			<div class="pt-3">
 				<div class="grid grid-cols-7 gap-1.5">
-					{#each weekLabels as day (day)}
+					{#each weekLabels as day, i (i)}
 						<p class="text-muted-foreground text-center text-xs font-medium">{day}</p>
 					{/each}
 				</div>
