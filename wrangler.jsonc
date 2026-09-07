@@ -1,0 +1,23 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "leardy",
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"compatibility_date": "2025-06-01",
+	"compatibility_flags": ["nodejs_compat"],
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".svelte-kit/cloudflare"
+	},
+	// D1 adatbázis — ha kész, hozd létre: `npm run cf:db:create`,
+	// majd írd be ide a database_id-t:
+	// "d1_databases": [
+	//   {
+	//     "binding": "DB",
+	//     "database_name": "leardy-db",
+	//     "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+	//   }
+	// ],
+	"observability": {
+		"enabled": true
+	}
+}

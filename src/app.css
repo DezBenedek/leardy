@@ -1,0 +1,36 @@
+@import 'tailwindcss';
+
+@theme {
+	--font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+	/* Márkakék (Quizlet-szerű, visszafogott) */
+	--color-brand-50: #eef0ff;
+	--color-brand-100: #dfe3ff;
+	--color-brand-500: #4255ff;
+	--color-brand-600: #3649e0;
+	--color-brand-700: #2b3bb5;
+
+	/* Tintaszürke szöveg */
+	--color-ink-900: #282e3e;
+	--color-ink-600: #586380;
+	--color-ink-400: #939bb4;
+
+	/* Papír háttér */
+	--color-paper: #f6f7fb;
+}
+
+html {
+	scroll-behavior: smooth;
+}
+
+body {
+	font-family: var(--font-sans);
+	background: var(--color-paper);
+	color: var(--color-ink-900);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+
+::selection {
+	background: var(--color-brand-100);
+}
