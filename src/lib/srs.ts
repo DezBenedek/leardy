@@ -51,3 +51,65 @@ export function gradeSrs(prev: SrsState, grade: Grade, now = Date.now()): SrsSta
 export function xpForGrade(grade: Grade): number {
 	return grade === 0 ? 1 : grade === 1 ? 3 : grade === 2 ? 5 : 8;
 }
+
+// ---------- régi rendszerből áthozva (domain/srs.dart) ----------
+
+/** Gépelős válasz osztályzása a helyesség + eltelt idő alapján. */
+export function gradeFromTyped(correct: boolean, elapsedMs: number): Grade {
+	if (!correct) return 0;
+	if (elapsedMs < 2500) return 3;
+	if (elapsedMs < 8000) return 2;
+	return 1;
+}
+
+/** Feleletválasztós válasz osztályzása a helyesség + eltelt idő alapján. */
+export function gradeFromChoice(correct: boolean, elapsedMs: number): Grade {
+	if (!correct) return 0;
+	if (elapsedMs < 4000) return 3;
+	return 2;
+}
+
+/** Tudásszint-számláló: 0-ról indul, helyes +1, rontott −1 (0–4). */
+export function bumpLevel(level: number, correct: boolean): number {
+	return Math.min(4, Math.max(0, level + (correct ? 1 : -1)));
+}
+
+/** Tudásszint-kulcs a 0–4-es számlálóból a feliratokhoz. */
+export function levelKeyFor(level: number): 'zero' | 'veryHard' | 'hard' | 'medium' | 'easy' {
+	if (level <= 0) return 'zero';
+	if (level === 1) return 'veryHard';
+	if (level === 2) return 'hard';
+	if (level === 3) return 'medium';
+	return 'easy';
+}
+
+export function normalizeAnswer(value: string): string {
+	return value.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[.,!?;:]/g, '');
+}
+
+export function levenshtein(a: string, b: string): number {
+	if (a === b) return 0;
+	if (!a) return b.length;
+	if (!b) return a.length;
+	let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+	const curr = new Array<number>(b.length + 1).fill(0);
+	for (let i = 0; i < a.length; i++) {
+		curr[0] = i + 1;
+		for (let j = 0; j < b.length; j++) {
+			const cost = a[i] === b[j] ? 0 : 1;
+			curr[j + 1] = Math.min(curr[j] + 1, prev[j + 1] + 1, prev[j] + cost);
+		}
+		prev = [...curr];
+	}
+	return prev[b.length];
+}
+
+/** Elírást tűrő egyezés: rövid szónál 1, hosszúnál 2 hiba fér bele. */
+export function fuzzyMatch(typed: string, expected: string): boolean {
+	const a = normalizeAnswer(typed);
+	const b = normalizeAnswer(expected);
+	if (a === b) return true;
+	if (!a) return false;
+	const allowed = b.length <= 4 ? 1 : 2;
+	return levenshtein(a, b) <= allowed;
+}

@@ -1,23 +1,34 @@
-// Apró toast-rendszer shadcn-sonner hangulatban, külső függőség nélkül.
+// Toast-rendszer a régi showAppToast alapján: fent középen sötét pill,
+// az üzenet hosszától függő ideig, egyszerre csak egy aktív.
 export interface Toast {
 	id: number;
-	title: string;
-	desc?: string;
+	message: string;
 }
 
 let nextId = 1;
 
-class ToastStore {
-	items = $state<Toast[]>([]);
+function durationFor(message: string): number {
+	const extra = Math.min(8, Math.max(1, Math.ceil(message.trim().length / 28)));
+	return 900 + extra * 450;
+}
 
-	show(title: string, desc?: string, ms = 2600) {
-		const id = nextId++;
-		this.items.push({ id, title, desc });
-		setTimeout(() => this.dismiss(id), ms);
+class ToastStore {
+	current = $state<Toast | null>(null);
+	private timer: ReturnType<typeof setTimeout> | null = null;
+
+	show(message: string, desc?: string) {
+		const full = desc ? `${message} — ${desc}` : message;
+		if (this.timer) clearTimeout(this.timer);
+		this.current = { id: nextId++, message: full };
+		this.timer = setTimeout(() => {
+			this.current = null;
+			this.timer = null;
+		}, durationFor(full));
 	}
 
-	dismiss(id: number) {
-		this.items = this.items.filter((t) => t.id !== id);
+	/** Kompatibilitás a meglévő hívásokhoz: show(title, desc). */
+	legacy(title: string, desc?: string) {
+		this.show(title, desc);
 	}
 }
 

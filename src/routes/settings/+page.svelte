@@ -1,20 +1,38 @@
 <script lang="ts">
-	import { Bell, Download, Flame, Globe, Moon, Sun, Trash2, Upload, User } from 'lucide-svelte';
+	import { Bell, Check, ChevronRight, CircleUserRound, Download, Globe, Palette, Target, Trash2, Upload } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Card, CardContent } from '$lib/components/ui/card/index.js';
+	import { Card } from '$lib/components/ui/card/index.js';
 	import { Dialog } from '$lib/components/ui/dialog/index.js';
+	import { Toggle } from '$lib/components/ui/toggle/index.js';
+	import { applyTheme, type ThemeMode } from '$lib/theme.svelte.js';
 	import { store, type Lang } from '$lib/db.svelte.js';
 	import { t } from '$lib/i18n.js';
 	import { toasts } from '$lib/components/ui/toast/toast.svelte.js';
 	import { cn } from '$lib/utils.js';
 
 	const profile = $derived(store.data.profile);
-	const dark = $derived(typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
 
 	let nameOpen = $state(false);
 	let resetOpen = $state(false);
+	let themeOpen = $state(false);
+	let langOpen = $state(false);
+	let reminderOpen = $state(false);
+	let goalOpen = $state(false);
+	let aboutOpen = $state(false);
 	let name = $state('');
+	let remHour = $state(19);
+	let remMin = $state(0);
 	let fileInput: HTMLInputElement | null = null;
+
+	const themeLabel = $derived(
+		profile.theme === 'light' ? t('set.light') : profile.theme === 'dark' ? t('set.dark') : t('set.system')
+	);
+	const langLabel = $derived(profile.lang === 'hu' ? 'Magyar' : 'English');
+	const reminderLabel = $derived(
+		profile.reminder.enabled
+			? `${String(profile.reminder.hour).padStart(2, '0')}:${String(profile.reminder.minute).padStart(2, '0')}`
+			: t('set.reminderOff')
+	);
 
 	function openName() {
 		name = profile.name;
@@ -27,13 +45,10 @@
 		nameOpen = false;
 	}
 
-	function toggleTheme() {
-		const isDark = document.documentElement.classList.toggle('dark');
-		try {
-			localStorage.setItem('leardy-theme', isDark ? 'dark' : 'light');
-		} catch {
-			/* privát mód */
-		}
+	function setTheme(mode: ThemeMode) {
+		store.setProfile({ theme: mode });
+		applyTheme(mode);
+		themeOpen = false;
 	}
 
 	function setLang(lang: Lang) {
@@ -43,10 +58,27 @@
 		} catch {
 			/* ssr */
 		}
+		langOpen = false;
+	}
+
+	function openReminder() {
+		remHour = profile.reminder.hour;
+		remMin = profile.reminder.minute;
+		reminderOpen = true;
+	}
+
+	function saveReminder() {
+		store.setProfile({ reminder: { ...profile.reminder, hour: remHour, minute: remMin } });
+		reminderOpen = false;
+	}
+
+	function toggleReminder(v: boolean) {
+		store.setProfile({ reminder: { ...profile.reminder, enabled: v } });
 	}
 
 	function setGoal(n: number) {
 		store.setProfile({ dailyGoal: n });
+		goalOpen = false;
 	}
 
 	function doExport() {
@@ -71,6 +103,7 @@
 					throw new Error('bad shape');
 				}
 				store.replace(parsed);
+				applyTheme(store.data.profile.theme);
 				toasts.show(t('set.imported'));
 			} catch {
 				toasts.show(t('set.importFail'));
@@ -82,155 +115,144 @@
 
 	function doReset() {
 		store.reset();
+		applyTheme(store.data.profile.theme);
 		resetOpen = false;
 		toasts.show(t('toast.deleted'));
 	}
 
 	const goals = [5, 10, 15, 20];
+	const themes: { m: ThemeMode; label: string }[] = [
+		{ m: 'system', label: t('set.system') },
+		{ m: 'light', label: t('set.light') },
+		{ m: 'dark', label: t('set.dark') }
+	];
 </script>
 
 <svelte:head>
 	<title>{t('set.title')} — Leardy</title>
 </svelte:head>
 
-<div class="mx-auto flex w-full max-w-2xl flex-col gap-4">
+<div class="mx-auto flex w-full max-w-2xl flex-col gap-5 px-1 pt-2">
+	<!-- Fiók-kártya -->
+	<button type="button" onclick={openName} class="press block w-full text-left">
+		<Card class="card-lift flex-row items-center gap-3.5 px-4 py-4">
+			<span
+				class="grid size-[52px] shrink-0 place-items-center rounded-full"
+				style="background: color-mix(in srgb, var(--primary) 14%, transparent)"
+			>
+				<CircleUserRound class="text-primary size-6" />
+			</span>
+			<span class="min-w-0 flex-1">
+				<span class="block truncate text-base font-semibold">{profile.name || t('set.guest')}</span>
+				<span class="text-muted-foreground mt-0.5 block truncate text-sm">{t('set.guest.d')}</span>
+			</span>
+			<ChevronRight class="text-graphite size-5 shrink-0" />
+		</Card>
+	</button>
+
+	<!-- Alkalmazás -->
 	<div>
-		<h1 class="font-display text-2xl font-extrabold tracking-tight">{t('set.title')}</h1>
-		<p class="text-muted-foreground mt-1 text-sm">{t('set.sub')}</p>
+		<h2 class="mb-2 px-1 text-base font-semibold">{t('set.appGroup')}</h2>
+		<Card class="py-1">
+			<div class="flex flex-col px-2">
+				<button type="button" onclick={() => (themeOpen = true)} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
+					<Palette class="text-muted-foreground size-5 shrink-0" />
+					<span class="flex-1">
+						<span class="block text-[15px] font-semibold">{t('set.theme')}</span>
+						<span class="text-muted-foreground block text-[13px]">{themeLabel}</span>
+					</span>
+					<ChevronRight class="text-graphite size-5" />
+				</button>
+				<button type="button" onclick={() => (langOpen = true)} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
+					<Globe class="text-muted-foreground size-5 shrink-0" />
+					<span class="flex-1">
+						<span class="block text-[15px] font-semibold">{t('set.lang')}</span>
+						<span class="text-muted-foreground block text-[13px]">{langLabel}</span>
+					</span>
+					<ChevronRight class="text-graphite size-5" />
+				</button>
+				<button type="button" onclick={openReminder} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
+					<Bell class="text-muted-foreground size-5 shrink-0" />
+					<span class="flex-1">
+						<span class="block text-[15px] font-semibold">{t('set.reminders')}</span>
+						<span class="text-muted-foreground block text-[13px]">{reminderLabel}</span>
+					</span>
+					<ChevronRight class="text-graphite size-5" />
+				</button>
+				<button type="button" onclick={() => (goalOpen = true)} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
+					<Target class="text-muted-foreground size-5 shrink-0" />
+					<span class="flex-1">
+						<span class="block text-[15px] font-semibold">{t('set.goal')}</span>
+						<span class="text-muted-foreground block text-[13px]">{profile.dailyGoal} {t('set.goal.d')}</span>
+					</span>
+					<ChevronRight class="text-graphite size-5" />
+				</button>
+			</div>
+		</Card>
 	</div>
 
-	<!-- Profil -->
-	<Card class="flex-row items-center gap-4 py-4">
-		<span class="grid size-12 shrink-0 place-items-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-lg font-extrabold text-white">
-			{(profile.name || '?').charAt(0).toUpperCase()}
-		</span>
-		<div class="min-w-0 flex-1">
-			<p class="truncate font-bold">{profile.name || t('set.guest')}</p>
-			<p class="text-muted-foreground truncate text-[13px]">{profile.xp} XP · <Flame class="text-streak inline size-3.5" fill="currentColor" /> {profile.streak}</p>
-		</div>
-		<Button size="sm" onclick={openName}>{profile.name ? t('common.edit') : t('set.login')}</Button>
-	</Card>
-
-	<!-- Fiók-szerű sorok -->
-	<Card class="py-2">
-		<CardContent class="flex flex-col px-2">
-			<button
-				type="button"
-				onclick={openName}
-				class="hover:bg-accent press flex items-center gap-3 rounded-xl px-3 py-3 text-left"
-			>
-				<span class="bg-muted grid size-9 shrink-0 place-items-center rounded-lg"><User class="size-[18px]" /></span>
-				<span class="flex-1">
-					<span class="block text-sm font-bold">{t('set.account')}</span>
-					<span class="text-muted-foreground block text-xs">{profile.name || t('set.guest.d')}</span>
-				</span>
-			</button>
-
-			<button
-				type="button"
-				onclick={toggleTheme}
-				class="hover:bg-accent press flex items-center gap-3 rounded-xl px-3 py-3 text-left"
-			>
-				<span class="bg-muted grid size-9 shrink-0 place-items-center rounded-lg">
-					{#if dark}<Sun class="size-[18px]" />{:else}<Moon class="size-[18px]" />{/if}
-				</span>
-				<span class="flex-1">
-					<span class="block text-sm font-bold">{t('set.theme')}</span>
-					<span class="text-muted-foreground block text-xs">{dark ? t('set.dark') : t('set.light')}</span>
-				</span>
-			</button>
-
-			<div class="flex items-center gap-3 rounded-xl px-3 py-3 opacity-70">
-				<span class="bg-muted grid size-9 shrink-0 place-items-center rounded-lg"><Bell class="size-[18px]" /></span>
-				<span class="flex-1">
-					<span class="block text-sm font-bold">Emlékeztetők</span>
-					<span class="text-muted-foreground block text-xs">{t('common.soon')}</span>
-				</span>
-			</div>
-		</CardContent>
-	</Card>
-
-	<!-- Nyelv -->
-	<Card class="py-4">
-		<CardContent class="flex items-center gap-3">
-			<span class="bg-muted grid size-9 shrink-0 place-items-center rounded-lg"><Globe class="size-[18px]" /></span>
-			<span class="flex-1">
-				<span class="block text-sm font-bold">{t('set.lang')}</span>
-				<span class="text-muted-foreground block text-xs">{t('set.lang.d')}</span>
-			</span>
-			<div class="flex overflow-hidden rounded-xl border text-sm font-bold">
+	<!-- Fiók és adatok -->
+	<div>
+		<h2 class="mb-2 px-1 text-base font-semibold">{t('set.accountGroup')}</h2>
+		<Card class="py-1">
+			<div class="flex flex-col px-2">
+				<button type="button" onclick={openName} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
+					<CircleUserRound class="text-muted-foreground size-5 shrink-0" />
+					<span class="flex-1">
+						<span class="block text-[15px] font-semibold">{t('set.account')}</span>
+						<span class="text-muted-foreground block text-[13px]">{profile.name || t('set.guest')}</span>
+					</span>
+					<ChevronRight class="text-graphite size-5" />
+				</button>
+				<button type="button" onclick={doExport} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
+					<Download class="text-muted-foreground size-5 shrink-0" />
+					<span class="flex-1">
+						<span class="block text-[15px] font-semibold">{t('set.export')}</span>
+						<span class="text-muted-foreground block text-[13px]">{t('set.export.d')}</span>
+					</span>
+					<ChevronRight class="text-graphite size-5" />
+				</button>
+				<button type="button" onclick={() => fileInput?.click()} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-2 py-2 text-left">
+					<Upload class="text-muted-foreground size-5 shrink-0" />
+					<span class="flex-1">
+						<span class="block text-[15px] font-semibold">{t('set.import')}</span>
+						<span class="text-muted-foreground block text-[13px]">{t('set.import.d')}</span>
+					</span>
+					<ChevronRight class="text-graphite size-5" />
+				</button>
+				<input bind:this={fileInput} type="file" accept="application/json" class="hidden" onchange={doImport} />
 				<button
 					type="button"
-					onclick={() => setLang('hu')}
-					class={cn('press px-4 py-2', profile.lang === 'hu' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
+					onclick={() => (resetOpen = true)}
+					class="hover:bg-destructive/10 hover:text-destructive press flex items-center gap-3 rounded-xl px-2 py-2 text-left"
 				>
-					HU
-				</button>
-				<button
-					type="button"
-					onclick={() => setLang('en')}
-					class={cn('press px-4 py-2', profile.lang === 'en' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
-				>
-					EN
+					<Trash2 class="size-5 shrink-0" />
+					<span class="flex-1">
+						<span class="block text-[15px] font-semibold">{t('set.reset')}</span>
+						<span class="block text-[13px] opacity-70">{t('set.reset.d')}</span>
+					</span>
 				</button>
 			</div>
-		</CardContent>
-	</Card>
+		</Card>
+	</div>
 
-	<!-- Napi cél -->
-	<Card class="py-4">
-		<CardContent class="flex flex-col gap-3">
-			<div>
-				<p class="text-sm font-bold">{t('set.goal')}: {profile.dailyGoal}</p>
-				<p class="text-muted-foreground text-xs">{profile.dailyGoal} {t('set.goal.d')}</p>
-			</div>
-			<div class="grid grid-cols-4 gap-2">
-				{#each goals as g (g)}
-					<button
-						type="button"
-						onclick={() => setGoal(g)}
-						class={cn('press rounded-xl border py-2.5 text-sm font-extrabold', profile.dailyGoal === g ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
-					>
-						{g}
-					</button>
-				{/each}
-			</div>
-		</CardContent>
-	</Card>
-
-	<!-- Adatok -->
-	<Card class="py-2">
-		<CardContent class="flex flex-col px-2">
-			<button type="button" onclick={doExport} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-3 py-3 text-left">
-				<span class="bg-muted grid size-9 shrink-0 place-items-center rounded-lg"><Download class="size-[18px]" /></span>
+	<!-- Névjegy -->
+	<div>
+		<h2 class="mb-2 px-1 text-base font-semibold">{t('set.aboutGroup')}</h2>
+		<Card class="py-1">
+			<button type="button" onclick={() => (aboutOpen = true)} class="hover:bg-accent press flex w-full items-center gap-3 rounded-xl px-4 py-2 text-left">
+				<span class="bg-primary text-primary-foreground grid size-9 shrink-0 place-items-center rounded-xl text-base font-extrabold">L</span>
 				<span class="flex-1">
-					<span class="block text-sm font-bold">{t('set.export')}</span>
-					<span class="text-muted-foreground block text-xs">{t('set.export.d')}</span>
+					<span class="block text-[15px] font-semibold">Leardy</span>
+					<span class="text-muted-foreground block text-[13px]">{t('set.aboutTagline')}</span>
 				</span>
+				<ChevronRight class="text-graphite size-5" />
 			</button>
-			<button type="button" onclick={() => fileInput?.click()} class="hover:bg-accent press flex items-center gap-3 rounded-xl px-3 py-3 text-left">
-				<span class="bg-muted grid size-9 shrink-0 place-items-center rounded-lg"><Upload class="size-[18px]" /></span>
-				<span class="flex-1">
-					<span class="block text-sm font-bold">{t('set.import')}</span>
-					<span class="text-muted-foreground block text-xs">{t('set.import.d')}</span>
-				</span>
-			</button>
-			<input bind:this={fileInput} type="file" accept="application/json" class="hidden" onchange={doImport} />
-			<button
-				type="button"
-				onclick={() => (resetOpen = true)}
-				class="hover:bg-destructive/10 hover:text-destructive press flex items-center gap-3 rounded-xl px-3 py-3 text-left"
-			>
-				<span class="bg-muted grid size-9 shrink-0 place-items-center rounded-lg"><Trash2 class="size-[18px]" /></span>
-				<span class="flex-1">
-					<span class="block text-sm font-bold">{t('set.reset')}</span>
-					<span class="text-muted-foreground block text-xs">{t('set.reset.d')}</span>
-				</span>
-			</button>
-		</CardContent>
-	</Card>
+		</Card>
+	</div>
 </div>
 
+<!-- Név -->
 <Dialog bind:open={nameOpen} title={t('set.name')}>
 	<div class="flex flex-col gap-3">
 		<input class="field" bind:value={name} placeholder={t('set.namePh')} maxlength={30} />
@@ -238,6 +260,92 @@
 	</div>
 </Dialog>
 
+<!-- Téma -->
+<Dialog bind:open={themeOpen} title={t('set.theme')} description={t('set.theme.d')}>
+	<div class="flex flex-col gap-2">
+		{#each themes as th (th.m)}
+			<button
+				type="button"
+				onclick={() => setTheme(th.m)}
+				class="press flex items-center gap-3 rounded-[14px] border bg-card p-3.5 text-left"
+			>
+				<span class="flex-1 text-[15px] font-semibold">{th.label}</span>
+				{#if profile.theme === th.m}<Check class="text-primary size-5" />{/if}
+			</button>
+		{/each}
+	</div>
+</Dialog>
+
+<!-- Nyelv -->
+<Dialog bind:open={langOpen} title={t('set.lang')} description={t('set.lang.d')}>
+	<div class="flex flex-col gap-2">
+		{#each [{ c: 'hu', l: 'Magyar' }, { c: 'en', l: 'English' }] as row (row.c)}
+			<button
+				type="button"
+				onclick={() => setLang(row.c as 'hu' | 'en')}
+				class="press flex items-center gap-3 rounded-[14px] border bg-card p-3.5 text-left"
+			>
+				<span class="flex-1 text-[15px] font-semibold">{row.l}</span>
+				{#if profile.lang === row.c}<Check class="text-primary size-5" />{/if}
+			</button>
+		{/each}
+	</div>
+</Dialog>
+
+<!-- Emlékeztető -->
+<Dialog bind:open={reminderOpen} title={t('set.reminders')}>
+	<div class="flex flex-col gap-4">
+		<div class="flex items-center justify-between gap-3">
+			<span class="text-[15px] font-semibold">
+				{profile.reminder.enabled ? t('set.reminderOn') : t('set.reminderOff')}
+			</span>
+			<Toggle value={profile.reminder.enabled} onChanged={toggleReminder} label={t('set.reminders')} />
+		</div>
+		<div>
+			<span class="field-label">{t('set.reminderTime')}</span>
+			<div class="flex items-center gap-2">
+				<select class="field" bind:value={remHour} aria-label="Óra">
+					{#each Array.from({ length: 24 }, (_, h) => h) as h (h)}
+						<option value={h}>{String(h).padStart(2, '0')}</option>
+					{/each}
+				</select>
+				<span class="text-xl font-bold">:</span>
+				<select class="field" bind:value={remMin} aria-label="Perc">
+					{#each [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55] as m (m)}
+						<option value={m}>{String(m).padStart(2, '0')}</option>
+					{/each}
+				</select>
+			</div>
+		</div>
+		<Button onclick={saveReminder} class="w-full">{t('common.save')}</Button>
+	</div>
+</Dialog>
+
+<!-- Napi cél -->
+<Dialog bind:open={goalOpen} title={t('set.goal')} description="{profile.dailyGoal} {t('set.goal.d')}">
+	<div class="grid grid-cols-4 gap-2">
+		{#each goals as g (g)}
+			<button
+				type="button"
+				onclick={() => setGoal(g)}
+				class={cn('press rounded-xl border py-2.5 text-sm font-extrabold', profile.dailyGoal === g ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
+			>
+				{g}
+			</button>
+		{/each}
+	</div>
+</Dialog>
+
+<!-- Névjegy -->
+<Dialog bind:open={aboutOpen} title="Leardy">
+	<div class="flex flex-col gap-3">
+		<p class="text-base font-semibold">{t('set.aboutTagline')}</p>
+		<p class="text-muted-foreground text-sm">{t('set.aboutBody')}</p>
+		<p class="text-muted-foreground text-xs">v0.1.0 · offline-first</p>
+	</div>
+</Dialog>
+
+<!-- Reset -->
 <Dialog bind:open={resetOpen} title={t('set.reset.t')} description={t('set.reset.d')}>
 	{#snippet footer()}
 		<Button variant="outline" class="flex-1" onclick={() => (resetOpen = false)}>{t('common.cancel')}</Button>

@@ -5,23 +5,24 @@
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
 		<meta
 			name="viewport"
-			content="width=device-width, initial-scale=1, viewport-fit=cover, theme-color=#059669"
+			content="width=device-width, initial-scale=1, viewport-fit=cover, theme-color=#0D9488"
 		/>
 		<meta name="description" content="Leardy — nyelvtanulás szókártyákkal, leckéről leckére, tanteremmel." />
-		<meta name="theme-color" content="#059669" />
+		<meta name="theme-color" content="#0D9488" />
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
-			href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Inter:wght@400..800&display=swap"
+			href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Inter:wght@400..800&family=Newsreader:opsz,wght@6..72,400..700&display=swap"
 			rel="stylesheet"
 		/>
 		<script>
+			// FOUC-gátló: a mentett téma (light/dark/system) azonnali alkalmazása.
 			try {
-				const t = localStorage.getItem('leardy-theme');
-				if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) {
-					document.documentElement.classList.add('dark');
-				}
-			} catch {
+				var m = localStorage.getItem('leardy-theme') || 'system';
+				var dark =
+					m === 'dark' || (m !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+				if (dark) document.documentElement.classList.add('dark');
+			} catch (e) {
 				/* private mode: marad világos */
 			}
 		</script>

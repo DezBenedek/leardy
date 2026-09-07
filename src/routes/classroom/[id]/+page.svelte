@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { ArrowLeft, Crown, Layers, Play, Share2, Ticket, Trophy, Users } from 'lucide-svelte';
+	import { ArrowLeft, BookOpen, Crown, Layers, Play, Plus, Share2, Ticket, Trash2, Trophy, Users } from 'lucide-svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
@@ -22,6 +22,10 @@
 
 	let shareOpen = $state(false);
 	let dogaOpen = $state(false);
+	let matOpen = $state(false);
+	let matTitle = $state('');
+	let matUrl = $state('');
+	let matNote = $state('');
 	let dogaDeck = $state('');
 	let dogaCount = $state(10);
 	let dogaSecs = $state(20);
@@ -40,6 +44,20 @@
 	function startDoga() {
 		if (!group || !dogaDeck) return;
 		goto(`/classroom/${group.id}/doga?deck=${dogaDeck}&n=${dogaCount}&s=${dogaSecs}`);
+	}
+
+	function openMaterial() {
+		matTitle = '';
+		matUrl = '';
+		matNote = '';
+		matOpen = true;
+	}
+
+	function submitMaterial() {
+		if (!group || !matTitle.trim()) return;
+		store.addMaterial(group.id, matTitle.trim(), matUrl.trim(), matNote.trim());
+		toasts.show(t('toast.added'));
+		matOpen = false;
 	}
 
 	function medal(i: number): string {
@@ -132,9 +150,49 @@
 		</div>
 
 		<!-- Doga -->
-		<Button size="lg" class="w-full" disabled={sharedDecks.length === 0} onclick={() => (dogaOpen = true)}>
+		<Button size="xl" class="w-full text-base" disabled={sharedDecks.length === 0} onclick={() => (dogaOpen = true)}>
 			<Play class="size-4" fill="currentColor" /> {t('class.startDoga')}
 		</Button>
+
+		<!-- Tananyagok -->
+		<div>
+			<div class="mb-2 flex items-center justify-between">
+				<h2 class="flex items-center gap-1.5 text-sm font-bold tracking-wide">
+					<BookOpen class="size-4 text-primary" /> {t('class.materials')}
+				</h2>
+				<Button size="sm" variant="outline" onclick={() => (matOpen = true)}><Plus class="size-4" /> {t('class.addMaterial')}</Button>
+			</div>
+			{#if !group.materials || group.materials.length === 0}
+				<Card class="py-6">
+					<CardContent class="text-muted-foreground text-center text-sm">{t('class.noMaterials')}</CardContent>
+				</Card>
+			{:else}
+				<Card class="py-2">
+					<CardContent class="flex flex-col px-2">
+						{#each group.materials as m (m.id)}
+							<div class="flex items-center gap-3 rounded-xl px-3 py-2.5">
+								<span class="min-w-0 flex-1">
+									{#if m.url}
+										<a href={m.url} target="_blank" rel="noreferrer" class="text-primary block truncate text-sm font-semibold underline underline-offset-2">{m.title}</a>
+									{:else}
+										<span class="block truncate text-sm font-semibold">{m.title}</span>
+									{/if}
+									{#if m.note}<span class="text-muted-foreground block truncate text-xs">{m.note}</span>{/if}
+								</span>
+								<button
+									type="button"
+									aria-label={t('common.delete')}
+									onclick={() => group && store.deleteMaterial(group.id, m.id)}
+									class="hover:bg-destructive/10 hover:text-destructive grid size-8 shrink-0 place-items-center rounded-lg transition-colors"
+								>
+									<Trash2 class="size-4" />
+								</button>
+							</div>
+						{/each}
+					</CardContent>
+				</Card>
+			{/if}
+		</div>
 
 		<!-- Korábbi dogák -->
 		<div>
@@ -153,7 +211,7 @@
 								<span class="min-w-0 flex-1 truncate text-sm font-semibold">
 									{r.refName} <span class="text-muted-foreground font-normal">· {r.memberName}</span>
 								</span>
-								<span class="text-xs font-extrabold {r.score / r.total >= 0.7 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}">
+								<span class="text-xs font-extrabold {r.score / r.total >= 0.7 ? 'text-forest' : 'text-muted-foreground'}">
 									{r.score}{t('common.of')}{r.total}
 								</span>
 								<span class="text-xp text-xs font-bold">+{r.xp}</span>
@@ -229,5 +287,23 @@
 		<Button class="w-full" disabled={!dogaDeck} onclick={startDoga}>
 			<Play class="size-4" fill="currentColor" /> {t('class.lobby.t')}
 		</Button>
+	</div>
+</Dialog>
+
+<Dialog bind:open={matOpen} title={t('class.addMaterial')}>
+	<div class="flex flex-col gap-3">
+		<div>
+			<label class="field-label" for="mat-title">{t('class.matTitle')}</label>
+			<input id="mat-title" class="field" bind:value={matTitle} maxlength={80} />
+		</div>
+		<div>
+			<label class="field-label" for="mat-url">{t('class.matUrl')}</label>
+			<input id="mat-url" class="field" bind:value={matUrl} inputmode="url" placeholder="https://" maxlength={200} />
+		</div>
+		<div>
+			<label class="field-label" for="mat-note">{t('class.matNote')}</label>
+			<input id="mat-note" class="field" bind:value={matNote} maxlength={140} />
+		</div>
+		<Button onclick={submitMaterial} disabled={!matTitle.trim()} class="w-full">{t('common.create')}</Button>
 	</div>
 </Dialog>

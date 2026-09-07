@@ -1,8 +1,16 @@
 // Helyi-first adatréteg (localStorage). Minden funkció azonnal működik,
 // backend nélkül is — a D1-szinkron később erre az interfészre épülhet.
-import { freshSrs, gradeSrs, xpForGrade, type Grade, type SrsState } from './srs.js';
+// Modell: a régi rendszer domain/models.dart + streak.dart logikája alapján.
+import { bumpLevel, freshSrs, gradeSrs, xpForGrade, type Grade, type SrsState } from './srs.js';
 
 export type Lang = 'hu' | 'en';
+export type ThemeMode = 'system' | 'light' | 'dark';
+
+export interface Reminder {
+	enabled: boolean;
+	hour: number;
+	minute: number;
+}
 
 export interface Profile {
 	name: string;
@@ -11,10 +19,22 @@ export interface Profile {
 	lastActiveDay: string; // YYYY-MM-DD
 	dailyGoal: number;
 	lang: Lang;
+	theme: ThemeMode;
+	reminder: Reminder;
 }
+
+/** Tantárgy — a régi SubjectView egyszerűsített megfelelője. */
+export interface Subject {
+	id: string;
+	name: string;
+	colorKey: SubjectColorKey;
+}
+
+export type SubjectColorKey = 'ochre' | 'slate' | 'forest' | 'wine';
 
 export interface Deck {
 	id: string;
+	subjectId: string;
 	name: string;
 	description: string;
 	color: DeckColor;
@@ -29,14 +49,17 @@ export interface Card {
 	lessonId: string | null;
 	front: string;
 	back: string;
+	hint: string;
 	example: string;
 	exampleHu: string;
+	/** Tudásszint-számláló: 0-ról indul, helyes +1, rontott −1 (0–4). */
+	level: number;
 	createdAt: number;
 }
 
 export interface LessonProgress {
 	stars: number;
-	best: number; // legjobb % 
+	best: number; // legjobb %
 	doneAt: number | null;
 }
 
@@ -51,6 +74,7 @@ export interface QuizResult {
 	total: number;
 	xp: number;
 	at: number;
+	ms?: number;
 }
 
 export interface Member {
@@ -58,6 +82,13 @@ export interface Member {
 	name: string;
 	xp: number;
 	you?: boolean;
+}
+
+export interface GroupMaterial {
+	id: string;
+	title: string;
+	url: string;
+	note: string;
 }
 
 export interface Group {
@@ -68,11 +99,13 @@ export interface Group {
 	ownerId: string;
 	members: Member[];
 	sharedDeckIds: string[];
+	materials: GroupMaterial[];
 }
 
 export interface DB {
 	version: number;
 	profile: Profile;
+	subjects: Subject[];
 	decks: Deck[];
 	cards: Card[];
 	srs: Record<string, SrsState>;
@@ -84,7 +117,7 @@ export interface DB {
 }
 
 const KEY = 'leardy-db-v1';
-const VERSION = 3;
+const VERSION = 4;
 
 export function uid(prefix = 'id'): string {
 	return `${prefix}-${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`;
@@ -98,6 +131,32 @@ export function dayKey(d: Date = new Date()): string {
 
 function yesterdayKey(): string {
 	return dayKey(new Date(Date.now() - 86_400_000));
+}
+
+/** Sorozat a tényleges aktív napokból (régi streak.dart: streakFromDates). */
+export function streakFromDates(days: Iterable<string>, today = new Date()): number {
+	const set = new Set(days);
+	let cursor = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+	const fmt = (d: Date) => dayKey(d);
+	if (!set.has(fmt(cursor))) {
+		cursor = new Date(cursor.getTime() - 86_400_000);
+		if (!set.has(fmt(cursor))) return 0;
+	}
+	let streak = 0;
+	while (set.has(fmt(cursor))) {
+		streak += 1;
+		cursor = new Date(cursor.getTime() - 86_400_000);
+	}
+	return streak;
+}
+
+/** Elmúlt 28 nap napi számlálói, legrégebbtől a máig (régi last28Counts). */
+export function last28Counts(byDate: Record<string, number>, today = new Date()): number[] {
+	const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+	return Array.from({ length: 28 }, (_, i) => {
+		const d = new Date(base.getTime() - (27 - i) * 86_400_000);
+		return byDate[dayKey(d)] ?? 0;
+	});
 }
 
 type SeedCard = [front: string, back: string, example: string, exampleHu: string];
@@ -191,8 +250,10 @@ function seed(): DB {
 				lessonId: meta.id,
 				front,
 				back,
+				hint: '',
 				example,
 				exampleHu,
+				level: 0,
 				createdAt: now
 			});
 		}
@@ -204,8 +265,10 @@ function seed(): DB {
 			lessonId: null,
 			front,
 			back,
+			hint: '',
 			example,
 			exampleHu,
+			level: 0,
 			createdAt: now
 		});
 	}
@@ -217,12 +280,23 @@ function seed(): DB {
 
 	return {
 		version: VERSION,
-		profile: { name: '', xp: 0, streak: 0, lastActiveDay: '', dailyGoal: 10, lang: 'hu' },
+		profile: {
+			name: '',
+			xp: 0,
+			streak: 0,
+			lastActiveDay: '',
+			dailyGoal: 10,
+			lang: 'hu',
+			theme: 'system',
+			reminder: { enabled: false, hour: 19, minute: 0 }
+		},
+		subjects: [{ id: 'subj-en', name: 'Angol', colorKey: 'slate' }],
 		decks: [
 			{
 				id: 'deck-starter',
+				subjectId: 'subj-en',
 				name: 'Első szavaim',
-				description: 'Kezdő szavak képekkel — innen érdemes indulni.',
+				description: 'Kezdő szavak — innen érdemes indulni.',
 				color: 'emerald',
 				createdAt: now
 			}
@@ -257,11 +331,53 @@ function seed(): DB {
 					{ id: 'm-bence', name: 'Bence', xp: 210 },
 					{ id: 'm-csilla', name: 'Csilla', xp: 120 }
 				],
-				sharedDeckIds: ['deck-starter']
+				sharedDeckIds: ['deck-starter'],
+				materials: [
+					{ id: 'mat-seed-1', title: 'A1 szószedet (PDF)', url: '', note: 'Az első 5 lecke összes szava.' }
+				]
 			}
 		],
 		activity: {}
 	};
+}
+
+/** v3 → v4 migráció: megőrzi a felhasználó adatait. */
+function migrate(old: Record<string, unknown>): DB {
+	const fresh = seed();
+	const o = old as unknown as DB;
+	try {
+		if (Array.isArray(o.subjects) && o.subjects.length > 0) fresh.subjects = o.subjects;
+		if (Array.isArray(o.decks)) {
+			fresh.decks = o.decks.map((d) => ({
+				...d,
+				subjectId: (d as Deck).subjectId ?? 'subj-en'
+			})) as Deck[];
+		}
+		if (Array.isArray(o.cards)) {
+			fresh.cards = o.cards.map((c) => {
+				const cc = c as Card;
+				return { ...cc, hint: cc.hint ?? '', level: cc.level ?? 0 };
+			});
+		}
+		if (o.srs && typeof o.srs === 'object') fresh.srs = o.srs;
+		if (o.lessons && typeof o.lessons === 'object') fresh.lessons = o.lessons as DB['lessons'];
+		if (Array.isArray(o.results)) fresh.results = o.results;
+		if (Array.isArray(o.groups)) {
+			fresh.groups = o.groups.map((g) => ({ ...(g as Group), materials: (g as Group).materials ?? [] }));
+		}
+		if (o.activity && typeof o.activity === 'object') fresh.activity = o.activity as DB['activity'];
+		if (o.profile && typeof o.profile === 'object') {
+			fresh.profile = {
+				...(o.profile as Profile),
+				theme: (o.profile as Profile).theme ?? 'system',
+				reminder: (o.profile as Profile).reminder ?? { enabled: false, hour: 19, minute: 0 }
+			};
+		}
+	} catch {
+		return seed();
+	}
+	fresh.version = VERSION;
+	return fresh;
 }
 
 function load(): DB {
@@ -269,13 +385,19 @@ function load(): DB {
 		const raw = localStorage.getItem(KEY);
 		if (!raw) return seed();
 		const parsed = JSON.parse(raw) as DB;
-		if (!parsed || parsed.version !== VERSION || !parsed.profile || !Array.isArray(parsed.cards)) {
-			return seed();
-		}
+		if (!parsed || !parsed.profile || !Array.isArray(parsed.cards)) return seed();
+		if (parsed.version !== VERSION) return migrate(parsed as unknown as Record<string, unknown>);
 		return parsed;
 	} catch {
 		return seed();
 	}
+}
+
+export interface DeckStats {
+	total: number;
+	due: number;
+	fresh: number;
+	mastered: number;
 }
 
 class Store {
@@ -295,7 +417,7 @@ class Store {
 	}
 
 	replace(next: DB) {
-		this.data = next;
+		this.data = next.version === VERSION ? next : migrate(next as unknown as Record<string, unknown>);
 		this.save();
 	}
 
@@ -318,7 +440,6 @@ class Store {
 
 	setProfile(patch: Partial<Profile>) {
 		Object.assign(this.data.profile, patch);
-		// a saját csoporttagság neve kövesse a profilt
 		if (patch.name !== undefined) {
 			for (const g of this.data.groups) {
 				const me = g.members.find((m) => m.you);
@@ -332,16 +453,25 @@ class Store {
 		return this.data.activity[dayKey()] ?? 0;
 	}
 
+	// ---------- tantárgyak ----------
+
+	addSubject(name: string, colorKey: Subject['colorKey']): Subject {
+		const s: Subject = { id: uid('subj'), name, colorKey };
+		this.data.subjects.push(s);
+		this.save();
+		return s;
+	}
+
 	// ---------- paklik / kártyák ----------
 
-	addDeck(name: string, description: string, color: DeckColor): Deck {
-		const deck: Deck = { id: uid('deck'), name, description, color, createdAt: Date.now() };
+	addDeck(name: string, description: string, color: DeckColor, subjectId: string): Deck {
+		const deck: Deck = { id: uid('deck'), subjectId, name, description, color, createdAt: Date.now() };
 		this.data.decks.push(deck);
 		this.save();
 		return deck;
 	}
 
-	updateDeck(id: string, patch: Partial<Pick<Deck, 'name' | 'description' | 'color'>>) {
+	updateDeck(id: string, patch: Partial<Pick<Deck, 'name' | 'description' | 'color' | 'subjectId'>>) {
 		const d = this.data.decks.find((x) => x.id === id);
 		if (d) Object.assign(d, patch);
 		this.save();
@@ -358,15 +488,17 @@ class Store {
 		this.save();
 	}
 
-	addCard(deckId: string, front: string, back: string, example: string): Card {
+	addCard(deckId: string, front: string, back: string, example: string, hint: string): Card {
 		const card: Card = {
 			id: uid('card'),
 			deckId,
 			lessonId: null,
 			front,
 			back,
+			hint,
 			example,
 			exampleHu: '',
+			level: 0,
 			createdAt: Date.now()
 		};
 		this.data.cards.push(card);
@@ -374,7 +506,7 @@ class Store {
 		return card;
 	}
 
-	updateCard(id: string, patch: Partial<Pick<Card, 'front' | 'back' | 'example'>>) {
+	updateCard(id: string, patch: Partial<Pick<Card, 'front' | 'back' | 'example' | 'hint'>>) {
 		const c = this.data.cards.find((x) => x.id === id);
 		if (c) Object.assign(c, patch);
 		this.save();
@@ -394,14 +526,53 @@ class Store {
 		return this.data.cards.filter((c) => c.lessonId === lessonId);
 	}
 
+	searchCards(query: string, limit = 30): Card[] {
+		const q = query.trim().toLowerCase();
+		if (q.length < 2) return [];
+		return this.data.cards
+			.filter(
+				(c) =>
+					c.front.toLowerCase().includes(q) ||
+					c.back.toLowerCase().includes(q) ||
+					(c.hint && c.hint.toLowerCase().includes(q))
+			)
+			.slice(0, limit);
+	}
+
+	deckStats(deckId: string, now = Date.now()): DeckStats {
+		const cards = this.deckCards(deckId);
+		let due = 0;
+		let fresh = 0;
+		let mastered = 0;
+		for (const c of cards) {
+			const s = this.data.srs[c.id];
+			if (!s) fresh += 1;
+			else if (s.due <= now) due += 1;
+			if (c.level >= 4) mastered += 1;
+		}
+		return { total: cards.length, due, fresh, mastered };
+	}
+
 	// ---------- SRS ----------
 
+	/** Osztályzás SRS-ütemezéssel + tudásszint-frissítéssel. */
 	gradeCard(cardId: string, grade: Grade, now = Date.now()): number {
 		const prev = this.data.srs[cardId] ?? freshSrs(cardId, now);
 		this.data.srs[cardId] = gradeSrs(prev, grade, now);
+		const card = this.data.cards.find((c) => c.id === cardId);
+		if (card) card.level = bumpLevel(card.level, grade > 0);
 		const xp = xpForGrade(grade);
 		this.addXp(xp, 1);
 		return xp;
+	}
+
+	/** Egyszerű helyes/rontott könyvelés (lecke, doga). */
+	markCard(cardId: string, correct: boolean, now = Date.now()) {
+		const card = this.data.cards.find((c) => c.id === cardId);
+		if (card) card.level = bumpLevel(card.level, correct);
+		const prev = this.data.srs[cardId] ?? freshSrs(cardId, now);
+		this.data.srs[cardId] = gradeSrs(prev, correct ? 2 : 0, now);
+		this.save();
 	}
 
 	dueCards(deckId?: string, now = Date.now(), limit = 20): Card[] {
@@ -410,7 +581,6 @@ class Store {
 			const s = this.data.srs[c.id];
 			return !s || s.due <= now;
 		});
-		// új kártyák előre, aztán a legrégebben esedékesek
 		return pool
 			.sort((a, b) => {
 				const sa = this.data.srs[a.id];
@@ -420,6 +590,16 @@ class Store {
 				return (sa?.due ?? 0) - (sb?.due ?? 0);
 			})
 			.slice(0, limit);
+	}
+
+	dueDeckIds(now = Date.now()): { id: string; due: number }[] {
+		const map = new Map<string, number>();
+		for (const c of this.data.cards) {
+			if (!c.deckId) continue;
+			const s = this.data.srs[c.id];
+			if (!s || s.due <= now) map.set(c.deckId, (map.get(c.deckId) ?? 0) + 1);
+		}
+		return [...map.entries()].map(([id, due]) => ({ id, due }));
 	}
 
 	// ---------- leckék ----------
@@ -472,7 +652,8 @@ class Store {
 			code: `LX-${code.slice(0, 4)}`,
 			ownerId: 'm-you',
 			members: [{ id: 'm-you', name: this.data.profile.name, xp: this.data.profile.xp, you: true }],
-			sharedDeckIds: []
+			sharedDeckIds: [],
+			materials: []
 		};
 		this.data.groups.push(group);
 		this.save();
@@ -485,6 +666,20 @@ class Store {
 			g.sharedDeckIds.push(deckId);
 			this.save();
 		}
+	}
+
+	addMaterial(groupId: string, title: string, url: string, note: string) {
+		const g = this.data.groups.find((x) => x.id === groupId);
+		if (!g) return;
+		g.materials.push({ id: uid('mat'), title, url, note });
+		this.save();
+	}
+
+	deleteMaterial(groupId: string, materialId: string) {
+		const g = this.data.groups.find((x) => x.id === groupId);
+		if (!g) return;
+		g.materials = g.materials.filter((m) => m.id !== materialId);
+		this.save();
 	}
 }
 

@@ -1,13 +1,12 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
 	import { ArrowLeft, ArrowRight, Check, RotateCcw, Star, X } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card } from '$lib/components/ui/card/index.js';
-	import { Progress } from '$lib/components/ui/progress/index.js';
+	import FeedbackPill from '$lib/components/feedback-pill.svelte';
 	import { lessonMeta, store, type Card as CardType } from '$lib/db.svelte.js';
-	import { freshSrs } from '$lib/srs.js';
+	import { freshSrs, fuzzyMatch } from '$lib/srs.js';
 	import { t } from '$lib/i18n.js';
 	import { toasts } from '$lib/components/ui/toast/toast.svelte.js';
 	import { cn } from '$lib/utils.js';
@@ -90,21 +89,20 @@
 		const q = questions[qIdx];
 		if (q.kind !== 'choice') return;
 		picked = i;
-		if (i === q.answer) correct += 1;
+		const ok = i === q.answer;
+		if (ok) correct += 1;
+		store.markCard(q.card.id, ok);
 		timer = setTimeout(nextQ, 950);
-	}
-
-	function norm(s: string): string {
-		return s.toLowerCase().trim().replace(/\s+/g, ' ');
 	}
 
 	function checkTyped() {
 		if (typedState !== 'idle') return;
 		const q = questions[qIdx];
 		if (q.kind !== 'type' || !typed.trim()) return;
-		const ok = norm(typed) === norm(q.card.front);
+		const ok = fuzzyMatch(typed, q.card.front);
 		typedState = ok ? 'ok' : 'bad';
 		if (ok) correct += 1;
+		store.markCard(q.card.id, ok);
 		timer = setTimeout(nextQ, ok ? 950 : 2200);
 	}
 
@@ -158,8 +156,12 @@
 	<title>{meta ? (lang === 'en' ? meta.en : meta.hu) : t('learn.title')} — Leardy</title>
 </svelte:head>
 
-<div class="mx-auto flex w-full max-w-2xl flex-col gap-4">
-	<div class="flex items-center gap-3">
+<div class="mx-auto flex min-h-[calc(100dvh-180px)] w-full max-w-2xl flex-col md:min-h-0">
+	<!-- SessionScaffold fejléc: vékony sáv + vissza-sor -->
+	<div class="h-[3px] w-full overflow-hidden rounded-full bg-secondary">
+		<div class="bg-primary h-full rounded-full transition-all" style="width: {(stepNow / Math.max(1, stepTotal)) * 100}%"></div>
+	</div>
+	<div class="flex items-center gap-1 py-1">
 		<Button variant="ghost" size="icon" href="/learn" aria-label={t('common.back')}>
 			<ArrowLeft class="size-5" />
 		</Button>
@@ -167,15 +169,13 @@
 			<p class="truncate text-sm font-bold">
 				{metaIdx + 1}. {meta ? (lang === 'en' ? meta.en : meta.hu) : ''}
 			</p>
-			<p class="text-muted-foreground text-xs font-semibold">
-				{phase === 'study' ? t('learn.studyPhase') : phase === 'quiz' ? t('learn.quizPhase') : ''}
-			</p>
 		</div>
 		<span class="text-muted-foreground text-xs font-bold whitespace-nowrap">
 			{Math.min(stepNow + 1, stepTotal)}{t('common.of')}{stepTotal}
 		</span>
 	</div>
-	<Progress value={stepNow} max={stepTotal} />
+
+	<div class="flex flex-1 flex-col justify-center gap-3 px-1 pt-1 pb-4">
 
 	{#if !meta}
 		<p class="text-muted-foreground text-sm">…</p>
@@ -183,32 +183,37 @@
 		<button
 			type="button"
 			onclick={() => (flipped = !flipped)}
-			class="perspective-1200 press block h-80 w-full cursor-pointer text-left"
+			class="perspective-1200 press zso-touch block h-80 w-full cursor-pointer text-left"
 			aria-label={t('common.tapToFlip')}
 		>
 			<div class="flip-inner" class:flipped>
 				<div class="flip-face">
-					<Card class="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-						<p class="text-muted-foreground text-xs font-bold tracking-widest">EN</p>
-						<p class="font-display text-4xl font-extrabold text-balance">{studyCard.front}</p>
-						{#if studyCard.example}
-							<p class="text-muted-foreground max-w-md text-[15px] italic">“{studyCard.example}”</p>
-						{/if}
-						<p class="text-muted-foreground mt-2 text-xs font-semibold">{t('common.tapToFlip')}</p>
+					<Card class="flex h-full flex-col px-[22px] py-[18px]">
+						<p class="text-muted-foreground text-xs font-semibold">{studyIdx + 1} / {cards.length}</p>
+						<div class="flex flex-1 items-center justify-center overflow-hidden">
+							<p class="text-center text-[28px] leading-[1.2] font-bold tracking-tight text-balance">{studyCard.front}</p>
+						</div>
+						<p class="text-graphite min-h-4 text-center text-xs font-medium">{t('common.tapToFlip')}</p>
 					</Card>
 				</div>
 				<div class="flip-face flip-back">
-					<Card class="border-primary/30 flex h-full flex-col items-center justify-center gap-3 bg-gradient-to-b from-primary/[0.08] to-transparent p-6 text-center">
-						<p class="text-muted-foreground text-xs font-bold tracking-widest">HU</p>
-						<p class="font-display text-4xl font-extrabold text-balance">{studyCard.back}</p>
-						{#if studyCard.exampleHu}
-							<p class="text-muted-foreground max-w-md text-[15px] italic">“{studyCard.exampleHu}”</p>
-						{/if}
+					<Card class="flex h-full flex-col px-[22px] py-[18px]">
+						<p class="text-muted-foreground text-xs font-semibold">{studyIdx + 1} / {cards.length}</p>
+						<div class="flex flex-1 flex-col items-center justify-center gap-2 overflow-hidden">
+							<p class="text-center text-[28px] leading-[1.2] font-bold tracking-tight text-balance">{studyCard.back}</p>
+							{#if studyCard.exampleHu}
+								<p class="reader-body text-muted-foreground max-w-md text-center">“{studyCard.exampleHu}”</p>
+							{/if}
+						</div>
+						<p class="min-h-4"></p>
 					</Card>
 				</div>
 			</div>
 		</button>
-		<Button size="lg" class="w-full" onclick={nextStudy}>
+		{#if studyCard.example}
+			<p class="reader-body text-muted-foreground px-2 text-center">“{studyCard.example}”</p>
+		{/if}
+		<Button size="xl" class="w-full text-base" onclick={nextStudy}>
 			{studyIdx + 1 >= cards.length ? t('learn.quizPhase') : t('common.continue')}
 			<ArrowRight class="size-4" />
 		</Button>
@@ -229,13 +234,18 @@
 						disabled={picked !== null}
 						onclick={() => pick(i)}
 						class={cn(
-							'press flex items-center justify-between gap-2 rounded-2xl border px-4 py-4 text-left text-[15px] font-bold transition-colors',
+							'press flex min-h-[52px] items-center justify-between gap-2 rounded-[14px] border bg-card px-4 text-center text-[15px] font-semibold transition-colors',
 							isAnswer
-								? 'border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+								? 'border-2 text-forest'
 								: isWrongPick
-									? 'border-rose-500 bg-rose-500/12 text-rose-600 dark:text-rose-400'
-									: 'bg-card hover:border-primary/50'
+									? 'border-2 text-wine'
+									: 'hover:border-primary/50'
 						)}
+						style={isAnswer
+							? 'border-color: var(--forest); background: color-mix(in srgb, var(--forest) 12%, transparent)'
+							: isWrongPick
+								? 'border-color: var(--wine); background: color-mix(in srgb, var(--wine) 12%, transparent)'
+								: undefined}
 					>
 						{opt}
 						{#if isAnswer}<Check class="size-5 shrink-0" />{/if}
@@ -244,9 +254,12 @@
 				{/each}
 			</div>
 			{#if picked !== null}
-				<p class={cn('text-center text-sm font-bold', picked === q.answer ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500')}>
-					{picked === q.answer ? t('common.correct') : `${t('common.wrong')}: ${q.card.front}`}
-				</p>
+				<div class="flex justify-center">
+					<FeedbackPill
+						correct={picked === q.answer}
+						text={picked === q.answer ? t('common.correct') : `${t('practice.correctIs')} ${q.card.front}`}
+					/>
+				</div>
 			{/if}
 		{:else}
 			<Card class="py-6">
@@ -275,9 +288,12 @@
 				<Button type="submit" disabled={!typed.trim() || typedState !== 'idle'}>{t('common.check')}</Button>
 			</form>
 			{#if typedState !== 'idle'}
-				<p class={cn('text-center text-sm font-bold', typedState === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500')}>
-					{typedState === 'ok' ? t('common.correct') : `${t('common.wrong')}: ${q.card.front}`}
-				</p>
+				<div class="flex h-[60px] items-center justify-center">
+					<FeedbackPill
+						correct={typedState === 'ok'}
+						text={typedState === 'ok' ? t('common.correct') : `${t('practice.correctIs')} ${q.card.front}`}
+					/>
+				</div>
 			{/if}
 		{/if}
 	{:else if phase === 'done' && result}
@@ -286,7 +302,7 @@
 				<span class="anim-pop-in grid size-16 place-items-center rounded-3xl {result.stars > 0 ? 'bg-amber-500/15' : 'bg-muted'}">
 					<Star class={cn('size-8', result.stars > 0 ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground')} />
 				</span>
-				<h1 class="font-display text-2xl font-extrabold">
+				<h1 class="text-2xl font-extrabold tracking-tight">
 					{result.stars > 0 ? t('learn.result.t') : t('learn.result.fail')}
 				</h1>
 				<div class="flex gap-1" aria-label="{result.stars}/3">
@@ -304,4 +320,5 @@
 			</div>
 		</Card>
 	{/if}
+	</div>
 </div>

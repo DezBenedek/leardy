@@ -1,25 +1,16 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import { CheckCircle2 } from 'lucide-svelte';
 	import { toasts } from './toast.svelte.js';
 </script>
 
-<div
-	aria-live="polite"
-	class="pointer-events-none fixed inset-x-0 bottom-24 z-[100] flex flex-col items-center gap-2 px-4 md:bottom-8"
->
-	{#each toasts.items as toast (toast.id)}
+<div aria-live="polite" class="pointer-events-none fixed inset-x-0 top-0 z-[100] flex justify-center px-4">
+	{#if toasts.current}
 		<div
-			transition:fly={{ y: 12, duration: 200 }}
-			class="bg-foreground text-background pointer-events-auto flex max-w-sm items-center gap-2.5 rounded-xl px-4 py-3 shadow-lg"
+			transition:fly={{ y: -8, duration: 180 }}
+			class="text-background mt-[calc(env(safe-area-inset-top)+10px)] max-w-md rounded-full px-4 py-2.5 text-center text-sm font-semibold shadow-md"
+			style="background: var(--foreground); color: var(--background);"
 		>
-			<CheckCircle2 class="text-primary size-5 shrink-0" />
-			<div class="min-w-0">
-				<p class="text-sm font-semibold">{toast.title}</p>
-				{#if toast.desc}
-					<p class="text-xs opacity-80">{toast.desc}</p>
-				{/if}
-			</div>
+			{toasts.current.message}
 		</div>
-	{/each}
+	{/if}
 </div>

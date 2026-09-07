@@ -3,88 +3,104 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Leardy design system — shadcn-szerű tokenek + saját karakter:
- * meleg papír háttér, smaragd primary, játékos-lekerekített formák,
- * Bricolage Grotesque display + Inter szöveg.
+ * Leardy design — 1:1 a régi rendszer LeardyInk palettája alapján:
+ * zinc papír, teal "margin" primary, kék "rule", borostyán "brass",
+ * zöld "forest", bordó "wine". Kártya: 14px radius + 1px border, árnyék nélkül.
+ * UI betű: Bricolage Grotesque; olvasószöveg: Newsreader serif.
  */
 
 @theme {
-	--font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-sans: 'Bricolage Grotesque', 'Inter', system-ui, sans-serif;
 	--font-display: 'Bricolage Grotesque', 'Inter', system-ui, sans-serif;
+	--font-serif: 'Newsreader', Georgia, serif;
 }
 
 :root {
-	--radius: 0.9rem;
+	--radius: 0.875rem;
 
-	--background: oklch(0.982 0.004 100);
-	--foreground: oklch(0.22 0.02 150);
+	--background: #f7f7f8;
+	--foreground: #09090b;
 
-	--card: oklch(1 0 0);
-	--card-foreground: oklch(0.22 0.02 150);
+	--card: #ffffff;
+	--card-foreground: #09090b;
 
-	--popover: oklch(1 0 0);
-	--popover-foreground: oklch(0.22 0.02 150);
+	--popover: #ffffff;
+	--popover-foreground: #09090b;
 
-	--primary: oklch(0.548 0.15 163.4);
-	--primary-foreground: oklch(0.99 0.01 166);
+	--primary: #0d9488;
+	--primary-foreground: #ffffff;
 
-	--secondary: oklch(0.945 0.012 150);
-	--secondary-foreground: oklch(0.3 0.04 160);
+	--secondary: #f4f4f5;
+	--secondary-foreground: #27272a;
 
-	--muted: oklch(0.95 0.008 120);
-	--muted-foreground: oklch(0.52 0.02 150);
+	--muted: #f4f4f5;
+	--muted-foreground: #52525b;
 
-	--accent: oklch(0.945 0.012 150);
-	--accent-foreground: oklch(0.3 0.04 160);
+	--accent: #f4f4f5;
+	--accent-foreground: #27272a;
 
-	--destructive: oklch(0.577 0.245 27.3);
-	--destructive-foreground: oklch(0.99 0 0);
+	--destructive: #e11d48;
+	--destructive-foreground: #ffffff;
 
-	--border: oklch(0.9 0.012 140);
-	--input: oklch(0.88 0.015 140);
-	--ring: oklch(0.548 0.15 163.4);
+	--border: #e4e4e7;
+	--input: #e4e4e7;
+	--ring: #0d9488;
 
-	--streak: oklch(0.68 0.19 45);
-	--xp: oklch(0.72 0.16 85);
+	--rule: #2563eb;
+	--brass: #d97706;
+	--forest: #16a34a;
+	--wine: #e11d48;
+	--graphite: #71717a;
+	--blotter: #18181b;
 
-	--hero-from: oklch(0.6 0.16 162);
-	--hero-to: oklch(0.45 0.12 190);
+	--streak: #0d9488;
+	--xp: #d97706;
+
+	--hero-from: #0d9488;
+	--hero-to: #2563eb;
 }
 
 .dark {
-	--background: oklch(0.16 0.015 160);
-	--foreground: oklch(0.94 0.01 150);
+	--background: #09090b;
+	--foreground: #fafafa;
 
-	--card: oklch(0.2 0.018 160);
-	--card-foreground: oklch(0.94 0.01 150);
+	--card: #18181b;
+	--card-foreground: #fafafa;
 
-	--popover: oklch(0.2 0.018 160);
-	--popover-foreground: oklch(0.94 0.01 150);
+	--popover: #18181b;
+	--popover-foreground: #fafafa;
 
-	--primary: oklch(0.72 0.17 162.5);
-	--primary-foreground: oklch(0.14 0.03 165);
+	--primary: #2dd4bf;
+	--primary-foreground: #042f2e;
 
-	--secondary: oklch(0.25 0.025 160);
-	--secondary-foreground: oklch(0.92 0.01 150);
+	--secondary: #27272a;
+	--secondary-foreground: #fafafa;
 
-	--muted: oklch(0.24 0.02 160);
-	--muted-foreground: oklch(0.7 0.02 155);
+	--muted: #27272a;
+	--muted-foreground: #a1a1aa;
 
-	--accent: oklch(0.25 0.025 160);
-	--accent-foreground: oklch(0.92 0.01 150);
+	--accent: #27272a;
+	--accent-foreground: #fafafa;
 
-	--destructive: oklch(0.637 0.237 25.3);
-	--destructive-foreground: oklch(0.99 0 0);
+	--destructive: #fb7185;
+	--destructive-foreground: #ffffff;
 
-	--border: oklch(0.28 0.025 160);
-	--input: oklch(0.3 0.025 160);
-	--ring: oklch(0.72 0.17 162.5);
+	--border: #27272a;
+	--input: #27272a;
+	--ring: #2dd4bf;
 
-	--streak: oklch(0.75 0.18 55);
-	--xp: oklch(0.82 0.15 90);
+	--rule: #60a5fa;
+	--brass: #fbbf24;
+	--forest: #4ade80;
+	--wine: #fb7185;
+	--graphite: #71717a;
+	--blotter: #09090b;
 
-	--hero-from: oklch(0.5 0.15 163);
-	--hero-to: oklch(0.35 0.1 200);
+	--streak: #2dd4bf;
+	--xp: #fbbf24;
+
+	--hero-from: #0d9488;
+	--hero-to: #1d4ed8;
 }
 
 @theme inline {
@@ -112,6 +128,11 @@
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
+	--color-rule: var(--rule);
+	--color-brass: var(--brass);
+	--color-forest: var(--forest);
+	--color-wine: var(--wine);
+	--color-graphite: var(--graphite);
 	--color-streak: var(--streak);
 	--color-xp: var(--xp);
 }
@@ -129,45 +150,41 @@
 	body {
 		@apply bg-background font-sans text-foreground antialiased;
 		min-height: 100dvh;
-		background-image:
-			radial-gradient(60rem 30rem at 110% -10%, oklch(0.548 0.15 163.4 / 0.08), transparent 60%),
-			radial-gradient(50rem 26rem at -10% 0%, oklch(0.72 0.16 85 / 0.07), transparent 60%);
-		background-attachment: fixed;
-	}
-
-	.dark body {
-		background-image:
-			radial-gradient(60rem 30rem at 110% -10%, oklch(0.72 0.17 162.5 / 0.1), transparent 60%),
-			radial-gradient(50rem 26rem at -10% 0%, oklch(0.7 0.15 200 / 0.08), transparent 60%);
+		letter-spacing: -0.15px;
 	}
 
 	::selection {
-		background: oklch(0.548 0.15 163.4 / 0.25);
+		background: color-mix(in srgb, var(--primary) 25%, transparent);
 	}
 }
 
-/* ---- saját komponens-osztályok ---- */
+/* ---- régi rendszer komponens-osztályai ---- */
 
 @layer components {
-	/* Űrlapmezők shadcn-hangulatban */
+	/* Űrlapmező: töltött sunken háttér, 14px radius (inputDecorationTheme) */
 	.field {
-		@apply bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-ring/40 w-full rounded-xl border px-3.5 py-2.5 text-[15px] font-medium shadow-xs transition outline-none focus-visible:ring-4;
+		@apply bg-secondary text-foreground placeholder:text-muted-foreground focus-visible:ring-ring/50 w-full rounded-[14px] border px-3.5 py-3.5 text-[15px] font-medium transition outline-none focus-visible:ring-2;
 	}
 
 	.field-label {
-		@apply mb-1.5 block text-[13px] font-semibold tracking-wide;
+		@apply text-muted-foreground mb-1.5 block text-[13px] font-medium;
 	}
 
-	/* Nyomógomb-érzet minden kattintható kártyán */
+	/* Nyomógomb-érzet (StampButton-szerű skálázás) */
 	.press {
-		@apply transition-all duration-150 active:scale-[0.98];
+		@apply transition-transform duration-90 active:scale-[0.96];
 	}
 
-	.card-lift {
-		@apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md;
+	/* HardSheet: elcsúsztatott kemény árnyék (hard_shadow.dart) */
+	.hard-shadow {
+		box-shadow: 4px 6px 0 0 rgb(9 9 11 / 0.12);
 	}
 
-	/* Hero kártya: smaragd → tenger átmenet + mintázat */
+	.dark .hard-shadow {
+		box-shadow: 4px 6px 0 0 rgb(0 0 0 / 0.45);
+	}
+
+	/* Hero kártya: teal → kék átmenet */
 	.hero {
 		background: linear-gradient(135deg, var(--hero-from), var(--hero-to));
 		position: relative;
@@ -175,56 +192,33 @@
 		isolation: isolate;
 	}
 
-	.hero::before {
-		content: '';
-		position: absolute;
-		inset: 0;
-		z-index: -1;
-		opacity: 0.16;
-		background-image: radial-gradient(circle at 1px 1px, white 1.5px, transparent 0);
-		background-size: 22px 22px;
-	}
-
 	.hero::after {
 		content: '';
 		position: absolute;
 		z-index: -1;
-		width: 22rem;
-		height: 22rem;
-		right: -7rem;
-		top: -7rem;
+		width: 20rem;
+		height: 20rem;
+		right: -6rem;
+		top: -6rem;
 		border-radius: 9999px;
-		background: radial-gradient(circle, rgb(255 255 255 / 0.25), transparent 65%);
+		background: radial-gradient(circle, rgb(255 255 255 / 0.18), transparent 65%);
+	}
+
+	/* Olvasószöveg leckékhez (Newsreader, mint lesson_body_text) */
+	.reader-body {
+		font-family: var(--font-serif);
+		font-size: 1.075rem;
+		line-height: 1.65;
+		letter-spacing: -0.2px;
 	}
 }
 
-/* ---- 3D kártya-forgatás ---- */
+/* ---- ZsoKartya: húzható tanulókártya ---- */
 
-.perspective-1200 {
-	perspective: 1200px;
-}
-
-.flip-inner {
-	position: relative;
-	width: 100%;
-	height: 100%;
-	transform-style: preserve-3d;
-	transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.3, 1.2);
-}
-
-.flip-inner.flipped {
-	transform: rotateY(180deg);
-}
-
-.flip-face {
-	position: absolute;
-	inset: 0;
-	backface-visibility: hidden;
-	-webkit-backface-visibility: hidden;
-}
-
-.flip-back {
-	transform: rotateY(180deg);
+.zso-touch {
+	touch-action: pan-y;
+	user-select: none;
+	-webkit-user-select: none;
 }
 
 /* ---- animációk ---- */
@@ -236,18 +230,6 @@
 	}
 	50% {
 		transform: translateY(-8px);
-	}
-}
-
-@keyframes pulse-ring {
-	0% {
-		box-shadow: 0 0 0 0 oklch(0.548 0.15 163.4 / 0.45);
-	}
-	70% {
-		box-shadow: 0 0 0 14px transparent;
-	}
-	100% {
-		box-shadow: 0 0 0 0 transparent;
 	}
 }
 
@@ -269,15 +251,11 @@
 	animation: floaty 4s ease-in-out infinite;
 }
 
-.anim-pulse-ring {
-	animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
 .anim-pop-in {
 	animation: pop-in 0.35s cubic-bezier(0.2, 0.7, 0.3, 1.2) both;
 }
 
-/* iPhone home-indicator safe-area a mobil tabbarhoz */
+/* iPhone home-indicator safe-area */
 @utility pb-safe {
 	padding-bottom: env(safe-area-inset-bottom);
 }

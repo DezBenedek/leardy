@@ -60,7 +60,8 @@
 				{#if st === 'open'}
 					<a
 						href="/learn/{meta.id}"
-						class="press group relative grid size-[76px] place-items-center rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-lg shadow-emerald-500/40 anim-pulse-ring"
+						class="press group relative grid size-[76px] place-items-center rounded-full text-white anim-pulse-ring"
+						style="background: linear-gradient(to bottom, var(--primary), color-mix(in srgb, var(--primary) 70%, black))"
 						aria-label="{t('learn.start')}: {meta.hu}"
 					>
 						<Play class="size-8 translate-x-0.5" fill="currentColor" />
@@ -71,7 +72,8 @@
 				{:else if st === 'done'}
 					<a
 						href="/learn/{meta.id}"
-						class="press grid size-[68px] place-items-center rounded-full bg-gradient-to-b from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30"
+						class="press grid size-[68px] place-items-center rounded-full text-white"
+						style="background: linear-gradient(to bottom, var(--forest), color-mix(in srgb, var(--forest) 70%, black))"
 						aria-label="{meta.hu}"
 					>
 						<Check class="size-7" strokeWidth={3} />

@@ -6,7 +6,6 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
-	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { store, type Card as CardType, type Member } from '$lib/db.svelte.js';
 	import { t } from '$lib/i18n.js';
 	import { cn } from '$lib/utils.js';
@@ -210,22 +209,26 @@
 				{/if}
 			</CardContent>
 		</Card>
-		<Button size="lg" class="w-full" disabled={!deckReady} onclick={start}>
+		<Button size="xl" class="w-full text-base" disabled={!deckReady} onclick={start}>
 			<Play class="size-4" fill="currentColor" /> {t('class.lobbyStart')} ({1 + present.length})
 		</Button>
 		<Button variant="ghost" href="/classroom/{group.id}">{t('common.back')}</Button>
 	{:else if (phase === 'run' || phase === 'reveal') && q}
+		<div class="h-[3px] w-full overflow-hidden rounded-full bg-secondary">
+			<div class="bg-primary h-full rounded-full transition-all" style="width: {((qIdx + (phase === 'reveal' ? 1 : 0)) / questions.length) * 100}%"></div>
+		</div>
 		<div class="flex items-center gap-3">
 			<span class="text-muted-foreground text-xs font-bold whitespace-nowrap">{qIdx + 1}{t('common.of')}{questions.length}</span>
-			<Progress value={qIdx + (phase === 'reveal' ? 1 : 0)} max={questions.length} class="flex-1" />
-			<span class={cn('inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold tabular-nums', timeLeft <= 5 ? 'bg-rose-500/15 text-rose-500' : 'bg-muted text-muted-foreground')}>
+			<span class="flex-1"></span>
+			<span class={cn('inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold tabular-nums', timeLeft <= 5 ? 'text-wine' : 'bg-muted text-muted-foreground')}
+				style={timeLeft <= 5 ? 'background: color-mix(in srgb, var(--wine) 15%, transparent)' : undefined}>
 				<Timer class="size-3.5" /> {Math.ceil(timeLeft)}
 			</span>
 		</div>
-		<div class="h-1.5 overflow-hidden rounded-full bg-muted">
+		<div class="bg-secondary h-1.5 overflow-hidden rounded-full">
 			<div
-				class={cn('h-full rounded-full transition-[width] duration-200', timeLeft <= 5 ? 'bg-rose-500' : 'bg-primary')}
-				style="width: {(timeLeft / secs) * 100}%"
+				class="h-full rounded-full transition-[width] duration-200"
+				style="width: {(timeLeft / secs) * 100}%; background: {timeLeft <= 5 ? 'var(--wine)' : 'var(--primary)'}"
 			></div>
 		</div>
 
@@ -245,15 +248,16 @@
 					disabled={phase !== 'run' || picked !== null}
 					onclick={() => pick(i)}
 					class={cn(
-						'press flex items-center justify-between gap-2 rounded-2xl border px-4 py-4 text-left text-[15px] font-bold transition-colors',
-						isAnswer
-							? 'border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-							: isWrongPick
-								? 'border-rose-500 bg-rose-500/12 text-rose-600 dark:text-rose-400'
-								: picked === i
-									? 'border-primary bg-primary/10 text-primary'
-									: 'bg-card hover:border-primary/50'
+						'press flex min-h-[52px] items-center justify-between gap-2 rounded-[14px] border bg-card px-4 text-center text-[15px] font-semibold transition-colors',
+						isAnswer || isWrongPick || picked === i ? '' : 'hover:border-primary/50'
 					)}
+					style={isAnswer
+						? 'border-color: var(--forest); border-width: 2px; color: var(--forest); background: color-mix(in srgb, var(--forest) 12%, transparent)'
+						: isWrongPick
+							? 'border-color: var(--wine); border-width: 2px; color: var(--wine); background: color-mix(in srgb, var(--wine) 12%, transparent)'
+							: picked === i
+								? 'border-color: var(--primary); border-width: 2px; color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent)'
+								: undefined}
 				>
 					{opt}
 					{#if isAnswer}<Check class="size-5 shrink-0" />{/if}
@@ -262,7 +266,7 @@
 			{/each}
 		</div>
 		{#if phase === 'reveal' && picked === null}
-			<p class="text-center text-sm font-bold text-rose-500">{t('class.timeUp')} {q.card.front}</p>
+			<p class="text-center text-sm font-bold text-wine">{t('class.timeUp')} {q.card.front}</p>
 		{/if}
 
 		<!-- Élő állás -->
