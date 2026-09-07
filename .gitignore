@@ -74,7 +74,11 @@ app.*.map.json
 **/.turbo/
 **/.vite/
 **/*.tsbuildinfo
-apps/api/.mf/
+
+# SvelteKit
+.svelte-kit/
+build/
+src/worker-configuration.d.ts
 
 # Logs
 *.log

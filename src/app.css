@@ -1,0 +1,66 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+	--font-display: 'Nunito', ui-rounded, system-ui, sans-serif;
+	--font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+	--color-leardy-50: #f0fdf4;
+	--color-leardy-100: #dcfce7;
+	--color-leardy-500: #22c55e;
+	--color-leardy-600: #16a34a;
+	--color-leardy-700: #15803d;
+
+	--color-cream: #fff9f0;
+	--color-ink: #0f172a;
+
+	--radius-leardy: 1.25rem;
+}
+
+:root {
+	color-scheme: light;
+}
+
+.dark {
+	color-scheme: dark;
+}
+
+html {
+	-webkit-tap-highlight-color: transparent;
+}
+
+body {
+	font-family: var(--font-sans);
+	background: var(--color-cream);
+	color: var(--color-ink);
+	min-height: 100dvh;
+}
+
+.dark body {
+	background: var(--color-ink);
+	color: #f1f5f9;
+}
+
+/* iPhone home-indicator safe-area a mobil tabbarhoz */
+.pb-safe {
+	padding-bottom: env(safe-area-inset-bottom);
+}
+
+.pt-safe {
+	padding-top: env(safe-area-inset-top);
+}
+
+/* Játékos kemény árnyék (régi Flutter hard_shadow megfelelője) */
+.shadow-hard {
+	box-shadow: 0 4px 0 0 rgb(15 23 42 / 0.9);
+}
+
+.shadow-hard-sm {
+	box-shadow: 0 2px 0 0 rgb(15 23 42 / 0.9);
+}
+
+.dark .shadow-hard,
+.dark .shadow-hard-sm {
+	box-shadow: 0 4px 0 0 rgb(0 0 0 / 0.6);
+}

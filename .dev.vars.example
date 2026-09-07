@@ -1,0 +1,3 @@
+# Helyi fejlesztői titkok — SOHA ne committold!
+# Példa:
+# SESSION_SECRET=ide-jon-egy-hosszu-veletlen-string

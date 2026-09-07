@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="hu">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, viewport-fit=cover, theme-color=#16a34a"
+		/>
+		<meta name="description" content="Leardy — nyelvtanulás szókártyákkal, leckéről leckére, tanteremmel." />
+		<meta name="theme-color" content="#16a34a" />
+		<script>
+			try {
+				const t = localStorage.getItem('leardy-theme');
+				if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) {
+					document.documentElement.classList.add('dark');
+				}
+			} catch {
+				/* private mode: marad világos */
+			}
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>
