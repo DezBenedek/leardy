@@ -91,6 +91,7 @@
 	});
 
 	let filtered = $derived(cat !== 'Mind' ? 1 : 0);
+	let isFiltering = $derived(debounced.trim() !== '' || cat !== 'Mind');
 
 	async function create() {
 		if (!auth.user) {
@@ -252,11 +253,17 @@
 					Bejelentkezés
 				</button>
 			</div>
+		{:else if isFiltering}
+			<p class="rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500 dark:border-white/15 dark:text-stone-400">
+				Nincs találat. Próbálj másik keresést!
+			</p>
+		{:else if mode === 'mine'}
+			<p class="rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500 dark:border-white/15 dark:text-stone-400">
+				Még nem vettél fel témakört — nézz körül a Felfedezésben!
+			</p>
 		{:else}
 			<p class="rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500 dark:border-white/15 dark:text-stone-400">
-				{mode === 'mine'
-					? 'Még nem vettél fel témakört — nézz körül a Felfedezésben!'
-					: 'Nincs találat. Próbálj másik keresést!'}
+				Mindent felvettél már! 🎉
 			</p>
 		{/if}
 	{/each}
