@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { BookOpenText, CheckCircle2, Layers, ListChecks, Play } from '@lucide/svelte';
+	import { ArrowLeft, BookOpenText, CheckCircle2, Layers, ListChecks } from '@lucide/svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { get as cacheGet, invalidate, peek } from '$lib/cache';
 	import { player } from '$lib/player.svelte';
@@ -31,16 +31,16 @@
 		void load();
 	});
 
-	async function complete(kind: 'theory' | 'cards' | 'quiz', score?: number) {
+	async function complete(kind: 'theory' | 'cards' | 'quiz', score?: number, done = true) {
 		if (!auth.user || !data) return;
 		saving = true;
 		try {
-			await studyApi.completeLesson(data.lesson.id, { kind, score });
+			await studyApi.completeLesson(data.lesson.id, { kind, score, done });
 			invalidate('stats');
 			invalidate(`topic:${data.topic.id}`);
 			await auth.refresh();
 			if (data) {
-				if (kind === 'theory') data.progress.theory_done = 1;
+				if (kind === 'theory') data.progress.theory_done = done ? 1 : 0;
 				if (kind === 'cards') data.progress.cards_done = 1;
 				if (kind === 'quiz') {
 					data.progress.quiz_done = 1;
@@ -102,6 +102,12 @@
 				]
 			: []
 	);
+
+	function pressTab(id: Tab) {
+		if (id === 'theory') tab = 'theory';
+		else if (id === 'cards') startCards();
+		else startQuiz();
+	}
 </script>
 
 <svelte:head>
@@ -113,14 +119,18 @@
 {:else if err && !data}
 	<p role="alert" class="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err}</p>
 {:else if data}
-	<nav class="mt-3 text-[13px] text-stone-500 dark:text-stone-400" aria-label="Morzsa">
-		<a href="/temakorok" class="hover:underline">Témakörök</a>
-		<span> · </span>
-		<a href="/temakorok/{data.topic.id}" class="hover:underline">{data.topic.title}</a>
-	</nav>
-	<h1 class="mt-1 text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">{data.lesson.title}</h1>
-	<p class="text-sm text-ink-600 dark:text-stone-400">
-		{data.topic.category} · {data.cards.length} kártya · {data.quiz.length} kérdés
+	<div class="mt-3 flex items-center gap-2">
+		<a
+			href="/temakorok/{data.topic.id}"
+			aria-label="Vissza a témakörhöz"
+			class="grid size-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-900 transition hover:bg-stone-50 active:scale-95 dark:border-white/10 dark:bg-stone-900 dark:text-white"
+		>
+			<ArrowLeft size={20} />
+		</a>
+		<h1 class="min-w-0 flex-1 truncate text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">{data.lesson.title}</h1>
+	</div>
+	<p class="mt-1 text-sm text-ink-600 dark:text-stone-400">
+		{data.topic.category} · {data.cards.length} kártya · {data.quiz.length} feladat
 	</p>
 
 	<div class="mt-3 grid grid-cols-3 gap-2" role="tablist" aria-label="Lecke modulok">
@@ -129,17 +139,17 @@
 			<button
 				role="tab"
 				aria-selected={tab === t.id}
-				onclick={() => (tab = t.id)}
+				onclick={() => pressTab(t.id)}
 				class={[
-					'flex items-center justify-center gap-1.5 rounded-full px-3 py-2.5 text-sm font-semibold transition',
-					tab === t.id
+					'flex items-center justify-center gap-1.5 rounded-full px-3 py-2.5 text-sm font-semibold transition active:scale-[0.98]',
+					t.id === 'theory' && tab === 'theory'
 						? 'bg-ink-900 text-white dark:bg-white dark:text-ink-900'
-						: 'bg-stone-100 text-ink-600 hover:bg-stone-200 dark:bg-white/10 dark:text-stone-300'
+						: 'bg-brand-500 text-white hover:bg-brand-600'
 				]}
 			>
 				<Icon size={16} />
 				{t.label}
-				{#if t.done}<CheckCircle2 size={15} class="text-emerald-500" />{/if}
+				{#if t.done}<CheckCircle2 size={15} />{/if}
 			</button>
 		{/each}
 	</div>
@@ -148,66 +158,30 @@
 		<p role="alert" class="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err}</p>
 	{/if}
 
-	{#if tab === 'theory'}
-		<article class="prose-leardy mt-3 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 dark:border-white/10 dark:bg-stone-900">
-			{@html renderMarkdown(data.lesson.description_markdown)}
-		</article>
-		{#if data.progress.theory_done === 1}
-			<p class="mt-3 flex items-center gap-2 text-[15px] font-bold text-emerald-600 dark:text-emerald-400">
-				<CheckCircle2 size={17} /> Elmélet kész (+5 XP jóváírva)
-			</p>
+	<article class="prose-leardy mt-3 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 dark:border-white/10 dark:bg-stone-900">
+		{@html renderMarkdown(data.lesson.description_markdown)}
+	</article>
+		{#if !auth.user}
+			<p class="mt-2 text-center text-[13px] text-stone-500 dark:text-stone-400">Olvasni bejelentkezés nélkül is tudsz; a mentéshez lépj be.</p>
 		{:else}
 			<button
-				onclick={() => complete('theory')}
-				disabled={saving || !auth.user}
-				title={!auth.user ? 'Jelentkezz be a haladás mentéséhez' : ''}
-				class="mt-3 w-full rounded-full bg-brand-500 px-4 py-3 text-[15px] font-bold text-white transition hover:bg-brand-600 active:scale-[0.99] disabled:opacity-60"
+				onclick={() => complete('theory', undefined, (data?.progress.theory_done ?? 0) !== 1)}
+				disabled={saving}
+				aria-pressed={data.progress.theory_done === 1}
+				class={[
+					'mt-3 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-[15px] font-bold transition active:scale-[0.99] disabled:opacity-60',
+					data.progress.theory_done === 1
+						? 'bg-emerald-500 text-white hover:bg-emerald-600'
+						: 'bg-brand-500 text-white hover:bg-brand-600'
+				]}
 			>
-				{saving ? 'Mentés…' : 'Elmélet kész'}
+				{#if data.progress.theory_done === 1}
+					<CheckCircle2 size={18} /> Megjelölve készként
+				{:else}
+					{saving ? 'Mentés…' : 'Megjelölés készként'}
+				{/if}
 			</button>
-			{#if !auth.user}
-				<p class="mt-2 text-center text-[13px] text-stone-500 dark:text-stone-400">Olvasni bejelentkezés nélkül is tudsz; a mentéshez lépj be.</p>
-			{/if}
 		{/if}
-	{:else if tab === 'cards'}
-		<section class="mt-3 rounded-2xl border border-stone-200 bg-white p-5 text-center sm:p-6 dark:border-white/10 dark:bg-stone-900">
-			<span class="mx-auto grid size-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300">
-				<Layers size={26} />
-			</span>
-			<h2 class="font-display mt-3 text-[20px] font-bold text-ink-900 dark:text-white">Kártyák</h2>
-			<p class="mx-auto mt-1 max-w-xs text-sm text-stone-500 tabular-nums dark:text-stone-400">
-				{data.cards.length} kártya
-			</p>
-			{#if data.progress.cards_done === 1}
-				<p class="mt-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">✓ Már végigmentél ezen a paklin</p>
-			{/if}
-			<button
-				onclick={startCards}
-				class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 py-3 text-[15px] font-bold text-white transition hover:bg-emerald-600 active:scale-[0.99]"
-			>
-				<Play size={18} fill="currentColor" /> Indítás
-			</button>
-		</section>
-	{:else}
-		<section class="mt-3 rounded-2xl border border-stone-200 bg-white p-5 text-center sm:p-6 dark:border-white/10 dark:bg-stone-900">
-			<span class="mx-auto grid size-14 place-items-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-500/20 dark:text-white">
-				<ListChecks size={26} />
-			</span>
-			<h2 class="font-display mt-3 text-[20px] font-bold text-ink-900 dark:text-white">Kvíz</h2>
-			<p class="mx-auto mt-1 max-w-xs text-sm text-stone-500 tabular-nums dark:text-stone-400">
-				{data.quiz.length} feladat
-			</p>
-			{#if data.progress.quiz_best > 0}
-				<p class="mt-2 text-sm font-bold text-emerald-600 dark:text-emerald-300">Legjobb eredmény: {data.progress.quiz_best}%</p>
-			{/if}
-			<button
-				onclick={startQuiz}
-				class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white transition hover:bg-brand-600 active:scale-[0.99]"
-			>
-				<Play size={18} fill="currentColor" /> Indítás
-			</button>
-		</section>
-	{/if}
 {/if}
 
 <style>

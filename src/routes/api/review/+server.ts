@@ -1,5 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, logActivity, nextSrsInterval, requireUser, todayStr } from '$lib/server/db';
+import { CATS } from '$lib/server/study';
 
 // GET /api/review?filter=mind|language|general&topics=id,..&lessons=id,.. — esedékes kártyák.
 export const GET: RequestHandler = async (event) => {
@@ -12,6 +13,11 @@ export const GET: RequestHandler = async (event) => {
 	const limit = Math.max(1, Math.min(100, Number(event.url.searchParams.get('limit') ?? 50) || 50));
 	const topicIds = (event.url.searchParams.get('topics') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 	const lessonIds = (event.url.searchParams.get('lessons') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+	// Presetekhez: tantárgy-kategóriák (az új leckék automatikusan bekerülnek).
+	const catIds = (event.url.searchParams.get('categories') ?? '')
+		.split(',')
+		.map((s) => s.trim())
+		.filter((c) => CATS.includes(c));
 
 	// Ha még semmire nem iratkozott fel: a nyilvános témakörök automatikusan bekerülnek.
 	const n = await db
@@ -37,6 +43,10 @@ export const GET: RequestHandler = async (event) => {
 	if (lessonIds.length > 0) {
 		scopeConds.push(`AND l.id IN (${lessonIds.map(() => '?').join(',')})`);
 		scopeArgs.push(...lessonIds);
+	}
+	if (catIds.length > 0) {
+		scopeConds.push(`AND t.category IN (${catIds.map(() => '?').join(',')})`);
+		scopeArgs.push(...catIds);
 	}
 	const rows = await db
 		.prepare(

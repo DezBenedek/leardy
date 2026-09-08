@@ -2,6 +2,42 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { newId, shuffle } from './db';
 
+/** Tantárgy-kategóriák. A nyelvieknél a type automatikusan 'language'. */
+export const CATS = ['Angol', 'Német', 'Olasz', 'Matek', 'Irodalom', 'Nyelvtan', 'Történelem'];
+export const LANG_CATS = ['Angol', 'Német', 'Olasz'];
+
+export function typeForCategory(category: string): 'language' | 'general' {
+	return LANG_CATS.includes(category) ? 'language' : 'general';
+}
+
+/** "Hogy mondod X-ul" címke a kategóriából (nyelvi dolgozat-generáláshoz). */
+export function langAdverb(category: string): string {
+	if (category === 'Német') return 'németül';
+	if (category === 'Olasz') return 'olaszul';
+	return 'angolul';
+}
+
+/** Csak a témakör szerzője szerkeszthet. */
+export async function isTopicOwner(
+	db: D1Database,
+	topicId: string,
+	userId: string
+): Promise<boolean> {
+	const t = await db
+		.prepare(`SELECT author_id FROM topics WHERE id = ?`)
+		.bind(topicId)
+		.first<{ author_id: string | null }>();
+	return !!t && t.author_id === userId;
+}
+
+export async function topicOfLesson(db: D1Database, lessonId: string): Promise<string | null> {
+	const r = await db
+		.prepare(`SELECT topic_id FROM lessons WHERE id = ?`)
+		.bind(lessonId)
+		.first<{ topic_id: string }>();
+	return r?.topic_id ?? null;
+}
+
 export interface QuizRow {
 	id: string;
 	question_text: string;
@@ -75,13 +111,15 @@ export function hideAnswer(q: QuizQ): Omit<QuizQ, 'correct_answer'> {
 	return rest;
 }
 
-/** Automatikus dolgozat-generálás egy témakör szókincséből/fogalmaiból. */
+/** Automatikus dolgozat-generálás egy témakör szókincséből/fogalmaiból.
+ *  Nyelveknél az irány: magyar kérdés -> idegen válasz. */
 export async function buildAssessmentItems(
 	db: D1Database,
 	assessmentId: string,
 	topicId: string,
 	topicType: string,
-	count: number
+	count: number,
+	langLabel = 'angolul'
 ): Promise<number> {
 	const cards = await db
 		.prepare(
@@ -106,14 +144,28 @@ export async function buildAssessmentItems(
 		});
 	}
 	for (const c of shuffle(cards.results ?? [])) {
-		const distractors = shuffle(backs.filter((b) => b !== c.back_text)).slice(0, 3);
-		const options = shuffle([c.back_text, ...distractors]);
-		items.push({
-			question_text: topicType === 'language' ? `Mit jelent: ${c.front_text}?` : c.front_text,
-			type: 'choice',
-			options_json: JSON.stringify(options),
-			correct_answer: c.back_text
-		});
+		if (topicType === 'language') {
+			// Irány: magyar kérdés -> idegen válasz.
+			const distractors = shuffle(
+				(cards.results ?? []).map((x) => x.front_text).filter((b) => b !== c.front_text)
+			).slice(0, 3);
+			const options = shuffle([c.front_text, ...distractors]);
+			items.push({
+				question_text: `Hogy mondod ${langLabel}: ${c.back_text}?`,
+				type: 'choice',
+				options_json: JSON.stringify(options),
+				correct_answer: c.front_text
+			});
+		} else {
+			const distractors = shuffle(backs.filter((b) => b !== c.back_text)).slice(0, 3);
+			const options = shuffle([c.back_text, ...distractors]);
+			items.push({
+				question_text: c.front_text,
+				type: 'choice',
+				options_json: JSON.stringify(options),
+				correct_answer: c.back_text
+			});
+		}
 	}
 	const picked = shuffle(items).slice(0, Math.max(1, Math.min(count || 10, 50)));
 	let i = 0;

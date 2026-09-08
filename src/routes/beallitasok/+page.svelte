@@ -5,6 +5,7 @@
 		Check,
 		ChevronRight,
 		Info,
+		Layers,
 		LogOut,
 		Moon,
 		Palette,
@@ -19,7 +20,7 @@
 	import { studyApi } from '$lib/study';
 	import { theme, type ThemeChoice } from '$lib/theme.svelte';
 
-	type Sheet = null | 'account' | 'notif' | 'theme' | 'about';
+	type Sheet = null | 'account' | 'notif' | 'theme' | 'cards' | 'about';
 
 	let user = $derived(auth.user);
 	let roleBusy = $state(false);
@@ -43,11 +44,12 @@
 		account: 'Fiók',
 		notif: 'Értesítések',
 		theme: 'Megjelenés',
+		cards: 'Szókártyák',
 		about: 'Névjegy'
 	};
 
 	function loadSettings() {
-		const defaults = { reminder: true, streakWarn: true, sounds: false };
+		const defaults = { reminder: true, streakWarn: true, sounds: false, autoAudio: false };
 		if (!browser) return defaults;
 		try {
 			const raw = localStorage.getItem('leardy-settings');
@@ -70,6 +72,7 @@
 	let notifSummary = $derived(
 		notifOn === 3 ? 'Mind bekapcsolva' : notifOn === 0 ? 'Kikapcsolva' : `${notifOn}/3 bekapcsolva`
 	);
+	let cardsSummary = $derived(settings.autoAudio ? 'Automatikus felolvasás be' : 'Csak gombnyomásra olvas fel');
 	let themeLabel = $derived(
 		theme.choice === 'light' ? 'Világos' : theme.choice === 'dark' ? 'Sötét' : 'Rendszer'
 	);
@@ -140,6 +143,19 @@
 		<span class="min-w-0 flex-1">
 			<span class="block text-[15px] font-bold text-ink-900 dark:text-white">Megjelenés</span>
 			<span class="block truncate text-[13px] text-ink-400 dark:text-stone-500">{themeLabel}</span>
+		</span>
+		<ChevronRight size={19} class="shrink-0 text-stone-300 dark:text-stone-600" />
+	</button>
+	<button
+		onclick={() => (sheet = 'cards')}
+		class="flex w-full items-center gap-3.5 p-4 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:hover:bg-white/5"
+	>
+		<span class={tile}>
+			<Layers size={22} />
+		</span>
+		<span class="min-w-0 flex-1">
+			<span class="block text-[15px] font-bold text-ink-900 dark:text-white">Szókártyák</span>
+			<span class="block truncate text-[13px] text-ink-400 dark:text-stone-500">{cardsSummary}</span>
 		</span>
 		<ChevronRight size={19} class="shrink-0 text-stone-300 dark:text-stone-600" />
 	</button>
@@ -302,6 +318,16 @@
 						</button>
 					</li>
 				{/each}
+			</ul>
+		{:else if sheet === 'cards'}
+			<ul class="mt-2 divide-y divide-stone-100 dark:divide-white/5">
+				<li class="flex items-center gap-3 py-3.5">
+					<div class="min-w-0 flex-1">
+						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Automatikus felolvasás</p>
+						<p class="text-[13px] text-ink-400 dark:text-stone-500">Forgatás után felolvassa az idegen szót</p>
+					</div>
+					<Toggle bind:checked={settings.autoAudio} label="Automatikus felolvasás" />
+				</li>
 			</ul>
 		{:else if sheet === 'about'}
 			<div class="mt-4">

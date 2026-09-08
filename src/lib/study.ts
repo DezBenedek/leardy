@@ -54,6 +54,8 @@ export interface QuizQ {
 	/** match-típusnál a bal oldal (pl. évszám) */
 	left?: string;
 	correct_answer: string;
+	/** Nyers options_json a szerkesztőnek (sorrend/párosítás kanonikus adata). */
+	options_raw?: string;
 }
 
 export interface LessonDetail {
@@ -111,6 +113,16 @@ export interface AssignmentRow {
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+	const method = (init?.method ?? 'GET').toUpperCase();
+	if (method !== 'GET') {
+		try {
+			if (typeof navigator !== 'undefined' && !navigator.onLine) {
+				throw new Error('Offline vagy — csatlakozz a netre, és próbáld újra!');
+			}
+		} catch (e) {
+			if (e instanceof Error && e.message.startsWith('Offline')) throw e;
+		}
+	}
 	const res = await fetch(path, {
 		headers: { 'content-type': 'application/json' },
 		...init
@@ -123,9 +135,63 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export const studyApi = {
 	topics: (q = '') => req<{ topics: Topic[] }>(`/api/topics${q}`),
 	topic: (id: string) =>
-		req<{ topic: Topic; lessons: LessonRow[]; enrolled: boolean }>(
+		req<{ topic: Topic; lessons: LessonRow[]; enrolled: boolean; mine: boolean }>(
 			`/api/topics/${encodeURIComponent(id)}`
 		),
+	updateTopic: (id: string, body: { title?: string; category?: string; is_public?: boolean }) =>
+		req<{ ok: boolean }>(`/api/topics/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(body)
+		}),
+	deleteTopic: (id: string) =>
+		req<{ ok: boolean }>(`/api/topics/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	addLesson: (topicId: string, body: { title: string; description_markdown?: string }) =>
+		req<{ lesson: { id: string; title: string } }>(`/api/topics/${encodeURIComponent(topicId)}/lessons`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
+	updateLesson: (id: string, body: { title?: string; description_markdown?: string }) =>
+		req<{ ok: boolean }>(`/api/lessons/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(body)
+		}),
+	deleteLesson: (id: string) =>
+		req<{ ok: boolean }>(`/api/lessons/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	addCard: (lessonId: string, body: { front_text: string; back_text: string; ipa?: string }) =>
+		req<{ card: { id: string } }>(`/api/lessons/${encodeURIComponent(lessonId)}/cards`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
+	updateCard: (id: string, body: { front_text?: string; back_text?: string; ipa?: string }) =>
+		req<{ ok: boolean }>(`/api/cards/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(body)
+		}),
+	deleteCard: (id: string) =>
+		req<{ ok: boolean }>(`/api/cards/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	addQuestion: (
+		lessonId: string,
+		body: { question_text: string; type: string; options?: string[]; left?: string; correct_answer: string }
+	) =>
+		req<{ question: { id: string } }>(`/api/lessons/${encodeURIComponent(lessonId)}/questions`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
+	updateQuestion: (
+		id: string,
+		body: { question_text?: string; type?: string; options?: string[]; left?: string; correct_answer?: string }
+	) =>
+		req<{ ok: boolean }>(`/api/questions/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(body)
+		}),
+	deleteQuestion: (id: string) =>
+		req<{ ok: boolean }>(`/api/questions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	createDeck: (body: { title: string; category: string }) =>
+		req<{ topic_id: string; lesson_id: string }>(`/api/decks`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
 	enroll: (id: string) =>
 		req<{ ok: boolean }>(`/api/topics/${encodeURIComponent(id)}/enroll`, { method: 'POST' }),
 	exam: (id: string) =>
@@ -133,15 +199,16 @@ export const studyApi = {
 			`/api/topics/${encodeURIComponent(id)}/exam`
 		),
 	lesson: (id: string) => req<LessonDetail>(`/api/lessons/${encodeURIComponent(id)}`),
-	completeLesson: (id: string, body: { kind: 'theory' | 'cards' | 'quiz'; score?: number }) =>
+	completeLesson: (id: string, body: { kind: 'theory' | 'cards' | 'quiz'; score?: number; done?: boolean }) =>
 		req<{ ok: boolean; xp: number; streak: number }>(`/api/lessons/${encodeURIComponent(id)}/complete`, {
 			method: 'POST',
 			body: JSON.stringify(body)
 		}),
-	due: (filter: ReviewFilter, limit = 50, scope?: { topics?: string[]; lessons?: string[] }) => {
+	due: (filter: ReviewFilter, limit = 50, scope?: { topics?: string[]; lessons?: string[]; categories?: string[] }) => {
 		const q = new URLSearchParams({ filter, limit: String(limit) });
 		if (scope?.topics?.length) q.set('topics', scope.topics.join(','));
 		if (scope?.lessons?.length) q.set('lessons', scope.lessons.join(','));
+		if (scope?.categories?.length) q.set('categories', scope.categories.join(','));
 		return req<{ cards: ReviewCard[] }>(`/api/review?${q.toString()}`);
 	},
 	sources: () => req<{ topics: PracticeSource[] }>(`/api/review/sources`),

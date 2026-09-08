@@ -11,9 +11,31 @@
 
 	let { card, isLanguage, onGrade }: Props = $props();
 
+	// Nyelveknél az irány mindig: magyar KÉRDÉS -> idegen VÁLASZ.
+	// (Az adatban front = idegen, back = magyar — itt fordítva mutatjuk.)
+	let q = $derived(isLanguage ? card.back_text : card.front_text);
+	let a = $derived(isLanguage ? card.front_text : card.back_text);
+	let foreign = $derived(card.front_text);
+
 	let flipped = $state(false);
-	let muted = $state(false);
 	const listenOK = canListen();
+
+	/** Automata felolvasás forgatás után — csak ha a Szókártya-beállításban be van kapcsolva. */
+	function autoAudio(): boolean {
+		if (!isLanguage) return false;
+		try {
+			const raw = localStorage.getItem('leardy-settings');
+			if (!raw) return false;
+			return (JSON.parse(raw) as { autoAudio?: boolean }).autoAudio === true;
+		} catch {
+			return false;
+		}
+	}
+
+	function toggleFlip() {
+		flipped = !flipped;
+		if (flipped && autoAudio()) playAudio();
+	}
 
 	// --- Kiejtés-gyakorló drawer ---
 	let pronOpen = $state(false);
@@ -26,8 +48,7 @@
 		try {
 			const h = await listenOnce('en-US');
 			heard = h.trim();
-			const ok =
-				norm(heard).includes(norm(card.front_text)) || norm(card.front_text).includes(norm(heard));
+			const ok = norm(heard).includes(norm(foreign)) || norm(foreign).includes(norm(heard));
 			pronState = ok ? 'good' : 'bad';
 		} catch {
 			pronState = 'bad';
@@ -86,10 +107,7 @@
 		if (dragX > THROW) doGrade(true);
 		else if (dragX < -THROW) doGrade(false);
 		else {
-			if (Math.abs(dragX) < 10) {
-				flipped = !flipped;
-				if (!flipped) playAudio();
-			}
+			if (Math.abs(dragX) < 10) toggleFlip();
 			dragX = 0;
 		}
 	}
@@ -97,8 +115,8 @@
 	let hintOpacity = $derived(Math.min(1, Math.abs(dragX) / THROW));
 
 	function playAudio() {
-		if (!isLanguage || muted) return;
-		speak(card.front_text, 'en-US');
+		if (!isLanguage) return;
+		speak(foreign, 'en-US');
 	}
 </script>
 
@@ -120,7 +138,7 @@
 			if (e.key === 'ArrowLeft') doGrade(false);
 			if (e.key === ' ' || e.key === 'Enter') {
 				e.preventDefault();
-				flipped = !flipped;
+				toggleFlip();
 			}
 		}}
 		class="relative mt-1 h-[46vh] max-h-[440px] min-h-[300px] w-full cursor-grab touch-pan-y [perspective:1200px] active:cursor-grabbing"
@@ -132,17 +150,19 @@
 			style="transform: translateX({dragX}px) rotate({dragX / 18}deg) rotateY({flipped ? 180 : 0}deg)"
 		>
 			<div class="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[28px] border border-stone-200 bg-stone-100 px-6 shadow-sm [backface-visibility:hidden] dark:border-white/10 dark:bg-white/5">
+				<span class="text-[11px] font-extrabold tracking-[0.14em] text-stone-400 uppercase select-none">Kérdés</span>
 				<p class="text-center text-4xl font-extrabold tracking-tight text-ink-900 select-none sm:text-5xl dark:text-white">
-					{card.front_text}
+					{q}
 				</p>
-				{#if card.ipa}
-					<p class="text-base font-medium text-stone-400 select-none dark:text-stone-500">[{card.ipa}]</p>
-				{/if}
 			</div>
 			<div class="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[28px] bg-ink-900 px-6 shadow-sm [backface-visibility:hidden] [transform:rotateY(180deg)] dark:bg-white">
+				<span class="text-[11px] font-extrabold tracking-[0.14em] text-white/50 uppercase select-none dark:text-stone-500">Válasz</span>
 				<p class="text-center text-4xl font-extrabold tracking-tight text-white select-none sm:text-5xl dark:text-ink-900">
-					{card.back_text}
+					{a}
 				</p>
+				{#if isLanguage && card.ipa}
+					<p class="text-base font-medium text-white/60 select-none dark:text-stone-500">[{card.ipa}]</p>
+				{/if}
 			</div>
 		</div>
 		{#if dragX > 12}
@@ -195,7 +215,7 @@
 			Kiejtés gyakorlása
 		</h2>
 		<p class="font-display mt-3 text-[32px] font-extrabold tracking-tight text-brand-600 dark:text-white">
-			{card.front_text}
+			{foreign}
 		</p>
 		{#if card.ipa}
 			<p class="mt-1 text-sm font-medium text-stone-400 dark:text-stone-500">[{card.ipa}]</p>

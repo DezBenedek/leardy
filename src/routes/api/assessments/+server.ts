@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, newId, requireUser } from '$lib/server/db';
-import { buildAssessmentItems } from '$lib/server/study';
+import { buildAssessmentItems, langAdverb } from '$lib/server/study';
 
 // POST /api/assessments — tanár: egyedi dolgozat/házi egy témakör szókincséből, automatikusan generálva.
 export const POST: RequestHandler = async (event) => {
@@ -23,9 +23,9 @@ export const POST: RequestHandler = async (event) => {
 	const title = String(body.title ?? '').trim();
 	if (!topic_id || title.length < 3) return json({ error: 'Témakör és legalább 3 karakteres cím kell.' }, { status: 400 });
 	const topic = await db
-		.prepare(`SELECT id, type FROM topics WHERE id = ?`)
+		.prepare(`SELECT id, type, category FROM topics WHERE id = ?`)
 		.bind(topic_id)
-		.first<{ id: string; type: string }>();
+		.first<{ id: string; type: string; category: string }>();
 	if (!topic) return json({ error: 'Nincs ilyen témakör.' }, { status: 404 });
 	const id = newId();
 	const max_attempts = Math.max(0, Math.min(20, Number(body.max_attempts ?? 0) || 0));
@@ -41,7 +41,7 @@ export const POST: RequestHandler = async (event) => {
 			body.is_exam ? 1 : 0, Date.now()
 		)
 		.run();
-	const n = await buildAssessmentItems(db, id, topic_id, topic.type, Number(body.count ?? 10) || 10);
+	const n = await buildAssessmentItems(db, id, topic_id, topic.type, Number(body.count ?? 10) || 10, langAdverb(topic.category));
 	if (n === 0) {
 		await db.prepare(`DELETE FROM assessments WHERE id = ?`).bind(id).run();
 		return json({ error: 'A témakörben nincs kártya vagy kvíz, amiből generálhatnék.' }, { status: 400 });

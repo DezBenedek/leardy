@@ -78,9 +78,18 @@ export async function get<T>(
 	loadDisk();
 	const now = Date.now();
 	const hit = mem.get(key) ?? disk[key];
+	const offline = browser && typeof navigator !== 'undefined' && !navigator.onLine;
 	if (hit && now - hit.at < ttlMs) {
 		mem.set(key, hit);
 		return { data: hit.data as T, fresh: true };
+	}
+	if (offline) {
+		// Offline: eszünkbe se jut fetch-elni (nincs lógó kérés, nincs hiba-zaj).
+		if (hit) {
+			mem.set(key, hit);
+			return { data: hit.data as T, fresh: false };
+		}
+		throw new Error('Offline vagy — a mentett adatokhoz csatlakozz újra, vagy nyisd meg online egyszer az oldalt.');
 	}
 	if (hit && revalidate) {
 		// Régi adat azonnal + csendes frissítés (a hívó újrahívhatja később).

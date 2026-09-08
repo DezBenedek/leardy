@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-	<title>Témakörök — Leardy</title>
+	<title>Felfedezés — Leardy</title>
 </svelte:head>
 
-<Catalog mode="mine" title="Témakörök" />
+<Catalog mode="new" title="Felfedezés" showBack />

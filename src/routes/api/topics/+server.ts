@@ -1,15 +1,9 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, newId, requireUser } from '$lib/server/db';
+import { CATS, typeForCategory } from '$lib/server/study';
 
-/** Tantárgy-kategóriák. A nyelvieknél a type automatikusan 'language'. */
-const CATS = ['Angol', 'Német', 'Olasz', 'Matek', 'Irodalom', 'Nyelvtan', 'Történelem'];
-const LANG_CATS = ['Angol', 'Német', 'Olasz'];
-
-function typeForCategory(category: string): 'language' | 'general' {
-	return LANG_CATS.includes(category) ? 'language' : 'general';
-}
-
-// GET /api/topics?category=&type=&q= — nyilvános + saját témakörök, darabszámokkal.
+// GET /api/topics?category=&type=&q=&enrolled=only|new — nyilvános + saját témakörök.
+// enrolled=only: csak felvettek · enrolled=new (Felfedezés): publikus, de még fel nem vettek.
 export const GET: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
@@ -18,6 +12,7 @@ export const GET: RequestHandler = async (event) => {
 	const category = event.url.searchParams.get('category') ?? '';
 	const type = event.url.searchParams.get('type') ?? '';
 	const q = (event.url.searchParams.get('q') ?? '').trim();
+	const enrolled = event.url.searchParams.get('enrolled') ?? '';
 
 	const conds: string[] = [];
 	const args: unknown[] = [];
@@ -38,6 +33,16 @@ export const GET: RequestHandler = async (event) => {
 	if (q) {
 		conds.push('t.title LIKE ?');
 		args.push(`%${q}%`);
+	}
+	if (user && enrolled === 'only') {
+		conds.push('EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = ? AND e.topic_id = t.id)');
+		args.push(user.id);
+	} else if (enrolled === 'new') {
+		conds.push('t.is_public = 1');
+		if (user) {
+			conds.push('NOT EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = ? AND e.topic_id = t.id)');
+			args.push(user.id);
+		}
 	}
 	const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 	const rows = await db

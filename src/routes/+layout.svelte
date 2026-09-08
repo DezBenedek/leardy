@@ -8,6 +8,7 @@
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import GlobalPlayer from '$lib/components/GlobalPlayer.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
+	import { online } from '$lib/online.svelte';
 	import { TAB_ORDER } from '$lib/navigation';
 
 	let { children } = $props();
@@ -62,4 +63,13 @@
 
 <AuthDrawer />
 <GlobalPlayer />
+{#if !online.online}
+	<p
+		role="status"
+		class="fixed inset-x-0 top-0 z-[80] px-4 py-2 text-center text-[13px] font-bold text-white"
+		style="background: #b45309; padding-top: max(0.5rem, env(safe-area-inset-top))"
+	>
+		Offline — a mentett adatok látszanak
+	</p>
+{/if}
 <BottomNav />
