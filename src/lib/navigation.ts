@@ -5,10 +5,10 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-	{ href: '/', label: 'Főoldal', tagline: 'Áttekintés és folytatás' },
-	{ href: '/leckek', label: 'Leckék', tagline: 'Lépésről lépésre tananyag' },
-	{ href: '/szokartyak', label: 'Szókártyák', tagline: 'Villámgyors memorizálás' },
-	{ href: '/tanterem', label: 'Tanterem', tagline: 'Élő közös tanulás' }
+	{ href: '/', label: 'Kezdőlap', tagline: 'Áttekintés és folytatás' },
+	{ href: '/tanterem', label: 'Tanterem', tagline: 'Osztályok és dolgozatok' },
+	{ href: '/temakorok', label: 'Témakörök', tagline: 'Könyvtár és felfedezés' },
+	{ href: '/gyakorlas', label: 'Gyakorlás', tagline: 'Napi ismétlések' }
 ];
 
 /** Fülek sorrendje — az oldalátmenet iránya ebből jön. */

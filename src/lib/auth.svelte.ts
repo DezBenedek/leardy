@@ -4,6 +4,9 @@ export interface User {
 	id?: string;
 	name: string;
 	email: string;
+	role?: string;
+	xp?: number;
+	streak?: number;
 }
 
 export type AuthResult = { ok: true } | { ok: false; error: string };
@@ -15,6 +18,9 @@ interface ApiUser {
 	id: string;
 	name: string;
 	email: string;
+	role?: string;
+	xp?: number;
+	streak?: number;
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<{ status: number; data: T } | null> {

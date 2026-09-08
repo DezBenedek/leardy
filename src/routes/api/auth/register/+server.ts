@@ -39,5 +39,5 @@ export const POST: RequestHandler = async (event) => {
 		.run();
 	await createSession(event, db, id);
 
-	return json({ user: { id, name, email } }, { status: 201 });
+	return json({ user: { id, name, email, role: 'student', xp: 0, streak: 0 } }, { status: 201 });
 };

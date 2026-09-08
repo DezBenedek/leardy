@@ -16,11 +16,26 @@
 	import Toggle from '$lib/components/Toggle.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { authUI } from '$lib/auth-ui.svelte';
+	import { studyApi } from '$lib/study';
 	import { theme, type ThemeChoice } from '$lib/theme.svelte';
 
 	type Sheet = null | 'account' | 'notif' | 'theme' | 'about';
 
 	let user = $derived(auth.user);
+	let roleBusy = $state(false);
+
+	async function setRole(role: string) {
+		if (roleBusy) return;
+		roleBusy = true;
+		try {
+			await studyApi.setRole(role);
+			await auth.refresh();
+		} catch {
+			// hiba esetén marad a régi szerep
+		} finally {
+			roleBusy = false;
+		}
+	}
 	let initial = $derived(user?.name.trim().charAt(0).toUpperCase() ?? '');
 	let sheet = $state<Sheet>(null);
 
@@ -162,6 +177,37 @@
 							<p class="truncate text-[13px] text-ink-400 dark:text-stone-500">{user.email}</p>
 						</div>
 					</div>
+					<div class="mt-4 grid grid-cols-2 gap-2" aria-label="Szerep">
+						<button
+							onclick={() => setRole('student')}
+							disabled={roleBusy}
+							aria-pressed={(user.role ?? 'student') === 'student'}
+							class={[
+								'rounded-full px-4 py-2.5 text-sm font-bold transition disabled:opacity-60',
+								(user.role ?? 'student') === 'student'
+									? 'bg-brand-500 text-white'
+									: 'border border-stone-200 text-ink-600 hover:bg-stone-50 dark:border-white/10 dark:text-stone-300'
+							]}
+						>
+							Diák
+						</button>
+						<button
+							onclick={() => setRole('teacher')}
+							disabled={roleBusy}
+							aria-pressed={user.role === 'teacher'}
+							class={[
+								'rounded-full px-4 py-2.5 text-sm font-bold transition disabled:opacity-60',
+								user.role === 'teacher'
+									? 'bg-brand-500 text-white'
+									: 'border border-stone-200 text-ink-600 hover:bg-stone-50 dark:border-white/10 dark:text-stone-300'
+							]}
+						>
+							Tanár
+						</button>
+					</div>
+					<p class="mt-2 text-[13px] text-ink-400 dark:text-stone-500">
+						Tanárként osztályt hozhatsz létre, és dolgozatot adhatsz ki a tanteremben.
+					</p>
 					<button
 						onclick={() => {
 							auth.logout();

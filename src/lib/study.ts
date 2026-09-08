@@ -1,0 +1,288 @@
+// Megosztott típusok + API kliens + apró helperek a Topic->Lesson rendszerhez.
+
+export type TopicType = 'language' | 'general';
+export type ReviewFilter = 'mind' | 'language' | 'general';
+
+export interface Topic {
+	id: string;
+	title: string;
+	category: string;
+	type: TopicType;
+	is_public: number;
+	enrolled?: number;
+	lessons?: number;
+	cards?: number;
+}
+
+export interface LessonRow {
+	id: string;
+	topic_id: string;
+	order_index: number;
+	title: string;
+	theory_done?: number;
+	cards_done?: number;
+	quiz_done?: number;
+	quiz_best?: number;
+}
+
+export interface Card {
+	id: string;
+	lesson_id: string;
+	front_text: string;
+	back_text: string;
+	audio_url: string | null;
+	image_url: string | null;
+	ipa: string | null;
+}
+
+export interface QuizQ {
+	id: string;
+	question_text: string;
+	type: string;
+	options: string[];
+	/** match-típusnál a bal oldal (pl. évszám) */
+	left?: string;
+	correct_answer: string;
+}
+
+export interface LessonDetail {
+	lesson: { id: string; topic_id: string; title: string; description_markdown: string };
+	topic: { id: string; title: string; type: TopicType; category: string };
+	cards: Card[];
+	quiz: QuizQ[];
+	progress: { theory_done: number; cards_done: number; quiz_done: number; quiz_best: number };
+}
+
+export interface ReviewCard extends Card {
+	topic_id: string;
+	topic_title: string;
+	topic_type: TopicType;
+	ease_interval: number;
+	status: string;
+}
+
+export interface DayActivity {
+	day: string;
+	xp: number;
+	reviews: number;
+}
+
+export interface Stats {
+	xp: number;
+	streak: number;
+	role: string;
+	week: DayActivity[];
+	due: { mind: number; language: number; general: number };
+	lessonsDone: number;
+	lastLesson: { id: string; title: string; topic_title: string } | null;
+}
+
+export interface Classroom {
+	id: string;
+	name: string;
+	code: string;
+	mine?: number;
+	members?: number;
+}
+
+export interface AssignmentRow {
+	id: string;
+	title: string;
+	classroom_name: string;
+	due_date: number;
+	time_limit_mins: number;
+	max_attempts: number;
+	is_exam: number;
+	feedback_delayed: number;
+	attempts: number;
+	submitted: number;
+	best: number | null;
+}
+
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+	const res = await fetch(path, {
+		headers: { 'content-type': 'application/json' },
+		...init
+	});
+	const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+	if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Hiba történt.');
+	return data as T;
+}
+
+export const studyApi = {
+	topics: (q = '') => req<{ topics: Topic[] }>(`/api/topics${q}`),
+	topic: (id: string) =>
+		req<{ topic: Topic; lessons: LessonRow[]; enrolled: boolean }>(
+			`/api/topics/${encodeURIComponent(id)}`
+		),
+	enroll: (id: string) =>
+		req<{ ok: boolean }>(`/api/topics/${encodeURIComponent(id)}/enroll`, { method: 'POST' }),
+	exam: (id: string) =>
+		req<{ topic: { title: string; type: TopicType }; quiz: QuizQ[] }>(
+			`/api/topics/${encodeURIComponent(id)}/exam`
+		),
+	lesson: (id: string) => req<LessonDetail>(`/api/lessons/${encodeURIComponent(id)}`),
+	completeLesson: (id: string, body: { kind: 'theory' | 'cards' | 'quiz'; score?: number }) =>
+		req<{ ok: boolean; xp: number; streak: number }>(`/api/lessons/${encodeURIComponent(id)}/complete`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
+	due: (filter: ReviewFilter, limit = 50) =>
+		req<{ cards: ReviewCard[] }>(`/api/review?filter=${filter}&limit=${limit}`),
+	grade: (flashcard_id: string, known: boolean, cram = false) =>
+		req<{ ok: boolean; xp: number; streak: number }>(`/api/review`, {
+			method: 'POST',
+			body: JSON.stringify({ flashcard_id, known, cram })
+		}),
+	stats: () => req<Stats>(`/api/stats`),
+	classrooms: () => req<{ classrooms: Classroom[] }>(`/api/classrooms`),
+	createClassroom: (name: string) =>
+		req<{ classroom: Classroom }>(`/api/classrooms`, {
+			method: 'POST',
+			body: JSON.stringify({ name })
+		}),
+	joinClassroom: (code: string) =>
+		req<{ ok: boolean }>(`/api/classrooms/join`, { method: 'POST', body: JSON.stringify({ code }) }),
+	classroom: (id: string) =>
+		req<{ classroom: Classroom; assignments: AssignmentRow[]; members: { name: string }[] }>(
+			`/api/classrooms/${encodeURIComponent(id)}`
+		),
+	assignments: () => req<{ assignments: AssignmentRow[] }>(`/api/assignments`),
+	buildAssessment: (body: {
+		topic_id: string;
+		title: string;
+		max_attempts: number;
+		time_limit_mins: number;
+		shuffle: boolean;
+		feedback_delayed: boolean;
+		is_exam: boolean;
+		count: number;
+	}) => req<{ assessment: { id: string } }>(`/api/assessments`, { method: 'POST', body: JSON.stringify(body) }),
+	assign: (body: { assessment_id: string; classroom_id: string; due_date: number }) =>
+		req<{ assignment: { id: string } }>(`/api/assignments`, { method: 'POST', body: JSON.stringify(body) }),
+	startSubmission: (assignmentId: string) =>
+		req<{ items: QuizQ[]; submission_id: string; started_at: number; time_limit_mins: number; title: string }>(
+			`/api/assignments/${encodeURIComponent(assignmentId)}/start`,
+			{ method: 'POST' }
+		),
+	submitAssignment: (assignmentId: string, body: { submission_id: string; answers: Record<string, string> }) =>
+		req<{ score: number; total: number; delayed: boolean; results?: { id: string; correct: boolean; answer: string }[] }>(
+			`/api/assignments/${encodeURIComponent(assignmentId)}/submit`,
+			{ method: 'POST', body: JSON.stringify(body) }
+		),
+	setRole: (role: string) =>
+		req<{ ok: boolean; role: string }>(`/api/me/role`, { method: 'POST', body: JSON.stringify({ role }) })
+};
+
+/** Nagyon kis markdown-lite: címsor, félkövér, lista, idézet, bekezdés. XSS-biztos (escape-el). */
+export function renderMarkdown(src: string): string {
+	const esc = src
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
+	const inline = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>');
+	const lines = esc.split('\n');
+	let html = '';
+	let inList = false;
+	for (const line of lines) {
+		if (line.startsWith('# ')) {
+			if (inList) { html += '</ul>'; inList = false; }
+			html += `<h3>${inline(line.slice(2))}</h3>`;
+		} else if (line.startsWith('- ')) {
+			if (!inList) { html += '<ul>'; inList = true; }
+			html += `<li>${inline(line.slice(2))}</li>`;
+		} else if (line.startsWith('> ')) {
+			if (inList) { html += '</ul>'; inList = false; }
+			html += `<blockquote>${inline(line.slice(2))}</blockquote>`;
+		} else if (line.trim() === '') {
+			if (inList) { html += '</ul>'; inList = false; }
+		} else {
+			if (inList) { html += '</ul>'; inList = false; }
+			html += `<p>${inline(line)}</p>`;
+		}
+	}
+	if (inList) html += '</ul>';
+	return html;
+}
+
+// ---------- Beszéd (nyelvi témakörök) ----------
+
+export function speak(text: string, lang = 'en-US'): void {
+	try {
+		if (!('speechSynthesis' in window)) return;
+		window.speechSynthesis.cancel();
+		const u = new SpeechSynthesisUtterance(text);
+		u.lang = lang;
+		u.rate = 0.9;
+		window.speechSynthesis.speak(u);
+	} catch {
+		// nincs hang: csendben kihagyjuk
+	}
+}
+
+export function canListen(): boolean {
+	try {
+		return typeof window !== 'undefined' &&
+			!!((window as unknown as Record<string, unknown>).SpeechRecognition ||
+				(window as unknown as Record<string, unknown>).webkitSpeechRecognition);
+	} catch {
+		return false;
+	}
+}
+
+/** Egyszeri kiejtés-ellenőrzés: a felismert szöveg tartalmazza-e a célt (normalizálva). */
+export function listenOnce(lang = 'en-US', timeoutMs = 8000): Promise<string> {
+	return new Promise((resolve, reject) => {
+		try {
+			const W = window as unknown as Record<string, new () => {
+				lang: string; interimResults: boolean; maxAlternatives: number;
+				onresult: ((e: { results: { [i: number]: { [j: number]: { transcript: string } } } }) => void) | null;
+				onerror: ((e: unknown) => void) | null;
+				onend: (() => void) | null;
+				start: () => void; stop: () => void;
+			}>;
+			const Ctor = W.SpeechRecognition ?? W.webkitSpeechRecognition;
+			if (!Ctor) { reject(new Error('no-sr')); return; }
+			const rec = new Ctor();
+			rec.lang = lang;
+			rec.interimResults = false;
+			rec.maxAlternatives = 3;
+			let done = false;
+			const timer = window.setTimeout(() => {
+				if (!done) { done = true; try { rec.stop(); } catch { /* noop */ } reject(new Error('timeout')); }
+			}, timeoutMs);
+			rec.onresult = (e) => {
+				if (done) return;
+				done = true;
+				window.clearTimeout(timer);
+				try {
+					const alts = e.results[0];
+					let best = '';
+					for (let i = 0; i < 3; i++) {
+						try {
+							const t = alts[i]?.transcript ?? '';
+							if (t.length > best.length) best = t;
+						} catch { /* noop */ }
+					}
+					resolve(best);
+				} catch {
+					reject(new Error('parse'));
+				}
+				try { rec.stop(); } catch { /* noop */ }
+			};
+			rec.onerror = (e) => {
+				if (!done) { done = true; window.clearTimeout(timer); reject(new Error('speech')); }
+			};
+			rec.onend = () => {
+				if (!done) { done = true; window.clearTimeout(timer); reject(new Error('empty')); }
+			};
+			rec.start();
+		} catch {
+			reject(new Error('no-sr'));
+		}
+	});
+}
+
+export function norm(s: string): string {
+	return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}

@@ -3,19 +3,19 @@
 	import { auth } from '$lib/auth.svelte';
 	import { authUI } from '$lib/auth-ui.svelte';
 	import { NAV_ITEMS, isActive } from '$lib/navigation';
-	import { BookOpenText, Flame, House, Layers, Users } from '@lucide/svelte';
+	import { Flame, House, Layers, LibraryBig, Users } from '@lucide/svelte';
 	import Logo from './Logo.svelte';
 
 	const icons: Record<string, typeof House> = {
 		'/': House,
-		'/leckek': BookOpenText,
-		'/szokartyak': Layers,
-		'/tanterem': Users
+		'/tanterem': Users,
+		'/temakorok': LibraryBig,
+		'/gyakorlas': Layers
 	};
 
 	let pathname = $derived(page.url.pathname);
 	let user = $derived(auth.user);
-	let items = $derived(user ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.href !== '/tanterem'));
+	let items = $derived(NAV_ITEMS);
 	let initial = $derived(user?.name.trim().charAt(0).toUpperCase() ?? '');
 </script>
 
@@ -72,7 +72,7 @@
 				</div>
 				<p class="mt-2 text-xs text-ink-600 dark:text-stone-400">Még 5 perc a mai célhoz.</p>
 				<a
-					href="/szokartyak"
+					href="/gyakorlas"
 					class="mt-3 block rounded-full bg-brand-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-600"
 				>
 					Gyakorlás

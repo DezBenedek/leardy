@@ -1,18 +1,17 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { auth } from '$lib/auth.svelte';
 	import { NAV_ITEMS, isActive } from '$lib/navigation';
-	import { BookOpenText, House, Layers, Users } from '@lucide/svelte';
+	import { House, Layers, LibraryBig, Users } from '@lucide/svelte';
 
 	const icons: Record<string, typeof House> = {
 		'/': House,
-		'/leckek': BookOpenText,
-		'/szokartyak': Layers,
-		'/tanterem': Users
+		'/tanterem': Users,
+		'/temakorok': LibraryBig,
+		'/gyakorlas': Layers
 	};
 
 	let pathname = $derived(page.url.pathname);
-	let items = $derived(auth.user ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.href !== '/tanterem'));
+	let items = $derived(NAV_ITEMS);
 </script>
 
 <nav class="fixed inset-x-0 bottom-0 z-40 lg:hidden" aria-label="Mobil navigáció">

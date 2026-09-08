@@ -19,7 +19,11 @@ export const POST: RequestHandler = async (event) => {
 		return json({ error: 'Add meg az e-mail címed és a jelszavad.' }, { status: 400 });
 
 	const found = await db
-		.prepare('SELECT id, name, email, pass_hash, salt FROM users WHERE email = ?')
+		.prepare(
+			`SELECT id, name, email, pass_hash, salt,
+				COALESCE(role, 'student') AS role, COALESCE(xp, 0) AS xp, COALESCE(streak, 0) AS streak
+			 FROM users WHERE email = ?`
+		)
 		.bind(email)
 		.first<DbUser>();
 	if (!found) return json({ error: 'Nincs fiók ezzel az e-mail címmel.' }, { status: 401 });
