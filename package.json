@@ -3,6 +3,7 @@
 	"version": "0.0.1",
 	"private": true,
 	"scripts": {
+		"predev": "wrangler d1 migrations apply leardy-db --local || true",
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",

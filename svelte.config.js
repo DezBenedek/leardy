@@ -9,6 +9,12 @@ const config = {
 			routes: {
 				include: ['/*'],
 				exclude: ['<all>']
+			},
+			// Lokális D1 perzisztencia: a `vite dev` ugyanoda írja az adatot,
+			// ahova a `wrangler d1 ... --local` is (.wrangler/state/v3),
+			// ezért újraindítás után is megmarad minden.
+			platformProxy: {
+				persist: true
 			}
 		}),
 		alias: {

@@ -1,26 +1,13 @@
 <script lang="ts">
 	import { BookOpenText, CheckCircle2, Circle, Lock } from '@lucide/svelte';
+	import { language } from '$lib/language.svelte';
+	import { LANGUAGES } from '$lib/languages';
+	import { CONTENT } from '$lib/content';
 
-	const chapters = [
-		{
-			title: '1. fejezet · Alapok',
-			desc: 'Köszönések, bemutatkozás, alap mondatszerkezetek.',
-			lessons: [
-				{ title: 'Köszönések és bemutatkozás', meta: '5 perc · kész', done: true },
-				{ title: 'Alap mondatszerkezetek', meta: '6 perc · 68%-nál tartasz', done: false, current: true },
-				{ title: 'Kérdések és válaszok', meta: '5 perc', done: false, locked: true }
-			]
-		},
-		{
-			title: '2. fejezet · Mindennapok',
-			desc: 'Család, munka, vásárlás, időpontok.',
-			lessons: [
-				{ title: 'Család és barátok', meta: '6 perc', done: false, locked: true },
-				{ title: 'Napirend és idő', meta: '7 perc', done: false, locked: true },
-				{ title: 'Vásárlás és étterem', meta: '6 perc', done: false, locked: true }
-			]
-		}
-	];
+	let content = $derived(CONTENT[language.code]);
+	let langName = $derived(LANGUAGES.find((l) => l.code === language.code)?.name ?? '');
+	let stats = $derived(content.stats);
+	let pct = $derived(Math.round((stats.lessonsDone / stats.lessonsTotal) * 100));
 </script>
 
 <svelte:head>
@@ -33,17 +20,19 @@
 			<BookOpenText size={22} />
 		</span>
 		<div>
-			<h1 class="text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">Leckék</h1>
-			<p class="text-sm text-ink-600 dark:text-stone-400">12 / 40 lecke kész</p>
+			<h1 class="text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">Leckék · {langName}</h1>
+			<p class="text-sm text-ink-600 dark:text-stone-400">
+				{stats.lessonsDone} / {stats.lessonsTotal} lecke kész
+			</p>
 		</div>
 	</div>
 	<div class="mt-4 h-1.5 overflow-hidden rounded-full bg-stone-100 dark:bg-white/10">
-		<div class="h-full w-[30%] rounded-full bg-brand-500"></div>
+		<div class="h-full rounded-full bg-brand-500" style="width: {pct}%"></div>
 	</div>
 </section>
 
 <div class="mt-3 space-y-3">
-	{#each chapters as ch (ch.title)}
+	{#each content.chapters as ch (ch.title)}
 		<section class="rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 dark:border-white/10 dark:bg-stone-900">
 			<h2 class="text-[16px] font-bold text-ink-900 dark:text-white">{ch.title}</h2>
 			<p class="mt-0.5 text-sm text-ink-600 dark:text-stone-400">{ch.desc}</p>

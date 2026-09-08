@@ -1,11 +1,12 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { createSession, getDb, hashPassword, makeSalt, publicUser } from '$lib/server/db';
+import { createSession, ensureAuthSchema, getDb, hashPassword, makeSalt } from '$lib/server/db';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export const POST: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
+	await ensureAuthSchema(db);
 
 	let body: { name?: unknown; email?: unknown; password?: unknown };
 	try {

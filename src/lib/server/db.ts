@@ -27,6 +27,36 @@ export function getDb(event: RequestEvent): D1Database | null {
 	}
 }
 
+/**
+ * Önhelyreállító séma: ha a lokális D1 fájl friss/wipelt (.wrangler/state törlődött),
+ * a táblák akkor is létrejönnek, nem kell kézzel migrálni dev-ben.
+ * A CREATE TABLE IF NOT EXISTS idempotens, élesben is biztonságos.
+ */
+export async function ensureAuthSchema(db: D1Database): Promise<void> {
+	await db.batch([
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS users (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				email TEXT NOT NULL UNIQUE,
+				pass_hash TEXT NOT NULL,
+				salt TEXT NOT NULL,
+				created_at INTEGER NOT NULL
+			)`
+		),
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS sessions (
+				token TEXT PRIMARY KEY,
+				user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				created_at INTEGER NOT NULL,
+				expires_at INTEGER NOT NULL
+			)`
+		),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`)
+	]);
+}
+
 export function makeSalt(): string {
 	const bytes = crypto.getRandomValues(new Uint8Array(16));
 	return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
