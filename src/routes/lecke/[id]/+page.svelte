@@ -174,9 +174,9 @@
 			<span class="mx-auto grid size-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300">
 				<Layers size={26} />
 			</span>
-			<h2 class="font-display mt-3 text-[20px] font-bold text-ink-900 dark:text-white">Kártyázás teljes képernyőn</h2>
-			<p class="mx-auto mt-1 max-w-xs text-sm text-stone-500 dark:text-stone-400">
-				{data.cards.length} kártya{#if isLang} · audió + kiejtésellenőrzés{/if} · húzd jobbra, ha tudod, balra, ha nem.
+			<h2 class="font-display mt-3 text-[20px] font-bold text-ink-900 dark:text-white">Kártyák</h2>
+			<p class="mx-auto mt-1 max-w-xs text-sm text-stone-500 tabular-nums dark:text-stone-400">
+				{data.cards.length} kártya
 			</p>
 			{#if data.progress.cards_done === 1}
 				<p class="mt-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">✓ Már végigmentél ezen a paklin</p>
@@ -193,9 +193,9 @@
 			<span class="mx-auto grid size-14 place-items-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-500/20 dark:text-white">
 				<ListChecks size={26} />
 			</span>
-			<h2 class="font-display mt-3 text-[20px] font-bold text-ink-900 dark:text-white">Kvíz teljes képernyőn</h2>
-			<p class="mx-auto mt-1 max-w-xs text-sm text-stone-500 dark:text-stone-400">
-				{data.quiz.length} feladat · feleletválasztós, párosítós, sorrendes, igaz/hamis, beírós.
+			<h2 class="font-display mt-3 text-[20px] font-bold text-ink-900 dark:text-white">Kvíz</h2>
+			<p class="mx-auto mt-1 max-w-xs text-sm text-stone-500 tabular-nums dark:text-stone-400">
+				{data.quiz.length} feladat
 			</p>
 			{#if data.progress.quiz_best > 0}
 				<p class="mt-2 text-sm font-bold text-emerald-600 dark:text-emerald-300">Legjobb eredmény: {data.progress.quiz_best}%</p>

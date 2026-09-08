@@ -102,7 +102,7 @@
 <svelte:window onkeydown={render ? onKey : undefined} />
 
 {#if render}
-	<div class="fixed inset-0 z-50" role="presentation">
+	<div class="fixed inset-0 z-[70]" role="presentation">
 		<button
 			type="button"
 			tabindex="-1"

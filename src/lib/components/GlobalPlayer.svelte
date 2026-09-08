@@ -169,8 +169,9 @@
 				</div>
 			{/if}
 
-			<div class="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4 pt-4 pb-10 sm:px-6">
+			<div class="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-y-auto px-4 pt-4 pb-10 sm:px-6">
 				{#if session.kind === 'cards'}
+					<div class="m-auto w-full">
 					{#if cardsDone}
 						<section class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-8 text-center dark:border-emerald-500/30 dark:bg-emerald-500/10">
 							<p class="font-display text-[24px] font-extrabold text-emerald-800 dark:text-emerald-200">Kész! ({graded} értékelés)</p>
@@ -183,13 +184,14 @@
 							</button>
 						</section>
 					{:else if card}
-						<p class="mb-1 text-xs font-semibold text-ink-400 dark:text-stone-500">
+						<p class="mb-1 text-xs font-semibold text-ink-400 tabular-nums dark:text-stone-500">
 							{Math.min(idx + 1, queue.length)} / {queue.length}
 						</p>
 						{#key card.id + '-' + idx}
 							<FlashcardPlayer card={card} isLanguage={cardIsLang} onGrade={grade} />
 						{/key}
 					{/if}
+					</div>
 				{:else}
 					<QuizPlayer
 						questions={session.questions}
@@ -198,14 +200,6 @@
 						forceDone={forceDone}
 						onFinish={finishQuiz}
 					/>
-					{#if session.reveal}
-						<button
-							onclick={() => player.close()}
-							class="mt-4 w-full rounded-full border border-stone-300 py-3 text-[15px] font-bold text-ink-600 transition hover:bg-stone-50 dark:border-white/15 dark:text-stone-300"
-						>
-							Bezárás
-						</button>
-					{/if}
 				{/if}
 			</div>
 		</div>

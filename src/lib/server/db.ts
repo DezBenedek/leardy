@@ -291,9 +291,16 @@ export async function requireUser(
 /** Ismétlési intervallumok napokban: Tudom -> továbblép, Nem tudom -> vissza 1-re. */
 export const SRS_INTERVALS = [1, 3, 7, 14, 30] as const;
 
+/** Nap-határ magyar idő szerint — devben és Cloudflare Workersen (UTC) is ugyanaz. */
+const HU_DAY_FMT = new Intl.DateTimeFormat('en-CA', {
+	timeZone: 'Europe/Budapest',
+	year: 'numeric',
+	month: '2-digit',
+	day: '2-digit'
+});
+
 export function todayStr(offsetDays = 0): string {
-	const d = new Date(Date.now() + offsetDays * 24 * 3600 * 1000);
-	return d.toISOString().slice(0, 10);
+	return HU_DAY_FMT.format(new Date(Date.now() + offsetDays * 24 * 3600 * 1000));
 }
 
 export function nextSrsInterval(current: number, known: boolean): number {

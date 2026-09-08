@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Check, Mic, RotateCw, Volume2, X } from '@lucide/svelte';
+	import { Check, Mic, Volume2, X } from '@lucide/svelte';
+	import Drawer from '$lib/components/Drawer.svelte';
 	import { canListen, listenOnce, norm, speak, type Card } from '$lib/study';
 
 	interface Props {
@@ -11,10 +12,31 @@
 	let { card, isLanguage, onGrade }: Props = $props();
 
 	let flipped = $state(false);
-	let micState = $state<'idle' | 'listening' | 'good' | 'bad'>('idle');
-	let micMsg = $state('');
 	let muted = $state(false);
 	const listenOK = canListen();
+
+	// --- Kiejtés-gyakorló drawer ---
+	let pronOpen = $state(false);
+	let pronState = $state<'listening' | 'good' | 'bad'>('listening');
+	let heard = $state('');
+
+	async function listen() {
+		pronState = 'listening';
+		heard = '';
+		try {
+			const h = await listenOnce('en-US');
+			heard = h.trim();
+			const ok =
+				norm(heard).includes(norm(card.front_text)) || norm(card.front_text).includes(norm(heard));
+			pronState = ok ? 'good' : 'bad';
+		} catch {
+			pronState = 'bad';
+		}
+	}
+
+	$effect(() => {
+		if (pronOpen) void listen();
+	});
 
 	// --- Húzás (swipe): jobbra = Tudom, balra = Nem tudom ---
 	const THROW = 90;
@@ -22,12 +44,9 @@
 	let dragging = $state(false);
 	let startX = 0;
 	let startY = 0;
-	let horizontal = false;
 
 	function reset() {
 		flipped = false;
-		micState = 'idle';
-		micMsg = '';
 		dragX = 0;
 		dragging = false;
 	}
@@ -40,7 +59,6 @@
 	function onDown(e: PointerEvent) {
 		if (e.pointerType === 'mouse' && e.button !== 0) return;
 		dragging = true;
-		horizontal = false;
 		startX = e.clientX;
 		startY = e.clientY;
 		dragX = 0;
@@ -55,11 +73,10 @@
 		if (!dragging) return;
 		const dx = e.clientX - startX;
 		const dy = e.clientY - startY;
-		if (!horizontal && Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx)) {
+		if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx)) {
 			dragging = false; // függőleges görgetésé a pálya
 			return;
 		}
-		horizontal = true;
 		dragX = dx;
 	}
 
@@ -69,7 +86,10 @@
 		if (dragX > THROW) doGrade(true);
 		else if (dragX < -THROW) doGrade(false);
 		else {
-			if (Math.abs(dragX) < 10) flipped = !flipped;
+			if (Math.abs(dragX) < 10) {
+				flipped = !flipped;
+				if (!flipped) playAudio();
+			}
 			dragX = 0;
 		}
 	}
@@ -80,28 +100,10 @@
 		if (!isLanguage || muted) return;
 		speak(card.front_text, 'en-US');
 	}
-
-	async function checkPronunciation() {
-		if (micState === 'listening') return;
-		micState = 'listening';
-		micMsg = 'Hallgatlak… mondd ki a kártyát!';
-		try {
-			const heard = await listenOnce('en-US');
-			const ok = norm(heard).includes(norm(card.front_text)) || norm(card.front_text).includes(norm(heard));
-			micState = ok ? 'good' : 'bad';
-			micMsg = ok ? `Szép! („${heard.trim()}")` : `Ezt hallottam: „${heard.trim()}” — próbáld újra!`;
-		} catch {
-			micState = 'bad';
-			micMsg = 'Nem hallottalak — ellenőrizd a mikrofont, és próbáld újra!';
-		}
-	}
 </script>
 
 <div>
-	<div class="flex items-center justify-between text-xs font-semibold">
-		<span class="text-ink-400 dark:text-stone-500">Húzd jobbra, ha tudod 👉 · balra, ha nem 👈</span>
-	</div>
-	<!-- Húzható kártya -->
+	<!-- Nagy húzható kártya -->
 	<div
 		role="button"
 		tabindex="0"
@@ -116,9 +118,12 @@
 		onkeydown={(e) => {
 			if (e.key === 'ArrowRight') doGrade(true);
 			if (e.key === 'ArrowLeft') doGrade(false);
-			if (e.key === ' ' || e.key === 'Enter') flipped = !flipped;
+			if (e.key === ' ' || e.key === 'Enter') {
+				e.preventDefault();
+				flipped = !flipped;
+			}
 		}}
-		class="relative mt-3 aspect-[8/5] w-full cursor-grab touch-pan-y [perspective:1200px] active:cursor-grabbing"
+		class="relative mt-1 h-[46vh] max-h-[440px] min-h-[300px] w-full cursor-grab touch-pan-y [perspective:1200px] active:cursor-grabbing"
 	>
 		<div
 			class="absolute inset-0 [transform-style:preserve-3d]"
@@ -126,25 +131,20 @@
 			class:duration-200={!dragging}
 			style="transform: translateX({dragX}px) rotate({dragX / 18}deg) rotateY({flipped ? 180 : 0}deg)"
 		>
-			<div class="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-2xl border border-stone-200 bg-stone-100 [backface-visibility:hidden] dark:border-white/10 dark:bg-white/5">
-				<p class="px-4 text-center text-3xl font-extrabold tracking-tight text-ink-900 select-none sm:text-4xl dark:text-white">
+			<div class="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[28px] border border-stone-200 bg-stone-100 px-6 shadow-sm [backface-visibility:hidden] dark:border-white/10 dark:bg-white/5">
+				<p class="text-center text-4xl font-extrabold tracking-tight text-ink-900 select-none sm:text-5xl dark:text-white">
 					{card.front_text}
 				</p>
 				{#if card.ipa}
-					<p class="text-sm font-medium text-stone-400 select-none dark:text-stone-500">[{card.ipa}]</p>
+					<p class="text-base font-medium text-stone-400 select-none dark:text-stone-500">[{card.ipa}]</p>
 				{/if}
-				<p class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-ink-400 select-none dark:text-stone-500">
-					<RotateCw size={13} /> Koppints a jelentésért
-				</p>
 			</div>
-			<div class="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-2xl bg-ink-900 [backface-visibility:hidden] [transform:rotateY(180deg)] dark:bg-white">
-				<p class="px-4 text-center text-3xl font-extrabold tracking-tight text-white select-none sm:text-4xl dark:text-ink-900">
+			<div class="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[28px] bg-ink-900 px-6 shadow-sm [backface-visibility:hidden] [transform:rotateY(180deg)] dark:bg-white">
+				<p class="text-center text-4xl font-extrabold tracking-tight text-white select-none sm:text-5xl dark:text-ink-900">
 					{card.back_text}
 				</p>
-				<p class="mt-1 text-xs font-medium text-white/60 select-none dark:text-stone-500">Tudtad?</p>
 			</div>
 		</div>
-		<!-- Húzás-visszajelzés -->
 		{#if dragX > 12}
 			<div
 				class="pointer-events-none absolute top-4 right-4 flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-1.5 text-sm font-extrabold text-white"
@@ -164,58 +164,93 @@
 	</div>
 
 	{#if isLanguage}
-		<div class="mt-3 flex flex-wrap items-center gap-2">
+		<!-- Két ikon-gomb: kiejtés + kiejtés-gyakorlás -->
+		<div class="mt-4 flex items-center justify-center gap-3">
 			<button
 				onclick={playAudio}
-				class="inline-flex items-center gap-1.5 rounded-full border border-stone-200 px-3.5 py-2 text-[13px] font-semibold text-ink-600 transition hover:bg-stone-50 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/5"
+				aria-label="Kiejtés meghallgatása"
+				title="Kiejtés"
+				class="grid size-14 place-items-center rounded-full bg-brand-500 text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-95"
 			>
-				<Volume2 size={15} /> Kiejtés
-			</button>
-			<button
-				onclick={() => (muted = !muted)}
-				aria-pressed={muted}
-				class="rounded-full border border-stone-200 px-3.5 py-2 text-[13px] font-semibold text-stone-500 transition hover:bg-stone-50 dark:border-white/10 dark:text-stone-400 dark:hover:bg-white/5"
-			>
-				{muted ? 'Hang be' : 'Hang ki'}
+				<Volume2 size={24} />
 			</button>
 			{#if listenOK}
 				<button
-					onclick={checkPronunciation}
-					disabled={micState === 'listening'}
-					class="inline-flex items-center gap-1.5 rounded-full bg-brand-500 px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
+					onclick={() => (pronOpen = true)}
+					aria-label="Kiejtés gyakorlása mikrofonnal"
+					title="Kiejtés gyakorlása"
+					class="grid size-14 place-items-center rounded-full border-2 border-brand-500 text-brand-600 transition hover:bg-brand-50 active:scale-95 dark:text-brand-400 dark:hover:bg-brand-500/10"
 				>
-					<Mic size={15} /> {micState === 'listening' ? 'Hallgatlak…' : 'Kiejtés ellenőrzése'}
+					<Mic size={24} />
 				</button>
 			{/if}
 		</div>
-		{#if micMsg}
-			<p
-				class={[
-					'mt-2 rounded-xl px-3.5 py-2.5 text-sm font-medium',
-					micState === 'good'
-						? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300'
-						: micState === 'listening'
-							? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-white'
-							: 'bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300'
-				]}
-			>
-				{micMsg}
-			</p>
-		{/if}
 	{/if}
+</div>
 
-	<div class="mt-4 grid grid-cols-2 gap-2.5">
+<!-- Kiejtés-gyakorló: külön ablak, várja a hangot, majd értékel -->
+<Drawer open={pronOpen} label="Kiejtés gyakorlása" onClose={() => (pronOpen = false)}>
+	<div class="px-6 pt-1 pb-6 text-center sm:px-7 sm:pb-7">
+		<h2 class="font-display text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">
+			Kiejtés gyakorlása
+		</h2>
+		<p class="font-display mt-3 text-[32px] font-extrabold tracking-tight text-brand-600 dark:text-white">
+			{card.front_text}
+		</p>
+		{#if card.ipa}
+			<p class="mt-1 text-sm font-medium text-stone-400 dark:text-stone-500">[{card.ipa}]</p>
+		{/if}
+
+		<div class="mt-5" role="status">
+			{#if pronState === 'listening'}
+				<span class="relative mx-auto grid size-20 place-items-center rounded-full bg-brand-500 text-white">
+					<span class="absolute inset-0 animate-ping rounded-full bg-brand-500/40"></span>
+					<Mic size={32} class="relative" />
+				</span>
+				<p class="mt-4 text-[15px] font-semibold text-ink-900 dark:text-white">Hallgatlak… mondd ki hangosan!</p>
+			{:else if pronState === 'good'}
+				<span class="mx-auto grid size-20 place-items-center rounded-full bg-emerald-500 text-white">
+					<Check size={36} strokeWidth={3} />
+				</span>
+				<p class="mt-4 text-[17px] font-extrabold text-emerald-600 dark:text-emerald-300">Szép kiejtés!</p>
+				{#if heard}
+					<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Ezt hallottam: „{heard}”</p>
+				{/if}
+			{:else}
+				<span class="mx-auto grid size-20 place-items-center rounded-full bg-amber-500 text-white">
+					<Mic size={32} />
+				</span>
+				<p class="mt-4 text-[17px] font-extrabold text-amber-600 dark:text-amber-300">Nem egészen — próbáld újra!</p>
+				{#if heard}
+					<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Ezt hallottam: „{heard}”</p>
+				{:else}
+					<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Nem hallottalak — ellenőrizd a mikrofont.</p>
+				{/if}
+			{/if}
+		</div>
+
+		<div class="mt-6 grid grid-cols-2 gap-2.5">
+			<button
+				onclick={() => void listen()}
+				disabled={pronState === 'listening'}
+				class="rounded-full border border-stone-300 py-3 text-[15px] font-bold text-ink-600 transition hover:bg-stone-50 disabled:opacity-50 dark:border-white/15 dark:text-stone-300"
+			>
+				Újra
+			</button>
+			<button
+				onclick={() => {
+					playAudio();
+				}}
+				class="rounded-full bg-stone-100 py-3 text-[15px] font-bold text-ink-900 transition hover:bg-stone-200 dark:bg-white/10 dark:text-white"
+			>
+				Minta 🔊
+			</button>
+		</div>
 		<button
-			onclick={() => doGrade(false)}
-			class="rounded-full border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 dark:border-white/10 dark:bg-transparent dark:text-stone-300 dark:hover:bg-white/5"
+			onclick={() => (pronOpen = false)}
+			class="mt-2.5 w-full rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white transition hover:bg-brand-600"
 		>
-			Nem tudom
-		</button>
-		<button
-			onclick={() => doGrade(true)}
-			class="rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600"
-		>
-			Tudom
+			Kész
 		</button>
 	</div>
-</div>
+</Drawer>
