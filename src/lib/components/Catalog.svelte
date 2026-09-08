@@ -134,7 +134,7 @@
 		<a
 			href="/temakorok"
 			aria-label="Vissza a témakörökhöz"
-			class="grid size-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-900 transition hover:bg-stone-50 active:scale-95 dark:border-white/10 dark:bg-stone-900 dark:text-white"
+			class="grid size-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-900 transition hover:bg-stone-50 active:scale-95 dark:hover:bg-white/10 dark:border-white/10 dark:bg-stone-900 dark:text-white"
 		>
 			<ArrowLeft size={20} />
 		</a>
@@ -157,7 +157,7 @@
 		<button
 			onclick={() => (filterOpen = true)}
 			aria-label="Szűrő"
-			class="relative grid size-[52px] shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-600 transition hover:bg-stone-50 active:scale-95 dark:border-white/10 dark:bg-stone-900 dark:text-stone-300"
+			class="relative grid size-[52px] shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-600 transition hover:bg-stone-50 active:scale-95 dark:hover:bg-white/10 dark:border-white/10 dark:bg-stone-900 dark:text-stone-300"
 		>
 			<SlidersHorizontal size={20} />
 			{#if filtered > 0}
@@ -188,7 +188,7 @@
 	<div class="mt-2 flex gap-2">
 		<button
 			onclick={() => (filterOpen = true)}
-			class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 active:scale-[0.99] dark:border-white/10 dark:bg-stone-900 dark:text-stone-300"
+			class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 dark:hover:bg-white/10 active:scale-[0.99] dark:border-white/10 dark:bg-stone-900 dark:text-stone-300"
 		>
 			<SlidersHorizontal size={16} />
 			Szűrő
@@ -238,7 +238,7 @@
 			<span class="min-w-0 flex-1">
 				<span class="block truncate text-[15px] font-bold text-ink-900 dark:text-white">{t.title}</span>
 				<span class="mt-0.5 block text-[13px] text-ink-400 dark:text-stone-500">
-					{t.category} · {t.lessons ?? 0} lecke · {t.cards ?? 0} kártya
+					{t.category ? `${t.category} · ` : ''}{t.lessons ?? 0} lecke · {t.cards ?? 0} kártya
 				</span>
 			</span>
 		</a>
@@ -293,17 +293,17 @@
 		</div>
 		<div class="mt-5 flex items-center gap-3 rounded-2xl bg-stone-100 p-4 dark:bg-white/5">
 			<div class="min-w-0 flex-1">
-				<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Önálló pakli</p>
-				<p class="text-[13px] text-ink-400 dark:text-stone-500">Csak kártyacsomag, témakör nélkül (privát)</p>
+				<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Önálló kártyacsomag</p>
+				<p class="text-[13px] text-ink-400 dark:text-stone-500">Csak kártyák, témakör nélkül (privát)</p>
 			</div>
-			<Toggle bind:checked={deckOnly} label="Önálló pakli" />
+			<Toggle bind:checked={deckOnly} label="Önálló kártyacsomag" />
 		</div>
 		<button
 			onclick={create}
 			disabled={busy || !nTitle.trim()}
 			class="mt-4 w-full rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white transition hover:bg-brand-600 disabled:opacity-60"
 		>
-			{busy ? 'Létrehozás…' : deckOnly ? 'Pakli létrehozása' : 'Létrehozás'}
+			{busy ? 'Létrehozás…' : deckOnly ? 'Kártyacsomag létrehozása' : 'Létrehozás'}
 		</button>
 	</div>
 </Drawer>
@@ -335,7 +335,7 @@
 				cat = 'Mind';
 				filterOpen = false;
 			}}
-			class="mt-4 w-full rounded-full border border-stone-200 py-2.5 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 dark:border-white/10 dark:text-stone-300"
+			class="mt-4 w-full rounded-full border border-stone-200 py-2.5 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 dark:hover:bg-white/10 dark:border-white/10 dark:text-stone-300"
 		>
 			Szűrők törlése
 		</button>

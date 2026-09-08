@@ -2,7 +2,7 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, newId, requireUser } from '$lib/server/db';
 import { CATS, typeForCategory } from '$lib/server/study';
 
-// POST /api/decks { title, category } — önálló (privát) kártyapakli témakör nélkül:
+// POST /api/decks { title, category } — önálló (privát) kártyacsomag témakör nélkül:
 // létrehoz egy privát témakört + egy leckét, ahová rögtön lehet kártyázni.
 export const POST: RequestHandler = async (event) => {
 	const db = getDb(event);
@@ -17,7 +17,8 @@ export const POST: RequestHandler = async (event) => {
 		return json({ error: 'Hibás kérés.' }, { status: 400 });
 	}
 	const title = String(body.title ?? '').trim();
-	const category = CATS.includes(String(body.category)) ? String(body.category) : 'Angol';
+	// A tantárgy opcionális: üresen is mehet.
+	const category = CATS.includes(String(body.category)) ? String(body.category) : '';
 	if (title.length < 2) return json({ error: 'Adj legalább 2 karakteres címet.' }, { status: 400 });
 	const now = Date.now();
 	const topicId = newId();
@@ -30,7 +31,7 @@ export const POST: RequestHandler = async (event) => {
 		db.prepare(
 			`INSERT INTO lessons (id, topic_id, order_index, title, description_markdown, created_at)
 			 VALUES (?, ?, 0, ?, '', ?)`
-		).bind(lessonId, topicId, 'Pakli', now),
+		).bind(lessonId, topicId, 'Kártyák', now),
 		db.prepare(`INSERT OR IGNORE INTO enrollments (user_id, topic_id, enrolled_at) VALUES (?, ?, ?)`).bind(
 			user.id,
 			topicId,

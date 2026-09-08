@@ -7,6 +7,7 @@
 	import { studyApi, type AssignmentRow, type Stats } from '$lib/study';
 
 	let user = $derived(auth.user);
+	let isTeacher = $derived((user?.role ?? 'student') === 'teacher');
 	let stats = $state<Stats | null>(null);
 	let assigns = $state<AssignmentRow[]>([]);
 	let err = $state<string | null>(null);
@@ -112,10 +113,31 @@
 		</div>
 	</section>
 {:else}
-	{#if err && !stats}
+	{#if err && !stats && !isTeacher}
 		<p role="alert" class="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err}</p>
 	{/if}
 
+	{#if isTeacher}
+		<!-- Tanári gyorsindító: nincs XP-gyűjtés, nincs gyakorlás -->
+		<section class="anim-rise mt-3 grid grid-cols-2 gap-2.5" aria-label="Tanári eszközök">
+			<a href="/kvizek" class="rounded-[20px] bg-brand-600 p-4 text-white shadow-lg shadow-brand-600/25 dark:bg-brand-500">
+				<p class="font-display text-[18px] font-extrabold">Kvízeim</p>
+				<p class="mt-0.5 text-[13px] text-white/75">Egyedi dolgozatok</p>
+			</a>
+			<a href="/kartyak" class="rounded-[20px] bg-stone-100 p-4 dark:bg-white/5">
+				<p class="font-display text-[18px] font-extrabold text-ink-900 dark:text-white">Kártyáim</p>
+				<p class="mt-0.5 text-[13px] text-stone-500 dark:text-stone-400">Saját csomagok</p>
+			</a>
+			<a href="/tanterem" class="rounded-[20px] bg-stone-100 p-4 sm:col-span-1 dark:bg-white/5">
+				<p class="font-display text-[18px] font-extrabold text-ink-900 dark:text-white">Tanterem</p>
+				<p class="mt-0.5 text-[13px] text-stone-500 dark:text-stone-400">Osztályok, kiadás</p>
+			</a>
+			<a href="/temakorok" class="rounded-[20px] bg-stone-100 p-4 sm:col-span-1 dark:bg-white/5">
+				<p class="font-display text-[18px] font-extrabold text-ink-900 dark:text-white">Témakörök</p>
+				<p class="mt-0.5 text-[13px] text-stone-500 dark:text-stone-400">Könyvtár</p>
+			</a>
+		</section>
+	{:else}
 	<!-- Mérőszámok -->
 	<div class="mt-3 grid grid-cols-2 gap-2.5">
 		<div class="anim-rise rounded-[20px] bg-stone-100 p-4 dark:bg-white/5">
@@ -218,4 +240,5 @@
 			</p>
 		{/if}
 	</section>
+	{/if}
 {/if}

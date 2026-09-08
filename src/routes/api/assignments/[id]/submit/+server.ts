@@ -19,10 +19,9 @@ export const POST: RequestHandler = async (event) => {
 	const answers = (body.answers ?? {}) as Record<string, string>;
 	const sub = await db
 		.prepare(
-			`SELECT sm.id, sm.assignment_id, sm.submitted_at, a.due_date, s.feedback_delayed
+			`SELECT sm.id, sm.assignment_id, sm.submitted_at, a.due_date, a.feedback_delayed
 			 FROM submissions sm
 			 JOIN assignments a ON a.id = sm.assignment_id
-			 JOIN assessments s ON s.id = a.assessment_id
 			 WHERE sm.id = ? AND sm.student_id = ?`
 		)
 		.bind(submission_id, user.id)

@@ -17,6 +17,70 @@ export interface PracticeSource {
 	lessons: { id: string; title: string; due: number; total: number }[];
 }
 
+export interface AssessmentRow {
+	id: string;
+	title: string;
+	topic_id: string | null;
+	topic_title: string | null;
+	max_attempts: number;
+	time_limit_mins: number;
+	shuffle: number;
+	feedback_delayed: number;
+	is_exam: number;
+	created_at: number;
+	items: number;
+	assigned: number;
+}
+
+export interface AssessmentItem {
+	id: string;
+	question_text: string;
+	type: string;
+	options_json: string;
+	correct_answer: string;
+}
+
+export interface MyCard {
+	id: string;
+	front_text: string;
+	back_text: string;
+	ipa: string | null;
+	lesson_id: string;
+	lesson_title: string;
+	topic_id: string;
+	topic_title: string;
+}
+
+export interface MyLesson {
+	id: string;
+	title: string;
+	topic_id: string;
+	topic_title: string;
+	cards: number;
+}
+
+export interface MyTopic {
+	id: string;
+	title: string;
+	category: string;
+	type: TopicType;
+	is_public: number;
+	lessons: number;
+}
+
+export interface MessageRow {
+	id: string;
+	title: string;
+	body: string;
+	link_url: string | null;
+	ref_type: string | null;
+	ref_id: string | null;
+	ref_link: string | null;
+	ref_title: string | null;
+	created_at: number;
+	teacher_name: string;
+}
+
 export interface Topic {
 	id: string;
 	title: string;
@@ -106,6 +170,7 @@ export interface Classroom {
 	id: string;
 	name: string;
 	code: string;
+	subject?: string;
 	mine?: number;
 	members?: number;
 }
@@ -235,11 +300,12 @@ export const studyApi = {
 			method: 'POST',
 			body: JSON.stringify(body)
 		}),
-	due: (filter: ReviewFilter, limit = 50, scope?: { topics?: string[]; lessons?: string[]; categories?: string[] }) => {
+	due: (filter: ReviewFilter, limit = 50, scope?: { topics?: string[]; lessons?: string[]; categories?: string[]; extra?: boolean }) => {
 		const q = new URLSearchParams({ filter, limit: String(limit) });
 		if (scope?.topics?.length) q.set('topics', scope.topics.join(','));
 		if (scope?.lessons?.length) q.set('lessons', scope.lessons.join(','));
 		if (scope?.categories?.length) q.set('categories', scope.categories.join(','));
+		if (scope?.extra) q.set('extra', '1');
 		return req<{ cards: ReviewCard[] }>(`/api/review?${q.toString()}`);
 	},
 	sources: () => req<{ topics: PracticeSource[] }>(`/api/review/sources`),
@@ -250,10 +316,10 @@ export const studyApi = {
 		}),
 	stats: () => req<Stats>(`/api/stats`),
 	classrooms: () => req<{ classrooms: Classroom[] }>(`/api/classrooms`),
-	createClassroom: (name: string) =>
+	createClassroom: (name: string, subject: string) =>
 		req<{ classroom: Classroom }>(`/api/classrooms`, {
 			method: 'POST',
-			body: JSON.stringify({ name })
+			body: JSON.stringify({ name, subject })
 		}),
 	joinClassroom: (code: string) =>
 		req<{ ok: boolean }>(`/api/classrooms/join`, { method: 'POST', body: JSON.stringify({ code }) }),
@@ -271,8 +337,49 @@ export const studyApi = {
 		feedback_delayed: boolean;
 		is_exam: boolean;
 		count: number;
+		lesson_ids?: string[];
 	}) => req<{ assessment: { id: string } }>(`/api/assessments`, { method: 'POST', body: JSON.stringify(body) }),
-	assign: (body: { assessment_id: string; classroom_id: string; due_date: number }) =>
+	assessments: () => req<{ assessments: AssessmentRow[] }>(`/api/assessments`),
+	assessment: (id: string) =>
+		req<{ assessment: AssessmentRow; items: AssessmentItem[] }>(`/api/assessments/${encodeURIComponent(id)}`),
+	deleteAssessment: (id: string) =>
+		req<{ ok: boolean }>(`/api/assessments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	addAssessmentItem: (
+		id: string,
+		body: { question_text: string; type: string; options?: string[]; left?: string; correct_answer: string }
+	) =>
+		req<{ item: { id: string } }>(`/api/assessments/${encodeURIComponent(id)}/items`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
+	deleteAssessmentItem: (id: string) =>
+		req<{ ok: boolean }>(`/api/assessment-items/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	revokeAssignment: (id: string) =>
+		req<{ ok: boolean }>(`/api/assignments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	myCards: () =>
+		req<{ topics: MyTopic[]; lessons: MyLesson[]; cards: MyCard[] }>(`/api/cards/mine`),
+	messages: (classroomId: string) =>
+		req<{ messages: MessageRow[] }>(`/api/classrooms/${encodeURIComponent(classroomId)}/messages`),
+	sendMessage: (
+		classroomId: string,
+		body: { title: string; body?: string; link_url?: string; ref_type?: string; ref_id?: string }
+	) =>
+		req<{ message: { id: string } }>(`/api/classrooms/${encodeURIComponent(classroomId)}/messages`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
+	deleteMessage: (id: string) =>
+		req<{ ok: boolean }>(`/api/messages/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	assign: (body: {
+		assessment_id: string;
+		classroom_id: string;
+		due_date: number;
+		max_attempts?: number;
+		time_limit_mins?: number;
+		shuffle?: boolean;
+		feedback_delayed?: boolean;
+		is_exam?: boolean;
+	}) =>
 		req<{ assignment: { id: string } }>(`/api/assignments`, { method: 'POST', body: JSON.stringify(body) }),
 	startSubmission: (assignmentId: string) =>
 		req<{ items: QuizQ[]; submission_id: string; started_at: number; time_limit_mins: number; title: string }>(

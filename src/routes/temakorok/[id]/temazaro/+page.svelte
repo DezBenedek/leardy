@@ -87,7 +87,7 @@
 	<a
 		href="/temakorok/{params.id}"
 		aria-label="Vissza a témakörhöz"
-		class="grid size-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-900 transition hover:bg-stone-50 active:scale-95 dark:border-white/10 dark:bg-stone-900 dark:text-white"
+		class="grid size-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-900 transition hover:bg-stone-50 active:scale-95 dark:hover:bg-white/10 dark:border-white/10 dark:bg-stone-900 dark:text-white"
 	>
 		<ArrowLeft size={20} />
 	</a>
@@ -114,7 +114,7 @@
 						<li>
 							<a
 								href="/lecke/{m.lesson_id}"
-								class="flex items-center justify-between gap-2 rounded-xl bg-red-50 px-3.5 py-2.5 transition hover:bg-red-100 dark:bg-red-400/10"
+								class="flex items-center justify-between gap-2 rounded-xl bg-red-50 px-3.5 py-2.5 transition hover:bg-red-100 dark:bg-red-400/10 dark:hover:bg-red-400/20"
 							>
 								<span class="truncate text-sm font-semibold text-red-800 dark:text-red-200">{m.title}</span>
 								<span class="shrink-0 text-sm font-extrabold text-red-600 tabular-nums dark:text-red-300">

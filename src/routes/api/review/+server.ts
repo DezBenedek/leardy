@@ -2,7 +2,10 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, logActivity, nextSrsInterval, requireUser, todayStr } from '$lib/server/db';
 import { CATS } from '$lib/server/study';
 
-// GET /api/review?filter=mind|language|general&topics=id,..&lessons=id,.. — esedékes kártyák.
+// GET /api/review?filter=mind|language|general&topics=id,..&lessons=id,..&categories=..&extra=1
+// extra=1 (Ráadás, ha elfogytak az esedékesek): nyelvekből a leggyengébben menők
+// (ragadt "learning" státusz, legalacsonyabb intervallum), más tantárgyakból
+// a legfrissebb leckék kártyái.
 export const GET: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
@@ -11,6 +14,7 @@ export const GET: RequestHandler = async (event) => {
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	const filter = event.url.searchParams.get('filter') ?? 'mind';
 	const limit = Math.max(1, Math.min(100, Number(event.url.searchParams.get('limit') ?? 50) || 50));
+	const extra = event.url.searchParams.get('extra') === '1';
 	const topicIds = (event.url.searchParams.get('topics') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 	const lessonIds = (event.url.searchParams.get('lessons') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 	// Presetekhez: tantárgy-kategóriák (az új leckék automatikusan bekerülnek).
@@ -48,16 +52,45 @@ export const GET: RequestHandler = async (event) => {
 		scopeConds.push(`AND t.category IN (${catIds.map(() => '?').join(',')})`);
 		scopeArgs.push(...catIds);
 	}
+	const SELECT = `SELECT f.id, f.lesson_id, f.front_text, f.back_text, f.audio_url, f.image_url, f.ipa,
+		l.topic_id, t.title AS topic_title, t.type AS topic_type,
+		COALESCE(p.ease_interval, 0) AS ease_interval, COALESCE(p.status, 'new') AS status
+	 FROM flashcards f
+	 JOIN lessons l ON l.id = f.lesson_id
+	 JOIN topics t ON t.id = l.topic_id
+	 JOIN enrollments e ON e.topic_id = t.id AND e.user_id = ?
+	 LEFT JOIN user_progress p ON p.user_id = ? AND p.flashcard_id = f.id`;
+	if (extra) {
+		const cards: Record<string, unknown>[] = [];
+		if (filter !== 'general') {
+			const worst = await db
+				.prepare(
+					`${SELECT} WHERE 1 = 1 ${scopeConds.join(' ')} AND t.type = 'language'
+					 ORDER BY CASE COALESCE(p.status, 'new')
+						WHEN 'learning' THEN 0 WHEN 'new' THEN 1 ELSE 2 END,
+						COALESCE(p.ease_interval, 0) ASC, RANDOM()
+					 LIMIT ?`
+				)
+				.bind(user.id, user.id, ...scopeArgs, limit)
+				.all();
+			cards.push(...(worst.results ?? []));
+		}
+		if (filter !== 'language') {
+			const latest = await db
+				.prepare(
+					`${SELECT} WHERE 1 = 1 ${scopeConds.join(' ')} AND t.type = 'general'
+					 ORDER BY l.order_index DESC, RANDOM()
+					 LIMIT ?`
+				)
+				.bind(user.id, user.id, ...scopeArgs, limit)
+				.all();
+			cards.push(...(latest.results ?? []));
+		}
+		return json({ cards: cards.slice(0, limit) });
+	}
 	const rows = await db
 		.prepare(
-			`SELECT f.id, f.lesson_id, f.front_text, f.back_text, f.audio_url, f.image_url, f.ipa,
-				l.topic_id, t.title AS topic_title, t.type AS topic_type,
-				COALESCE(p.ease_interval, 0) AS ease_interval, COALESCE(p.status, 'new') AS status
-			 FROM flashcards f
-			 JOIN lessons l ON l.id = f.lesson_id
-			 JOIN topics t ON t.id = l.topic_id
-			 JOIN enrollments e ON e.topic_id = t.id AND e.user_id = ?
-			 LEFT JOIN user_progress p ON p.user_id = ? AND p.flashcard_id = f.id
+			`${SELECT}
 			 WHERE (p.next_review_date IS NULL OR p.next_review_date = '' OR p.next_review_date <= ?) ${typeCond} ${scopeConds.join(' ')}
 			 ORDER BY CASE WHEN p.status IS NULL OR p.status = 'new' THEN 0 ELSE 1 END,
 				COALESCE(p.ease_interval, 0) ASC, RANDOM()

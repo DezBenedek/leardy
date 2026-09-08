@@ -5,8 +5,8 @@ import { hideAnswer, toQuizQ, type QuizRow } from '$lib/server/study';
 async function loadAssignment(db: NonNullable<ReturnType<typeof getDb>>, assignmentId: string) {
 	return db
 		.prepare(
-			`SELECT a.id AS assignment_id, a.due_date, s.id AS assessment_id, s.title,
-				s.max_attempts, s.time_limit_mins, s.shuffle, s.feedback_delayed, s.is_exam
+			`SELECT a.id AS assignment_id, a.due_date, a.max_attempts, a.time_limit_mins, a.shuffle,
+				a.feedback_delayed, a.is_exam, s.id AS assessment_id, s.title
 			 FROM assignments a JOIN assessments s ON s.id = a.assessment_id
 			 WHERE a.id = ?`
 		)

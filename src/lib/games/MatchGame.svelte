@@ -10,7 +10,7 @@
 		if (picked !== null && picked !== undefined && opt === picked) {
 			return 'border-red-500 bg-red-50 text-red-700 dark:border-red-400 dark:bg-red-400/10 dark:text-red-200';
 		}
-		return 'border-dashed border-brand-300 bg-brand-50 text-ink-900 hover:border-brand-500 hover:bg-brand-100 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-white';
+		return 'border-dashed border-brand-300 bg-brand-50 text-ink-900 hover:border-brand-500 hover:bg-brand-100 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-white dark:hover:bg-brand-500/20';
 	}
 </script>
 

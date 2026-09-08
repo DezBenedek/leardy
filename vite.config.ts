@@ -4,6 +4,9 @@ import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	define: {
+		__APP_BUILD_TIME__: JSON.stringify(new Date().toISOString())
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit(),

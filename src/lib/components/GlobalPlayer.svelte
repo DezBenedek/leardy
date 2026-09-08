@@ -135,11 +135,12 @@
 {#if session}
 	{#key session}
 		<div class="anim-fade fixed inset-0 z-[60] flex flex-col bg-white dark:bg-stone-950" role="dialog" aria-modal="true" aria-label={session.title}>
-			<!-- Fejléc: cím + idő + Kilépés jobb fent -->
-			<header
-				class="flex items-center gap-3 border-b border-stone-200 px-4 py-3 dark:border-white/10"
-				style="padding-top: max(0.75rem, env(safe-area-inset-top))"
-			>
+			<!-- Fejléc: tartalma az app sávszélességéhez igazodik -->
+			<header class="border-b border-stone-200 dark:border-white/10">
+				<div
+					class="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-3 sm:px-6"
+					style="padding-top: max(0.75rem, env(safe-area-inset-top))"
+				>
 				<div class="min-w-0 flex-1">
 					<h2 class="truncate text-[17px] font-extrabold tracking-tight text-ink-900 dark:text-white">
 						{session.title}
@@ -156,11 +157,12 @@
 				<button
 					onclick={() => player.close()}
 					aria-label="Kilépés a lejátszóból"
-					class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-stone-100 px-4 py-2.5 text-sm font-bold text-ink-900 transition hover:bg-stone-200 active:scale-95 dark:bg-white/10 dark:text-white"
+					class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-stone-100 px-4 py-2.5 text-sm font-bold text-ink-900 transition hover:bg-stone-200 dark:hover:bg-white/15 active:scale-95 dark:bg-white/10 dark:text-white"
 				>
 					<X size={17} strokeWidth={2.8} />
 					<span class="hidden sm:inline">Kilépés</span>
 				</button>
+				</div>
 			</header>
 
 			{#if session.kind === 'cards'}
@@ -184,7 +186,7 @@
 							</button>
 						</section>
 					{:else if card}
-						<p class="mb-1 text-xs font-semibold text-ink-400 tabular-nums dark:text-stone-500">
+						<p class="mb-1 text-center text-xs font-semibold text-ink-400 tabular-nums dark:text-stone-500">
 							{Math.min(idx + 1, queue.length)} / {queue.length}
 						</p>
 						{#key card.id + '-' + idx}

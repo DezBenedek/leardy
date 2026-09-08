@@ -73,9 +73,16 @@ export const PATCH: RequestHandler = async (event) => {
 	}
 	if (body.category !== undefined) {
 		const category = String(body.category);
-		if (!CATS.includes(category)) return json({ error: 'Hibás tantárgy.' }, { status: 400 });
-		sets.push('category = ?', 'type = ?');
-		args.push(category, typeForCategory(category));
+		if (category !== '' && !CATS.includes(category)) {
+			return json({ error: 'Hibás tantárgy.' }, { status: 400 });
+		}
+		if (category === '') {
+			sets.push('category = ?');
+			args.push('');
+		} else {
+			sets.push('category = ?', 'type = ?');
+			args.push(category, typeForCategory(category));
+		}
 	}
 	if (body.is_public !== undefined) {
 		sets.push('is_public = ?');

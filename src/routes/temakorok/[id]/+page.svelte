@@ -412,7 +412,7 @@
 	<a
 		href="/temakorok"
 		aria-label="Vissza a témakörökhöz"
-		class="grid size-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-900 transition hover:bg-stone-50 active:scale-95 dark:border-white/10 dark:bg-stone-900 dark:text-white"
+		class="grid size-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-900 transition hover:bg-stone-50 active:scale-95 dark:hover:bg-white/10 dark:border-white/10 dark:bg-stone-900 dark:text-white"
 	>
 		<ArrowLeft size={20} />
 	</a>
@@ -420,7 +420,7 @@
 </div>
 <div class="mt-2 flex flex-wrap items-center gap-2">
 		<span class="rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-bold text-stone-500 dark:bg-white/10 dark:text-stone-300">
-			{topic.category}{topic.type === 'language' ? ' · audió + kiejtés' : ''}
+			{topic.category ? `${topic.category} · ` : ''}{topic.type === 'language' ? 'audió + kiejtés' : 'témakör'}
 		</span>
 		{#if !topic.is_public}
 			<span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-700 dark:bg-amber-400/10 dark:text-amber-300">Privát</span>
@@ -510,7 +510,7 @@
 							<button onclick={() => startEditLesson(l)} aria-label="Lecke szerkesztése" class="grid size-8 shrink-0 place-items-center rounded-full text-stone-400 hover:bg-stone-100 dark:hover:bg-white/10">
 								<Pencil size={16} />
 							</button>
-							<button onclick={() => removeLesson(l.id)} aria-label="Lecke törlése" class={['grid size-8 shrink-0 place-items-center rounded-full transition', delArm === l.id ? 'bg-red-600 text-white' : 'text-stone-400 hover:bg-red-50 hover:text-red-600']}>
+							<button onclick={() => removeLesson(l.id)} aria-label="Lecke törlése" class={['grid size-8 shrink-0 place-items-center rounded-full transition', delArm === l.id ? 'bg-red-600 text-white' : 'text-stone-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-400/10 dark:hover:text-red-300']}>
 								<Trash2 size={16} />
 							</button>
 						</div>
@@ -555,10 +555,10 @@
 												<span class="text-stone-400"> → </span>
 												{lang ? c.front_text : c.back_text}
 											</p>
-											<button onclick={() => startEditCard(l.id, c.id, c.front_text, c.back_text, c.ipa)} aria-label="Kártya szerkesztése" class="grid size-7 shrink-0 place-items-center rounded-full text-stone-400 hover:bg-white dark:hover:bg-white/10">
+											<button onclick={() => startEditCard(l.id, c.id, c.front_text, c.back_text, c.ipa)} aria-label="Kártya szerkesztése" class="grid size-7 shrink-0 place-items-center rounded-full text-stone-400 hover:bg-stone-100 dark:hover:bg-white/10">
 												<Pencil size={14} />
 											</button>
-											<button onclick={() => removeCard(l.id, c.id)} aria-label="Kártya törlése" class={['grid size-7 shrink-0 place-items-center rounded-full', delArm === c.id ? 'bg-red-600 px-2 text-[11px] font-bold text-white' : 'text-stone-400 hover:text-red-600']}>
+											<button onclick={() => removeCard(l.id, c.id)} aria-label="Kártya törlése" class={['grid size-7 shrink-0 place-items-center rounded-full', delArm === c.id ? 'bg-red-600 px-2 text-[11px] font-bold text-white' : 'text-stone-400 hover:text-red-600 dark:hover:text-red-300']}>
 												{#if delArm === c.id}Törlöm?{:else}<Trash2 size={14} />{/if}
 											</button>
 										</div>
@@ -613,10 +613,10 @@
 									{:else}
 										<div class="flex items-center gap-2 rounded-xl bg-stone-50 px-2.5 py-2 dark:bg-white/5">
 											<p class="min-w-0 flex-1 truncate text-sm dark:text-white">{qq.question_text}</p>
-											<button onclick={() => prefillQ(l.id, qq.id)} aria-label="Kérdés szerkesztése" class="grid size-7 shrink-0 place-items-center rounded-full text-stone-400 hover:bg-white dark:hover:bg-white/10">
+											<button onclick={() => prefillQ(l.id, qq.id)} aria-label="Kérdés szerkesztése" class="grid size-7 shrink-0 place-items-center rounded-full text-stone-400 hover:bg-stone-100 dark:hover:bg-white/10">
 												<Pencil size={14} />
 											</button>
-											<button onclick={() => removeQ(l.id, qq.id)} aria-label="Kérdés törlése" class={['grid size-7 shrink-0 place-items-center rounded-full', delArm === qq.id ? 'bg-red-600 px-2 text-[11px] font-bold text-white' : 'text-stone-400 hover:text-red-600']}>
+											<button onclick={() => removeQ(l.id, qq.id)} aria-label="Kérdés törlése" class={['grid size-7 shrink-0 place-items-center rounded-full', delArm === qq.id ? 'bg-red-600 px-2 text-[11px] font-bold text-white' : 'text-stone-400 hover:text-red-600 dark:hover:text-red-300']}>
 												{#if delArm === qq.id}Törlöm?{:else}<Trash2 size={14} />{/if}
 											</button>
 										</div>

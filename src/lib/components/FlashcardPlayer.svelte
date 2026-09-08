@@ -164,9 +164,11 @@
 		}}
 		onkeydown={(e) => {
 			if (leaveDir !== 0) return;
-			if (e.key === 'ArrowRight') fling(1);
-			if (e.key === 'ArrowLeft') fling(-1);
-			if (e.key === ' ' || e.key === 'Enter') {
+			const t = e.target as HTMLElement | null;
+			if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+			if (e.key === 'ArrowRight' || e.code === 'KeyD') fling(1);
+			else if (e.key === 'ArrowLeft' || e.code === 'KeyA') fling(-1);
+			else if (e.key === ' ' || e.key === 'Enter') {
 				e.preventDefault();
 				toggleFlip();
 			}
@@ -236,6 +238,22 @@
 			{/if}
 		</div>
 	{/if}
+
+	<!-- Gépen (széles képernyőn) Tudom / Nem tudom gombok is vannak -->
+	<div class="mt-4 hidden grid-cols-2 gap-2.5 lg:grid">
+		<button
+			onclick={() => fling(-1)}
+			class="rounded-full border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 active:scale-[0.99] dark:border-white/10 dark:bg-transparent dark:text-stone-300 dark:hover:bg-white/5"
+		>
+			Nem tudom <span class="ml-1 text-xs text-stone-400">A</span>
+		</button>
+		<button
+			onclick={() => fling(1)}
+			class="rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600 active:scale-[0.99]"
+		>
+			Tudom <span class="ml-1 text-xs text-white/70">D</span>
+		</button>
+	</div>
 </div>
 
 <!-- Kiejtés-gyakorló: külön ablak, várja a hangot, majd értékel -->
@@ -283,7 +301,7 @@
 			<button
 				onclick={() => void listen()}
 				disabled={pronState === 'listening'}
-				class="rounded-full border border-stone-300 py-3 text-[15px] font-bold text-ink-600 transition hover:bg-stone-50 disabled:opacity-50 dark:border-white/15 dark:text-stone-300"
+				class="rounded-full border border-stone-300 py-3 text-[15px] font-bold text-ink-600 transition hover:bg-stone-50 dark:hover:bg-white/10 disabled:opacity-50 dark:border-white/15 dark:text-stone-300"
 			>
 				Újra
 			</button>
@@ -291,7 +309,7 @@
 				onclick={() => {
 					playAudio();
 				}}
-				class="rounded-full bg-stone-100 py-3 text-[15px] font-bold text-ink-900 transition hover:bg-stone-200 dark:bg-white/10 dark:text-white"
+				class="rounded-full bg-stone-100 py-3 text-[15px] font-bold text-ink-900 transition hover:bg-stone-200 dark:hover:bg-white/15 dark:bg-white/10 dark:text-white"
 			>
 				Minta 🔊
 			</button>

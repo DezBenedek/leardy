@@ -19,7 +19,7 @@
 
 	function itemTone(item: string, idx: number): string {
 		if (!submitted || corrArr.length === 0) {
-			return 'border-stone-200 bg-white text-ink-900 hover:border-brand-500 hover:bg-brand-50 dark:border-white/10 dark:bg-transparent dark:text-white';
+			return 'border-stone-200 bg-white text-ink-900 hover:border-brand-500 hover:bg-brand-50 dark:border-white/10 dark:bg-transparent dark:text-white dark:hover:bg-white/5';
 		}
 		return corrArr[idx] === item
 			? 'border-emerald-500 bg-emerald-50 text-emerald-800 dark:border-emerald-400 dark:bg-emerald-400/10 dark:text-emerald-200'
@@ -48,7 +48,7 @@
 		{#each remaining as opt, i (opt)}
 			<button
 				onclick={() => (chosen = [...chosen, opt])}
-				class="rounded-xl border border-stone-200 bg-white px-4 py-3 text-left text-[15px] font-medium text-ink-900 transition hover:border-brand-500 hover:bg-brand-50 active:scale-[0.99] dark:border-white/10 dark:bg-transparent dark:text-white"
+				class="rounded-xl border border-stone-200 bg-white px-4 py-3 text-left text-[15px] font-medium text-ink-900 transition hover:border-brand-500 hover:bg-brand-50 active:scale-[0.99] dark:border-white/10 dark:bg-transparent dark:text-white dark:hover:bg-white/5"
 			>
 				{opt}
 				{#if i < remaining.length - 1}<ArrowDown size={14} class="mt-1 text-stone-300" />{/if}
@@ -61,7 +61,7 @@
 		<button
 			onclick={() => (chosen = [])}
 			disabled={chosen.length === 0}
-			class="inline-flex items-center gap-1.5 rounded-full border border-stone-200 px-4 py-2.5 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 disabled:opacity-50 dark:border-white/10 dark:text-stone-300"
+			class="inline-flex items-center gap-1.5 rounded-full border border-stone-200 px-4 py-2.5 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 dark:hover:bg-white/5 disabled:opacity-50 dark:border-white/10 dark:text-stone-300"
 		>
 			<RotateCcw size={15} /> Újra
 		</button>

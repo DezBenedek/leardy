@@ -10,9 +10,9 @@ export const GET: RequestHandler = async (event) => {
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	const id = event.params.id ?? '';
 	const room = await db
-		.prepare(`SELECT id, name, code, teacher_id FROM classrooms WHERE id = ?`)
+		.prepare(`SELECT id, name, code, COALESCE(subject, '') AS subject, teacher_id FROM classrooms WHERE id = ?`)
 		.bind(id)
-		.first<{ id: string; name: string; code: string; teacher_id: string }>();
+		.first<{ id: string; name: string; code: string; subject: string; teacher_id: string }>();
 	if (!room) return json({ error: 'Nincs ilyen osztály.' }, { status: 404 });
 	const member = await db
 		.prepare(`SELECT 1 AS x FROM classroom_members WHERE classroom_id = ? AND user_id = ?`)
@@ -23,7 +23,7 @@ export const GET: RequestHandler = async (event) => {
 	}
 	const assigns = await db
 		.prepare(
-			`SELECT a.id, s.title, a.due_date, s.time_limit_mins, s.max_attempts, s.is_exam, s.feedback_delayed,
+			`SELECT a.id, s.title, a.due_date, a.time_limit_mins, a.max_attempts, a.is_exam, a.feedback_delayed,
 				(SELECT COUNT(*) FROM submissions sm WHERE sm.assignment_id = a.id AND sm.student_id = ? AND sm.submitted_at > 0) AS attempts,
 				(SELECT COUNT(*) FROM submissions sm WHERE sm.assignment_id = a.id AND sm.student_id = ? AND sm.submitted_at > 0) AS submitted,
 				(SELECT MAX(sm.score) FROM submissions sm WHERE sm.assignment_id = a.id AND sm.student_id = ? AND sm.submitted_at > 0) AS best
@@ -40,7 +40,7 @@ export const GET: RequestHandler = async (event) => {
 		.bind(id)
 		.all<{ name: string }>();
 	return json({
-		classroom: { id: room.id, name: room.name, code: room.code, mine: room.teacher_id === user.id ? 1 : 0 },
+		classroom: { id: room.id, name: room.name, code: room.code, subject: room.subject, mine: room.teacher_id === user.id ? 1 : 0 },
 		assignments: (assigns.results ?? []).map((a) => ({
 			...a,
 			classroom_name: room.name,

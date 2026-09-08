@@ -155,7 +155,7 @@
 			</ul>
 			<button
 				onclick={restart}
-				class="mt-4 rounded-full border border-stone-300 px-5 py-2 text-sm font-semibold text-ink-600 transition hover:bg-white dark:border-white/15 dark:text-stone-300"
+				class="mt-4 rounded-full border border-stone-300 px-5 py-2 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 dark:hover:bg-white/10 dark:border-white/15 dark:text-stone-300"
 			>
 				Újra
 			</button>

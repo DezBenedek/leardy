@@ -28,6 +28,7 @@
 	let managerOpen = $state(false);
 	let pName = $state('');
 	let pCats = $state<string[]>([]);
+	let extraLoading = $state(false);
 
 	function readPresets(): { presets: Preset[]; activeId: string | null } {
 		const fallback: Preset[] = [
@@ -126,7 +127,7 @@
 		if (queue.length === 0) return;
 		player.openCards({
 			title: 'Gyakorlás',
-			subtitle: cram ? `Magolás · ${active?.name ?? 'Mind'}` : (active?.name ?? 'Ismétlés'),
+			subtitle: active?.name ?? 'Ismétlés',
 			cards: queue,
 			isLanguage: 'auto',
 			repeatUnknown: true,
@@ -145,12 +146,61 @@
 			}
 		});
 	}
+
+	/** Ráadás, ha elfogytak az esedékesek: leggyengébb nyelviek + legfrissebb tantárgyiak. */
+	async function startExtra() {
+		if (extraLoading) return;
+		extraLoading = true;
+		try {
+			const extra = (
+				await studyApi.due('mind', 30, active ? { categories: active.categories, extra: true } : { extra: true })
+			).cards;
+			if (extra.length === 0) return;
+			player.openCards({
+				title: 'Ráadás gyakorlás',
+				subtitle: active?.name ?? 'Ismétlésen felül',
+				cards: extra,
+				isLanguage: 'auto',
+				repeatUnknown: true,
+				untilAllKnown: false,
+				onGrade: async (card, known) => {
+					try {
+						await studyApi.grade(card.id, known, false);
+						invalidate('stats');
+						await auth.refresh();
+					} catch {
+						// helyben folytatjuk
+					}
+				},
+				onFinish: async () => {
+					await loadQueue();
+				}
+			});
+		} catch (e) {
+			err = e instanceof Error ? e.message : 'Hiba történt.';
+		} finally {
+			extraLoading = false;
+		}
+	}
 </script>
 
 <svelte:head>
 	<title>Gyakorlás — Leardy</title>
 </svelte:head>
 
+{#if (auth.user?.role ?? 'student') === 'teacher'}
+	<h1 class="mt-3 text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">Gyakorlás</h1>
+	<section class="mt-3 rounded-[24px] border border-stone-200 bg-white p-8 text-center dark:border-white/10 dark:bg-stone-900">
+		<h2 class="font-display text-[22px] font-bold tracking-tight text-ink-900 dark:text-white">Tanárként nincs gyakorlás</h2>
+		<p class="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-stone-500 dark:text-stone-400">
+			A kvízeidet és kártyáidat a tanári felületen találod.
+		</p>
+		<div class="mt-5 grid grid-cols-2 gap-2">
+			<a href="/kvizek" class="rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white">Kvízeim</a>
+			<a href="/kartyak" class="rounded-full border border-stone-200 py-3 text-[15px] font-bold text-ink-900 dark:border-white/10 dark:text-white">Kártyáim</a>
+		</div>
+	</section>
+{:else}
 <div class="mt-3 flex items-center justify-between gap-2">
 	<h1 class="text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">Gyakorlás</h1>
 	<div class="flex items-center gap-2">
@@ -164,7 +214,7 @@
 		<button
 			onclick={() => (managerOpen = true)}
 			aria-label="Presetek"
-			class="relative grid size-[42px] place-items-center rounded-full border border-stone-200 bg-white text-ink-600 transition hover:bg-stone-50 active:scale-95 dark:border-white/10 dark:bg-stone-900 dark:text-stone-300"
+			class="relative grid size-[42px] place-items-center rounded-full border border-stone-200 bg-white text-ink-600 transition hover:bg-stone-50 dark:hover:bg-white/10 active:scale-95 dark:border-white/10 dark:bg-stone-900 dark:text-stone-300"
 		>
 			<ListFilter size={19} />
 			{#if active}
@@ -222,6 +272,18 @@
 	<p role="alert" class="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err}</p>
 {:else if queue.length === 0}
 	<p class="mt-6 text-center text-[15px] font-bold text-ink-900 dark:text-white">Nincs esedékes kártya 🎉</p>
+	<button
+		onclick={() => void startExtra()}
+		disabled={extraLoading}
+		class="mt-3 block w-full rounded-[28px] border-2 border-dashed border-stone-300 p-6 text-center transition hover:border-emerald-500 active:scale-[0.99] disabled:opacity-60 dark:border-white/15 dark:hover:border-emerald-400"
+	>
+		<span class="block text-[15px] font-bold text-ink-900 dark:text-white">
+			{extraLoading ? 'Összeállítás…' : 'Mégis gyakorlok'}
+		</span>
+		<span class="mt-0.5 block text-[13px] text-stone-500 dark:text-stone-400">
+			nyelvből a leggyengébbek, másból a legfrissebb leckék
+		</span>
+	</button>
 {:else}
 	<button
 		onclick={start}
@@ -255,7 +317,7 @@
 					<button
 						onclick={() => deletePreset(p.id)}
 						aria-label="{p.name} törlése"
-						class="grid size-8 shrink-0 place-items-center rounded-full text-stone-400 hover:bg-red-50 hover:text-red-600"
+						class="grid size-8 shrink-0 place-items-center rounded-full text-stone-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-400/10 dark:hover:text-red-300"
 					>
 						<Trash2 size={16} />
 					</button>
@@ -293,3 +355,4 @@
 		</div>
 	</div>
 </Drawer>
+{/if}

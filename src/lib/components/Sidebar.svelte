@@ -2,20 +2,22 @@
 	import { page } from '$app/state';
 	import { auth } from '$lib/auth.svelte';
 	import { authUI } from '$lib/auth-ui.svelte';
-	import { NAV_ITEMS, isActive } from '$lib/navigation';
-	import { Flame, House, Layers, LibraryBig, Users } from '@lucide/svelte';
+	import { NAV_ITEMS, isActive, navFor } from '$lib/navigation';
+	import { ClipboardList, Flame, House, Layers, LibraryBig, Users } from '@lucide/svelte';
 	import Logo from './Logo.svelte';
 
 	const icons: Record<string, typeof House> = {
 		'/': House,
 		'/tanterem': Users,
 		'/temakorok': LibraryBig,
-		'/gyakorlas': Layers
+		'/gyakorlas': Layers,
+		'/kvizek': ClipboardList,
+		'/kartyak': Layers
 	};
 
 	let pathname = $derived(page.url.pathname);
 	let user = $derived(auth.user);
-	let items = $derived(NAV_ITEMS);
+	let items = $derived(navFor(user?.role));
 	let initial = $derived(user?.name.trim().charAt(0).toUpperCase() ?? '');
 </script>
 
@@ -62,19 +64,32 @@
 
 	<div class="p-4">
 		{#if user}
-			<div class="rounded-2xl border border-stone-200 bg-stone-100 p-4 dark:border-white/10 dark:bg-white/5">
-				<p class="flex items-center gap-1.5 text-sm font-bold text-ink-900 dark:text-white">
-					<Flame size={16} class="text-amber-500" />
-					{user.xp ?? 0} XP
-				</p>
-				<p class="mt-2 text-xs text-ink-600 dark:text-stone-400">A haladásod mentve, eszközök között is.</p>
-				<a
-					href="/gyakorlas"
-					class="mt-3 block rounded-full bg-brand-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-600"
-				>
-					Gyakorlás
-				</a>
-			</div>
+			{#if (user.role ?? 'student') === 'teacher'}
+				<div class="rounded-2xl border border-stone-200 bg-stone-100 p-4 dark:border-white/10 dark:bg-white/5">
+					<p class="text-sm font-bold text-ink-900 dark:text-white">Tanár mód</p>
+					<p class="mt-1 text-xs leading-relaxed text-ink-600 dark:text-stone-400">Kvízek, kártyák, osztályok egy helyen.</p>
+					<a
+						href="/kvizek"
+						class="mt-3 block rounded-full bg-brand-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-600"
+					>
+						Kvízeim
+					</a>
+				</div>
+			{:else}
+				<div class="rounded-2xl border border-stone-200 bg-stone-100 p-4 dark:border-white/10 dark:bg-white/5">
+					<p class="flex items-center gap-1.5 text-sm font-bold text-ink-900 dark:text-white">
+						<Flame size={16} class="text-amber-500" />
+						{user.xp ?? 0} XP
+					</p>
+					<p class="mt-2 text-xs text-ink-600 dark:text-stone-400">A haladásod mentve, eszközök között is.</p>
+					<a
+						href="/gyakorlas"
+						class="mt-3 block rounded-full bg-brand-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-600"
+					>
+						Gyakorlás
+					</a>
+				</div>
+			{/if}
 		{:else}
 			<div class="rounded-2xl border border-stone-200 bg-stone-100 p-4 dark:border-white/10 dark:bg-white/5">
 				<p class="text-sm font-bold text-ink-900 dark:text-white">Hozd létre a fiókod</p>

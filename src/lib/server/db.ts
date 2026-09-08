@@ -71,7 +71,13 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 		`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'`,
 		`ALTER TABLE users ADD COLUMN xp INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE users ADD COLUMN streak INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE users ADD COLUMN last_study_date TEXT NOT NULL DEFAULT ''`
+		`ALTER TABLE users ADD COLUMN last_study_date TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE classrooms ADD COLUMN subject TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE assignments ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE assignments ADD COLUMN time_limit_mins INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE assignments ADD COLUMN shuffle INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE assignments ADD COLUMN feedback_delayed INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE assignments ADD COLUMN is_exam INTEGER NOT NULL DEFAULT 0`
 	]) {
 		try {
 			await db.prepare(ddl).run();
@@ -83,7 +89,8 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 		db.prepare(
 			`CREATE TABLE IF NOT EXISTS classrooms (
 				id TEXT PRIMARY KEY, teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-				code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL
+				code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '',
+				created_at INTEGER NOT NULL
 			)`
 		),
 		db.prepare(
@@ -156,7 +163,7 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 		db.prepare(
 			`CREATE TABLE IF NOT EXISTS assessments (
 				id TEXT PRIMARY KEY, teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-				topic_id TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE, title TEXT NOT NULL,
+				topic_id TEXT REFERENCES topics(id) ON DELETE CASCADE, title TEXT NOT NULL,
 				max_attempts INTEGER NOT NULL DEFAULT 0, time_limit_mins INTEGER NOT NULL DEFAULT 0,
 				shuffle INTEGER NOT NULL DEFAULT 1, feedback_delayed INTEGER NOT NULL DEFAULT 0,
 				is_exam INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
@@ -174,7 +181,10 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 			`CREATE TABLE IF NOT EXISTS assignments (
 				id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL REFERENCES assessments(id) ON DELETE CASCADE,
 				classroom_id TEXT NOT NULL REFERENCES classrooms(id) ON DELETE CASCADE,
-				start_date INTEGER NOT NULL DEFAULT 0, due_date INTEGER NOT NULL DEFAULT 0
+				start_date INTEGER NOT NULL DEFAULT 0, due_date INTEGER NOT NULL DEFAULT 0,
+				max_attempts INTEGER NOT NULL DEFAULT 0, time_limit_mins INTEGER NOT NULL DEFAULT 0,
+				shuffle INTEGER NOT NULL DEFAULT 1, feedback_delayed INTEGER NOT NULL DEFAULT 0,
+				is_exam INTEGER NOT NULL DEFAULT 0
 			)`
 		),
 		db.prepare(
@@ -193,6 +203,14 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 				score INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0,
 				mistakes_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL
 			)`
+		),
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS messages (
+				id TEXT PRIMARY KEY, classroom_id TEXT NOT NULL REFERENCES classrooms(id) ON DELETE CASCADE,
+				teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '',
+				link_url TEXT, ref_type TEXT, ref_id TEXT, created_at INTEGER NOT NULL
+			)`
 		)
 	]);
 	await db.batch([
@@ -204,7 +222,8 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_members_user ON classroom_members(user_id)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_assign_class ON assignments(classroom_id)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_subm_assign ON submissions(assignment_id, student_id)`),
-		db.prepare(`CREATE INDEX IF NOT EXISTS idx_exam_user_topic ON exam_attempts(user_id, topic_id, created_at)`)
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_exam_user_topic ON exam_attempts(user_id, topic_id, created_at)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_messages_class ON messages(classroom_id, created_at)`)
 	]);
 }
 
@@ -330,6 +349,24 @@ export async function logActivity(
 ): Promise<{ xp: number; streak: number }> {
 	const today = todayStr();
 	const yesterday = todayStr(-1);
+	const u = await db
+		.prepare(
+			`SELECT xp, streak, COALESCE(last_study_date, '') AS last_study_date, COALESCE(role, 'student') AS role
+			 FROM users WHERE id = ?`
+		)
+		.bind(userId)
+		.first<{ xp: number; streak: number; last_study_date: string; role: string }>();
+	if ((u?.role ?? 'student') === 'teacher') {
+		// Tanár nem gyűjt XP-t: csak az ismétlésszámot naplózzuk, XP/széria változatlan.
+		await db
+			.prepare(
+				`INSERT INTO activity (user_id, day, xp, reviews) VALUES (?, ?, 0, ?)
+				 ON CONFLICT(user_id, day) DO UPDATE SET reviews = reviews + excluded.reviews`
+			)
+			.bind(userId, today, reviewsGain)
+			.run();
+		return { xp: u?.xp ?? 0, streak: u?.streak ?? 0 };
+	}
 	await db
 		.prepare(
 			`INSERT INTO activity (user_id, day, xp, reviews) VALUES (?, ?, ?, ?)
@@ -337,10 +374,6 @@ export async function logActivity(
 		)
 		.bind(userId, today, xpGain, reviewsGain)
 		.run();
-	const u = await db
-		.prepare(`SELECT xp, streak, COALESCE(last_study_date, '') AS last_study_date FROM users WHERE id = ?`)
-		.bind(userId)
-		.first<{ xp: number; streak: number; last_study_date: string }>();
 	const xp = (u?.xp ?? 0) + xpGain;
 	let streak = u?.streak ?? 0;
 	const last = u?.last_study_date ?? '';

@@ -10,7 +10,7 @@ export const GET: RequestHandler = async (event) => {
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	const rows = await db
 		.prepare(
-			`SELECT c.id, c.name, c.code,
+			`SELECT c.id, c.name, COALESCE(c.subject, '') AS subject, c.code,
 				(SELECT COUNT(*) FROM classroom_members m WHERE m.classroom_id = c.id) AS members,
 				CASE WHEN c.teacher_id = ? THEN 1 ELSE 0 END AS mine
 			 FROM classrooms c
@@ -23,7 +23,7 @@ export const GET: RequestHandler = async (event) => {
 	return json({ classrooms: rows.results ?? [] });
 };
 
-// POST /api/classrooms { name } — új osztály (csak tanár).
+// POST /api/classrooms { name, subject? } — új osztály (csak tanár).
 export const POST: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
@@ -33,14 +33,16 @@ export const POST: RequestHandler = async (event) => {
 	if (user.role !== 'teacher') {
 		return json({ error: 'Osztályt csak tanár hozhat létre. Válts szerepet a Beállításokban.' }, { status: 403 });
 	}
-	let body: { name?: unknown };
+	let body: { name?: unknown; subject?: unknown };
 	try {
 		body = await event.request.json();
 	} catch {
 		return json({ error: 'Hibás kérés.' }, { status: 400 });
 	}
 	const name = String(body.name ?? '').trim();
+	const subject = String(body.subject ?? '').trim().slice(0, 40);
 	if (name.length < 3) return json({ error: 'Adj legalább 3 karakteres nevet.' }, { status: 400 });
+	if (!subject) return json({ error: 'Válassz tantárgyat.' }, { status: 400 });
 	const id = newId();
 	let code = makeClassCode();
 	for (let i = 0; i < 5; i++) {
@@ -49,8 +51,8 @@ export const POST: RequestHandler = async (event) => {
 		code = makeClassCode();
 	}
 	await db
-		.prepare(`INSERT INTO classrooms (id, teacher_id, code, name, created_at) VALUES (?, ?, ?, ?, ?)`)
-		.bind(id, user.id, code, name, Date.now())
+		.prepare(`INSERT INTO classrooms (id, teacher_id, code, name, subject, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+		.bind(id, user.id, code, name, subject, Date.now())
 		.run();
-	return json({ classroom: { id, name, code, mine: 1, members: 0 } }, { status: 201 });
+	return json({ classroom: { id, name, subject, code, mine: 1, members: 0 } }, { status: 201 });
 };
