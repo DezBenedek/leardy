@@ -3,6 +3,17 @@
 export type TopicType = 'language' | 'general';
 export type ReviewFilter = 'mind' | 'language' | 'general';
 
+/** Tantárgy-kategóriák. A nyelvi hármasnál a felület audiót + kiejtésellenőrzést ad. */
+export const CATEGORIES = ['Angol', 'Német', 'Olasz', 'Matek', 'Irodalom', 'Nyelvtan', 'Történelem'] as const;
+export type Category = (typeof CATEGORIES)[number];
+
+export interface PracticeSource {
+	id: string;
+	title: string;
+	type: TopicType;
+	lessons: { id: string; title: string; due: number; total: number }[];
+}
+
 export interface Topic {
 	id: string;
 	title: string;
@@ -127,8 +138,13 @@ export const studyApi = {
 			method: 'POST',
 			body: JSON.stringify(body)
 		}),
-	due: (filter: ReviewFilter, limit = 50) =>
-		req<{ cards: ReviewCard[] }>(`/api/review?filter=${filter}&limit=${limit}`),
+	due: (filter: ReviewFilter, limit = 50, scope?: { topics?: string[]; lessons?: string[] }) => {
+		const q = new URLSearchParams({ filter, limit: String(limit) });
+		if (scope?.topics?.length) q.set('topics', scope.topics.join(','));
+		if (scope?.lessons?.length) q.set('lessons', scope.lessons.join(','));
+		return req<{ cards: ReviewCard[] }>(`/api/review?${q.toString()}`);
+	},
+	sources: () => req<{ topics: PracticeSource[] }>(`/api/review/sources`),
 	grade: (flashcard_id: string, known: boolean, cram = false) =>
 		req<{ ok: boolean; xp: number; streak: number }>(`/api/review`, {
 			method: 'POST',

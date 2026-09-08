@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { BookOpenText, CheckCircle2, Layers, ListChecks } from '@lucide/svelte';
+	import { BookOpenText, CheckCircle2, Layers, ListChecks, Play } from '@lucide/svelte';
 	import { auth } from '$lib/auth.svelte';
-	import FlashcardPlayer from '$lib/components/FlashcardPlayer.svelte';
-	import QuizPlayer from '$lib/components/QuizPlayer.svelte';
+	import { get as cacheGet, invalidate, peek } from '$lib/cache';
+	import { player } from '$lib/player.svelte';
 	import { renderMarkdown, studyApi, type LessonDetail } from '$lib/study';
 
 	let { params } = $props();
@@ -11,54 +11,37 @@
 	type Tab = 'theory' | 'cards' | 'quiz';
 	let tab = $state<Tab>('theory');
 	let data = $state<LessonDetail | null>(null);
-	let loading = $state(true);
 	let err = $state<string | null>(null);
 	let saving = $state(false);
 
-	// Kártya-sor: a "Nem tudom" a végére pörög (cram-jellegű befejezés a leckén belül).
-	let queue = $state<string[]>([]);
-	let cardIdx = $state(0);
-	let cardsFinished = $state(false);
-
-	let quizScore = $state<number | null>(null);
-	let quizTotal = $state(0);
-
 	let isLang = $derived(data?.topic.type === 'language');
-	let card = $derived(data?.cards.find((c) => c.id === queue[cardIdx]));
 
 	async function load() {
-		loading = true;
 		err = null;
 		try {
-			data = await studyApi.lesson(params.id);
-			queue = (data.cards ?? []).map((c) => c.id);
-			cardIdx = 0;
-			cardsFinished = (data.progress.cards_done ?? 0) === 1;
-			if ((data.progress.quiz_best ?? 0) > 0) {
-				quizScore = data.progress.quiz_best;
-				quizTotal = data.quiz.length;
-			}
+			const res = await cacheGet(`lesson:${params.id}`, () => studyApi.lesson(params.id), 120000);
+			data = res.data;
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Hiba történt.';
-		} finally {
-			loading = false;
+			if (!data) err = e instanceof Error ? e.message : 'Hiba történt.';
 		}
 	}
 
-	onMount(load);
+	onMount(() => {
+		data = peek<LessonDetail>(`lesson:${params.id}`) ?? null;
+		void load();
+	});
 
 	async function complete(kind: 'theory' | 'cards' | 'quiz', score?: number) {
 		if (!auth.user || !data) return;
 		saving = true;
 		try {
 			await studyApi.completeLesson(data.lesson.id, { kind, score });
+			invalidate('stats');
+			invalidate(`topic:${data.topic.id}`);
 			await auth.refresh();
 			if (data) {
 				if (kind === 'theory') data.progress.theory_done = 1;
-				if (kind === 'cards') {
-					data.progress.cards_done = 1;
-					cardsFinished = true;
-				}
+				if (kind === 'cards') data.progress.cards_done = 1;
 				if (kind === 'quiz') {
 					data.progress.quiz_done = 1;
 					if (score !== undefined) data.progress.quiz_best = Math.max(data.progress.quiz_best, score);
@@ -71,28 +54,43 @@
 		}
 	}
 
-	async function gradeCard(known: boolean) {
-		const id = queue[cardIdx];
-		if (!id) return;
-		if (auth.user) {
-			try {
-				await studyApi.grade(id, known, false);
-			} catch {
-				// offline-szerű hiba: a lecke menete helyben folytatódik
+	function startCards() {
+		if (!data) return;
+		player.openCards({
+			title: data.lesson.title,
+			subtitle: `${data.topic.title} · Kártyák`,
+			cards: data.cards,
+			isLanguage: isLang,
+			repeatUnknown: true,
+			untilAllKnown: false,
+			onGrade: async (card, known) => {
+				if (!auth.user) return;
+				try {
+					await studyApi.grade(card.id, known, false);
+					invalidate('stats');
+				} catch {
+					// a menet helyben folytatódik
+				}
+			},
+			onFinish: async () => {
+				await complete('cards');
+				tab = 'quiz';
 			}
-		}
-		if (!known) queue.push(id);
-		if (cardIdx + 1 >= queue.length) {
-			await complete('cards');
-		} else {
-			cardIdx++;
-		}
+		});
 	}
 
-	async function finishQuiz(score: number, total: number) {
-		quizScore = total > 0 ? Math.round((score / total) * 100) : 0;
-		quizTotal = total;
-		await complete('quiz', quizScore);
+	function startQuiz() {
+		if (!data) return;
+		player.openQuiz({
+			title: data.lesson.title,
+			subtitle: `${data.topic.title} · Kvíz`,
+			questions: data.quiz,
+			reveal: true,
+			onFinish: async (score, total) => {
+				const pct = total > 0 ? Math.round((score / total) * 100) : 0;
+				await complete('quiz', pct);
+			}
+		});
 	}
 
 	const tabs: { id: Tab; label: string; icon: typeof BookOpenText; done: boolean }[] = $derived(
@@ -110,8 +108,8 @@
 	<title>{data ? `${data.lesson.title} — Leardy` : 'Lecke — Leardy'}</title>
 </svelte:head>
 
-{#if loading}
-	<p class="mt-4 text-sm text-stone-500 dark:text-stone-400">Lecke betöltése…</p>
+{#if !data && !err}
+	<p class="animate-pulse mt-4 text-sm text-stone-500 dark:text-stone-400">Lecke betöltése…</p>
 {:else if err && !data}
 	<p role="alert" class="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err}</p>
 {:else if data}
@@ -120,12 +118,12 @@
 		<span> · </span>
 		<a href="/temakorok/{data.topic.id}" class="hover:underline">{data.topic.title}</a>
 	</nav>
-	<h1 class="mt-1 text-[24px] font-extrabold tracking-tight text-ink-900 dark:text-white">{data.lesson.title}</h1>
+	<h1 class="mt-1 text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">{data.lesson.title}</h1>
 	<p class="text-sm text-ink-600 dark:text-stone-400">
-		{data.topic.category} · {data.topic.type === 'language' ? 'Nyelvi' : 'Tantárgyi'} · {data.cards.length} kártya · {data.quiz.length} kérdés
+		{data.topic.category} · {data.cards.length} kártya · {data.quiz.length} kérdés
 	</p>
 
-	<div class="mt-4 grid grid-cols-3 gap-2" role="tablist" aria-label="Lecke modulok">
+	<div class="mt-3 grid grid-cols-3 gap-2" role="tablist" aria-label="Lecke modulok">
 		{#each tabs as t (t.id)}
 			{@const Icon = t.icon}
 			<button
@@ -172,40 +170,42 @@
 			{/if}
 		{/if}
 	{:else if tab === 'cards'}
-		<section class="mt-3 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 dark:border-white/10 dark:bg-stone-900">
-			{#if data.cards.length === 0}
-				<p class="text-sm text-stone-500 dark:text-stone-400">Ehhez a leckéhez még nincs kártya.</p>
-			{:else if cardsFinished && cardIdx >= queue.length}
-				<p class="flex items-center gap-2 text-[15px] font-bold text-emerald-600 dark:text-emerald-400">
-					<CheckCircle2 size={17} /> Minden kártyát tudsz! (+10 XP)
-				</p>
-				<button
-					onclick={() => {
-						cardIdx = 0;
-						queue = (data?.cards ?? []).map((c) => c.id);
-						cardsFinished = false;
-					}}
-					class="mt-3 w-full rounded-full border border-stone-200 px-4 py-2.5 text-sm font-semibold text-ink-600 transition hover:bg-stone-50 dark:border-white/10 dark:text-stone-300"
-				>
-					Újra átforgatom
-				</button>
-			{:else if card}
-				<p class="mb-2 text-xs font-semibold text-ink-400 dark:text-stone-500">{cardIdx + 1} / {queue.length}</p>
-				{#key card.id + '-' + cardIdx}
-					<FlashcardPlayer card={card} isLanguage={isLang} onGrade={gradeCard} />
-				{/key}
+		<section class="mt-3 rounded-2xl border border-stone-200 bg-white p-5 text-center sm:p-6 dark:border-white/10 dark:bg-stone-900">
+			<span class="mx-auto grid size-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300">
+				<Layers size={26} />
+			</span>
+			<h2 class="font-display mt-3 text-[20px] font-bold text-ink-900 dark:text-white">Kártyázás teljes képernyőn</h2>
+			<p class="mx-auto mt-1 max-w-xs text-sm text-stone-500 dark:text-stone-400">
+				{data.cards.length} kártya{#if isLang} · audió + kiejtésellenőrzés{/if} · húzd jobbra, ha tudod, balra, ha nem.
+			</p>
+			{#if data.progress.cards_done === 1}
+				<p class="mt-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">✓ Már végigmentél ezen a paklin</p>
 			{/if}
+			<button
+				onclick={startCards}
+				class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 py-3 text-[15px] font-bold text-white transition hover:bg-emerald-600 active:scale-[0.99]"
+			>
+				<Play size={18} fill="currentColor" /> Indítás
+			</button>
 		</section>
 	{:else}
-		<section class="mt-3 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 dark:border-white/10 dark:bg-stone-900">
-			{#if quizScore !== null}
-				<p class="mb-3 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-sm font-bold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
-					Legjobb eredmény: {quizScore}% ({quizTotal} kérdés)
-				</p>
+		<section class="mt-3 rounded-2xl border border-stone-200 bg-white p-5 text-center sm:p-6 dark:border-white/10 dark:bg-stone-900">
+			<span class="mx-auto grid size-14 place-items-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-500/20 dark:text-white">
+				<ListChecks size={26} />
+			</span>
+			<h2 class="font-display mt-3 text-[20px] font-bold text-ink-900 dark:text-white">Kvíz teljes képernyőn</h2>
+			<p class="mx-auto mt-1 max-w-xs text-sm text-stone-500 dark:text-stone-400">
+				{data.quiz.length} feladat · feleletválasztós, párosítós, sorrendes, igaz/hamis, beírós.
+			</p>
+			{#if data.progress.quiz_best > 0}
+				<p class="mt-2 text-sm font-bold text-emerald-600 dark:text-emerald-300">Legjobb eredmény: {data.progress.quiz_best}%</p>
 			{/if}
-			{#key data.lesson.id}
-				<QuizPlayer questions={data.quiz} onFinish={finishQuiz} />
-			{/key}
+			<button
+				onclick={startQuiz}
+				class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white transition hover:bg-brand-600 active:scale-[0.99]"
+			>
+				<Play size={18} fill="currentColor" /> Indítás
+			</button>
 		</section>
 	{/if}
 {/if}

@@ -1,26 +1,34 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { studyApi, type AssignmentRow, type Classroom } from '$lib/study';
+	import { get as cacheGet, peek } from '$lib/cache';
 
 	let { params } = $props();
 
 	let room = $state<Classroom | null>(null);
 	let assigns = $state<AssignmentRow[]>([]);
 	let members = $state<{ name: string }[]>([]);
-	let loading = $state(true);
 	let err = $state<string | null>(null);
 
-	onMount(async () => {
-		try {
-			const data = await studyApi.classroom(params.id);
-			room = data.classroom;
-			assigns = data.assignments;
-			members = data.members;
-		} catch (e) {
-			err = e instanceof Error ? e.message : 'Hiba történt.';
-		} finally {
-			loading = false;
+	onMount(() => {
+		const cached = peek<{ classroom: Classroom; assignments: AssignmentRow[]; members: { name: string }[] }>(
+			`classroom:${params.id}`
+		);
+		if (cached) {
+			room = cached.classroom;
+			assigns = cached.assignments;
+			members = cached.members;
 		}
+		void (async () => {
+			try {
+				const data = await cacheGet(`classroom:${params.id}`, () => studyApi.classroom(params.id), 30000);
+				room = data.data.classroom;
+				assigns = data.data.assignments;
+				members = data.data.members;
+			} catch (e) {
+				if (!room) err = e instanceof Error ? e.message : 'Hiba történt.';
+			}
+		})();
 	});
 
 	function fmtDue(ts: number): string {
@@ -37,10 +45,10 @@
 	<a href="/tanterem" class="hover:underline">Tanterem</a>
 </nav>
 
-{#if loading}
-	<p class="mt-2 text-sm text-stone-500 dark:text-stone-400">Betöltés…</p>
-{:else if err || !room}
-	<p role="alert" class="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err ?? 'Nincs ilyen osztály.'}</p>
+{#if err && !room}
+	<p role="alert" class="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err}</p>
+{:else if !room}
+	<p class="animate-pulse mt-2 text-sm text-stone-500 dark:text-stone-400">Betöltés…</p>
 {:else}
 	<section class="mt-2 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 dark:border-white/10 dark:bg-stone-900">
 		<h1 class="text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">{room.name}</h1>

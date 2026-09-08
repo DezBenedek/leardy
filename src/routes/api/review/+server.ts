@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, logActivity, nextSrsInterval, requireUser, todayStr } from '$lib/server/db';
 
-// GET /api/review?filter=mind|language|general — esedékes kártyák az összes tanult témakörből.
+// GET /api/review?filter=mind|language|general&topics=id,..&lessons=id,.. — esedékes kártyák.
 export const GET: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
@@ -10,6 +10,8 @@ export const GET: RequestHandler = async (event) => {
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	const filter = event.url.searchParams.get('filter') ?? 'mind';
 	const limit = Math.max(1, Math.min(100, Number(event.url.searchParams.get('limit') ?? 50) || 50));
+	const topicIds = (event.url.searchParams.get('topics') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+	const lessonIds = (event.url.searchParams.get('lessons') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
 	// Ha még semmire nem iratkozott fel: a nyilvános témakörök automatikusan bekerülnek.
 	const n = await db
@@ -26,6 +28,16 @@ export const GET: RequestHandler = async (event) => {
 			.run();
 	}
 	const typeCond = filter === 'language' ? 'AND t.type = \'language\'' : filter === 'general' ? 'AND t.type = \'general\'' : '';
+	const scopeConds: string[] = [];
+	const scopeArgs: unknown[] = [];
+	if (topicIds.length > 0) {
+		scopeConds.push(`AND t.id IN (${topicIds.map(() => '?').join(',')})`);
+		scopeArgs.push(...topicIds);
+	}
+	if (lessonIds.length > 0) {
+		scopeConds.push(`AND l.id IN (${lessonIds.map(() => '?').join(',')})`);
+		scopeArgs.push(...lessonIds);
+	}
 	const rows = await db
 		.prepare(
 			`SELECT f.id, f.lesson_id, f.front_text, f.back_text, f.audio_url, f.image_url, f.ipa,
@@ -36,12 +48,12 @@ export const GET: RequestHandler = async (event) => {
 			 JOIN topics t ON t.id = l.topic_id
 			 JOIN enrollments e ON e.topic_id = t.id AND e.user_id = ?
 			 LEFT JOIN user_progress p ON p.user_id = ? AND p.flashcard_id = f.id
-			 WHERE (p.next_review_date IS NULL OR p.next_review_date = '' OR p.next_review_date <= ?) ${typeCond}
+			 WHERE (p.next_review_date IS NULL OR p.next_review_date = '' OR p.next_review_date <= ?) ${typeCond} ${scopeConds.join(' ')}
 			 ORDER BY CASE WHEN p.status IS NULL OR p.status = 'new' THEN 0 ELSE 1 END,
 				COALESCE(p.ease_interval, 0) ASC, RANDOM()
 			 LIMIT ?`
 		)
-		.bind(user.id, user.id, todayStr(), limit)
+		.bind(user.id, user.id, todayStr(), ...scopeArgs, limit)
 		.all();
 	return json({ cards: rows.results ?? [] });
 };

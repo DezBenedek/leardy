@@ -1,7 +1,13 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, newId, requireUser } from '$lib/server/db';
 
-const CATS = ['Nyelv', 'Reál', 'Humán'];
+/** Tantárgy-kategóriák. A nyelvieknél a type automatikusan 'language'. */
+const CATS = ['Angol', 'Német', 'Olasz', 'Matek', 'Irodalom', 'Nyelvtan', 'Történelem'];
+const LANG_CATS = ['Angol', 'Német', 'Olasz'];
+
+function typeForCategory(category: string): 'language' | 'general' {
+	return LANG_CATS.includes(category) ? 'language' : 'general';
+}
 
 // GET /api/topics?category=&type=&q= — nyilvános + saját témakörök, darabszámokkal.
 export const GET: RequestHandler = async (event) => {
@@ -61,8 +67,8 @@ export const POST: RequestHandler = async (event) => {
 		return json({ error: 'Hibás kérés.' }, { status: 400 });
 	}
 	const title = String(body.title ?? '').trim();
-	const category = CATS.includes(String(body.category)) ? String(body.category) : 'Humán';
-	const type = body.type === 'language' ? 'language' : 'general';
+	const category = CATS.includes(String(body.category)) ? String(body.category) : 'Történelem';
+	const type = typeForCategory(category);
 	const is_public = body.is_public === false || body.is_public === 0 ? 0 : 1;
 	if (title.length < 3) return json({ error: 'Adj legalább 3 karakteres címet.' }, { status: 400 });
 	const id = newId();

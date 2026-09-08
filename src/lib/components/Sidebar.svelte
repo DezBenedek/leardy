@@ -65,12 +65,9 @@
 			<div class="rounded-2xl border border-stone-200 bg-stone-100 p-4 dark:border-white/10 dark:bg-white/5">
 				<p class="flex items-center gap-1.5 text-sm font-bold text-ink-900 dark:text-white">
 					<Flame size={16} class="text-amber-500" />
-					7 napos sorozat
+					{user.xp ?? 0} XP
 				</p>
-				<div class="mt-2.5 h-1.5 overflow-hidden rounded-full bg-stone-200 dark:bg-white/10">
-					<div class="h-full w-3/4 rounded-full bg-brand-500"></div>
-				</div>
-				<p class="mt-2 text-xs text-ink-600 dark:text-stone-400">Még 5 perc a mai célhoz.</p>
+				<p class="mt-2 text-xs text-ink-600 dark:text-stone-400">A haladásod mentve, eszközök között is.</p>
 				<a
 					href="/gyakorlas"
 					class="mt-3 block rounded-full bg-brand-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-600"

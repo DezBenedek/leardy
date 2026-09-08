@@ -46,6 +46,20 @@ export function toQuizQ(r: QuizRow): QuizQ {
 	if (r.type === 'text') {
 		return { id: r.id, question_text: r.question_text, type: 'text', options: [], correct_answer: r.correct_answer };
 	}
+	if (r.type === 'tf') {
+		const ans = r.correct_answer === 'Hamis' ? 'Hamis' : 'Igaz';
+		return { id: r.id, question_text: r.question_text, type: 'tf', options: ['Igaz', 'Hamis'], correct_answer: ans };
+	}
+	if (r.type === 'order') {
+		// options_json = helyes sorrend; a játék kevert listát kap, a válasz JSON-tömb.
+		return {
+			id: r.id,
+			question_text: r.question_text,
+			type: 'order',
+			options: shuffle(options),
+			correct_answer: JSON.stringify(options)
+		};
+	}
 	return {
 		id: r.id,
 		question_text: r.question_text,

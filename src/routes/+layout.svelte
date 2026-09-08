@@ -6,6 +6,7 @@
 	import { fly } from 'svelte/transition';
 	import AuthDrawer from '$lib/components/AuthDrawer.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
+	import GlobalPlayer from '$lib/components/GlobalPlayer.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import { TAB_ORDER } from '$lib/navigation';
 
@@ -60,4 +61,5 @@
 </div>
 
 <AuthDrawer />
+<GlobalPlayer />
 <BottomNav />
