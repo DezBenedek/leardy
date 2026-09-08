@@ -118,19 +118,19 @@
 
 	<!-- Mérőszámok -->
 	<div class="mt-3 grid grid-cols-2 gap-2.5">
-		<div class="rounded-[20px] bg-stone-100 p-4 dark:bg-white/5">
+		<div class="anim-rise rounded-[20px] bg-stone-100 p-4 dark:bg-white/5">
 			<p class="font-display text-[26px] leading-none font-extrabold text-ink-900 dark:text-white">{stats?.xp ?? '–'}</p>
 			<p class="mt-1 text-[13px] font-medium text-stone-500 dark:text-stone-400">Összes XP</p>
 		</div>
-		<div class="rounded-[20px] bg-stone-100 p-4 dark:bg-white/5">
+		<div class="anim-rise rounded-[20px] bg-stone-100 p-4 dark:bg-white/5" style="--d:60ms">
 			<p class="font-display text-[26px] leading-none font-extrabold text-ink-900 dark:text-white">{stats?.lessonsDone ?? '–'}</p>
 			<p class="mt-1 text-[13px] font-medium text-stone-500 dark:text-stone-400">Befejezett lecke</p>
 		</div>
-		<div class="rounded-[20px] bg-stone-100 p-4 dark:bg-white/5">
+		<div class="anim-rise rounded-[20px] bg-stone-100 p-4 dark:bg-white/5" style="--d:120ms">
 			<p class="font-display text-[26px] leading-none font-extrabold text-ink-900 dark:text-white">{stats?.due.mind ?? '–'}</p>
 			<p class="mt-1 text-[13px] font-medium text-stone-500 dark:text-stone-400">Mai kártya</p>
 		</div>
-		<div class="rounded-[20px] bg-stone-100 p-4 dark:bg-white/5">
+		<div class="anim-rise rounded-[20px] bg-stone-100 p-4 dark:bg-white/5" style="--d:180ms">
 			<p class="font-display text-[26px] leading-none font-extrabold text-ink-900 dark:text-white">{todayReviews}</p>
 			<p class="mt-1 text-[13px] font-medium text-stone-500 dark:text-stone-400">Mai ismétlés</p>
 		</div>
@@ -140,7 +140,8 @@
 	{#if stats?.lastLesson}
 		<a
 			href="/lecke/{stats.lastLesson.id}"
-			class="mt-2.5 flex items-center gap-3.5 rounded-[20px] border border-stone-200 bg-white p-4 transition hover:bg-stone-50 active:scale-[0.995] dark:border-white/10 dark:bg-stone-900 dark:hover:bg-white/5"
+			style="--d:120ms"
+			class="anim-rise mt-2.5 flex items-center gap-3.5 rounded-[20px] border border-stone-200 bg-white p-4 transition hover:bg-stone-50 active:scale-[0.995] dark:border-white/10 dark:bg-stone-900 dark:hover:bg-white/5"
 		>
 			<span class="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500 text-white">
 				<Play size={20} fill="currentColor" />
@@ -155,7 +156,7 @@
 	{/if}
 
 	<!-- Heti aktivitás: üres nap = üres pálya, semmi csík -->
-	<section class="mt-2.5 rounded-[20px] bg-stone-100 p-4 dark:bg-white/5" aria-label="Heti aktivitás">
+	<section class="anim-rise mt-2.5 rounded-[20px] bg-stone-100 p-4 dark:bg-white/5" style="--d:180ms" aria-label="Heti aktivitás">
 		<div class="mb-2 flex items-baseline justify-between">
 			<h2 class="text-[15px] font-bold text-ink-900 dark:text-white">Heti aktivitás</h2>
 			<p class="text-[13px] font-semibold text-stone-500 tabular-nums dark:text-stone-400">{weekTotal} XP</p>

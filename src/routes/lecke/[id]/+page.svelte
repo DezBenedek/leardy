@@ -4,7 +4,7 @@
 	import { auth } from '$lib/auth.svelte';
 	import { get as cacheGet, invalidate, peek } from '$lib/cache';
 	import { player } from '$lib/player.svelte';
-	import { renderMarkdown, studyApi, type LessonDetail } from '$lib/study';
+	import { QueuedOffline, renderMarkdown, studyApi, type LessonDetail } from '$lib/study';
 
 	let { params } = $props();
 

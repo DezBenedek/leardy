@@ -221,10 +221,11 @@
 {/if}
 
 <div class="mt-3 space-y-2.5">
-	{#each topics as t (t.id)}
+	{#each topics as t, i (t.id)}
 		<a
 			href="/temakorok/{t.id}"
-			class="flex items-center gap-3.5 rounded-2xl border border-stone-200 bg-white p-4 transition hover:bg-stone-50 active:scale-[0.995] dark:border-white/10 dark:bg-stone-900 dark:hover:bg-white/5"
+			style="--d:{Math.min(i * 45, 270)}ms"
+			class="anim-rise flex items-center gap-3.5 rounded-2xl border border-stone-200 bg-white p-4 transition hover:bg-stone-50 active:scale-[0.995] dark:border-white/10 dark:bg-stone-900 dark:hover:bg-white/5"
 		>
 			<span class="grid size-11 shrink-0 place-items-center rounded-xl {t.type === 'language' ? 'bg-brand-50 text-brand-600 dark:bg-brand-500/20 dark:text-white' : 'bg-amber-50 text-amber-600 dark:bg-amber-400/10 dark:text-amber-300'}">
 				{#if t.type === 'language'}

@@ -134,7 +134,7 @@
 
 {#if session}
 	{#key session}
-		<div class="fixed inset-0 z-[60] flex flex-col bg-white dark:bg-stone-950" role="dialog" aria-modal="true" aria-label={session.title}>
+		<div class="anim-fade fixed inset-0 z-[60] flex flex-col bg-white dark:bg-stone-950" role="dialog" aria-modal="true" aria-label={session.title}>
 			<!-- Fejléc: cím + idő + Kilépés jobb fent -->
 			<header
 				class="flex items-center gap-3 border-b border-stone-200 px-4 py-3 dark:border-white/10"
@@ -169,7 +169,7 @@
 				</div>
 			{/if}
 
-			<div class="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-y-auto px-4 pt-4 pb-10 sm:px-6">
+			<div class="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-x-clip overflow-y-auto px-4 pt-4 pb-10 sm:px-6">
 				{#if session.kind === 'cards'}
 					<div class="m-auto w-full">
 					{#if cardsDone}

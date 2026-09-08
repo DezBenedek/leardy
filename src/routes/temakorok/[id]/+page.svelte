@@ -2,11 +2,11 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { CheckCircle2, Circle, FileText, Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import { CheckCircle2, Circle, FileText, Pencil, Plus, Trash2, ArrowLeft } from '@lucide/svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { authUI } from '$lib/auth-ui.svelte';
 	import { get as cacheGet, invalidate, peek } from '$lib/cache';
-	import { CATEGORIES, studyApi, type LessonDetail, type LessonRow, type Topic } from '$lib/study';
+	import { CATEGORIES, QueuedOffline, studyApi, type LessonDetail, type LessonRow, type Topic } from '$lib/study';
 
 	let { params } = $props();
 	let topic = $state<Topic | null>(null);
@@ -107,7 +107,12 @@
 			invalidate('topics');
 			invalidate('sources');
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Hiba történt.';
+			if (e instanceof QueuedOffline) {
+				// Offline: sorba állt, helyben is jelöljük.
+				enrolled = true;
+			} else {
+				err = e instanceof Error ? e.message : 'Hiba történt.';
+			}
 		}
 	}
 
@@ -400,15 +405,20 @@
 	<title>{topic ? `${topic.title} — Leardy` : 'Témakör — Leardy'}</title>
 </svelte:head>
 
-<nav class="mt-3 text-[13px] text-stone-500 dark:text-stone-400" aria-label="Morzsa">
-	<a href="/temakorok" class="hover:underline">← Témakörök</a>
-</nav>
-
 {#if err && !topic}
 	<p role="alert" class="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err}</p>
 {:else if topic}
-	<div class="mt-1 flex flex-wrap items-center gap-2">
-		<h1 class="text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">{topic.title}</h1>
+<div class="mt-3 flex items-center gap-2">
+	<a
+		href="/temakorok"
+		aria-label="Vissza a témakörökhöz"
+		class="grid size-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-900 transition hover:bg-stone-50 active:scale-95 dark:border-white/10 dark:bg-stone-900 dark:text-white"
+	>
+		<ArrowLeft size={20} />
+	</a>
+	<h1 class="min-w-0 flex-1 truncate text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">{topic.title}</h1>
+</div>
+<div class="mt-2 flex flex-wrap items-center gap-2">
 		<span class="rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-bold text-stone-500 dark:bg-white/10 dark:text-stone-300">
 			{topic.category}{topic.type === 'language' ? ' · audió + kiejtés' : ''}
 		</span>
@@ -658,11 +668,12 @@
 		</div>
 	{:else}
 		<div class="mt-3 space-y-2.5">
-			{#each lessons as l, i (l.id)}
-				<a
-					href="/lecke/{l.id}"
-					class="flex items-center gap-3.5 rounded-2xl border border-stone-200 bg-white p-4 transition hover:bg-stone-50 active:scale-[0.995] dark:border-white/10 dark:bg-stone-900 dark:hover:bg-white/5"
-				>
+		{#each lessons as l, i (l.id)}
+			<a
+				href="/lecke/{l.id}"
+				style="--d:{Math.min(i * 45, 270)}ms"
+				class="anim-rise flex items-center gap-3.5 rounded-2xl border border-stone-200 bg-white p-4 transition hover:bg-stone-50 active:scale-[0.995] dark:border-white/10 dark:bg-stone-900 dark:hover:bg-white/5"
+			>
 					{#if isDone(l)}
 						<CheckCircle2 size={22} class="shrink-0 text-emerald-500" />
 					{:else}
@@ -683,14 +694,14 @@
 
 		<a
 			href="/temakorok/{topic.id}/temazaro"
-			class="mt-3 flex items-center gap-3.5 rounded-2xl bg-ink-900 p-4 transition hover:opacity-90 active:scale-[0.995] dark:bg-white"
+			class="mt-3 flex items-center gap-3.5 rounded-2xl bg-ink-900 p-4 transition hover:opacity-90 active:scale-[0.995]"
 		>
-			<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-white/15 text-white dark:bg-ink-900/10 dark:text-ink-900">
+			<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-white/15 text-white">
 				<FileText size={20} />
 			</span>
 			<span class="min-w-0 flex-1">
-				<span class="block text-[15px] font-bold text-white dark:text-ink-900">Összevont témazáró</span>
-				<span class="block text-[13px] text-white/70 dark:text-ink-900/60">Az összes lecke kérdése keverve</span>
+				<span class="block text-[15px] font-bold text-white">Összevont témazáró</span>
+				<span class="block text-[13px] text-white/70">Az összes lecke kérdése keverve</span>
 			</span>
 		</a>
 	{/if}

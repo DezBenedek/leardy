@@ -46,3 +46,82 @@ body {
 .dark ::selection {
 	background: rgba(66, 85, 255, 0.45);
 }
+
+/* ---------- Mikro-animációk ---------- */
+
+@keyframes leardy-rise {
+	from {
+		opacity: 0;
+		transform: translateY(14px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes leardy-pop {
+	0% {
+		opacity: 0;
+		transform: scale(0.96);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes leardy-shake {
+	0%,
+	100% {
+		transform: translateX(0);
+	}
+	25% {
+		transform: translateX(-5px);
+	}
+	50% {
+		transform: translateX(5px);
+	}
+	75% {
+		transform: translateX(-3px);
+	}
+}
+
+@keyframes leardy-fade {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/* Belépő kártyák/listák (késleltetés --d-vel lépcsőzhető: style="--d:60ms") */
+.anim-rise {
+	animation: leardy-rise 0.38s cubic-bezier(0.32, 0.72, 0, 1) both;
+	animation-delay: var(--d, 0ms);
+}
+
+/* Visszajelzések, overlay-panelek */
+.anim-pop {
+	animation: leardy-pop 0.22s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* Rossz válasz */
+.anim-shake {
+	animation: leardy-shake 0.32s ease both;
+}
+
+/* Overlay-háttér */
+.anim-fade {
+	animation: leardy-fade 0.2s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.anim-rise,
+	.anim-pop,
+	.anim-shake,
+	.anim-fade {
+		animation: none;
+	}
+}

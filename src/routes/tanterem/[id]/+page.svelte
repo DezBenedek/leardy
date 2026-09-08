@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { ArrowLeft } from '@lucide/svelte';
 	import { studyApi, type AssignmentRow, type Classroom } from '$lib/study';
 	import { get as cacheGet, peek } from '$lib/cache';
 
@@ -41,9 +42,16 @@
 	<title>{room ? `${room.name} — Tanterem` : 'Osztály — Leardy'}</title>
 </svelte:head>
 
-<nav class="mt-3 text-[13px] text-stone-500 dark:text-stone-400" aria-label="Morzsa">
-	<a href="/tanterem" class="hover:underline">Tanterem</a>
-</nav>
+<div class="mt-3 flex items-center gap-2">
+	<a
+		href="/tanterem"
+		aria-label="Vissza a tanterembe"
+		class="grid size-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-900 transition hover:bg-stone-50 active:scale-95 dark:border-white/10 dark:bg-stone-900 dark:text-white"
+	>
+		<ArrowLeft size={20} />
+	</a>
+	<h1 class="min-w-0 flex-1 truncate text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">{room ? room.name : 'Osztály'}</h1>
+</div>
 
 {#if err && !room}
 	<p role="alert" class="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err}</p>
@@ -51,7 +59,6 @@
 	<p class="animate-pulse mt-2 text-sm text-stone-500 dark:text-stone-400">Betöltés…</p>
 {:else}
 	<section class="mt-2 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 dark:border-white/10 dark:bg-stone-900">
-		<h1 class="text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">{room.name}</h1>
 		<p class="text-sm text-ink-600 dark:text-stone-400">
 			Kód: <span class="font-bold tracking-widest">{room.code}</span> · {members.length} tag
 		</p>

@@ -1,15 +1,16 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { FileText, Play } from '@lucide/svelte';
+	import { ArrowLeft, FileText, Play } from '@lucide/svelte';
 	import { invalidate } from '$lib/cache';
 	import { player } from '$lib/player.svelte';
-	import { studyApi, type QuizQ } from '$lib/study';
+	import { studyApi, QueuedOffline, type QuizQ } from '$lib/study';
 
 	let { params } = $props();
 
 	let title = $state('Dolgozat');
 	let starting = $state(false);
 	let submitting = $state(false);
+	let pendingOffline = $state(false);
 	let err = $state<string | null>(null);
 	let result = $state<{
 		score: number;
@@ -44,7 +45,12 @@
 						result = { ...r, items: data.items as QuizQ[] };
 						invalidate('assignments');
 					} catch (e) {
-						err = e instanceof Error ? e.message : 'Hiba történt.';
+						if (e instanceof QueuedOffline) {
+							// Offline beadás: sorba állt, az eredmény a Tanteremben jelenik meg.
+							pendingOffline = true;
+						} else {
+							err = e instanceof Error ? e.message : 'Hiba történt.';
+						}
 					} finally {
 						submitting = false;
 					}
@@ -62,10 +68,16 @@
 	<title>{title} — Leardy</title>
 </svelte:head>
 
-<nav class="mt-3 text-[13px] text-stone-500 dark:text-stone-400" aria-label="Morzsa">
-	<a href="/tanterem" class="hover:underline">← Tanterem</a>
-</nav>
-<h1 class="mt-1 text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">{title}</h1>
+<div class="mt-3 flex items-center gap-2">
+	<a
+		href="/tanterem"
+		aria-label="Vissza a tanterembe"
+		class="grid size-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink-900 transition hover:bg-stone-50 active:scale-95 dark:border-white/10 dark:bg-stone-900 dark:text-white"
+	>
+		<ArrowLeft size={20} />
+	</a>
+	<h1 class="min-w-0 flex-1 truncate text-[22px] font-extrabold tracking-tight text-ink-900 dark:text-white">{title}</h1>
+</div>
 
 {#if err}
 	<p role="alert" class="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err}</p>
@@ -73,6 +85,16 @@
 
 {#if submitting}
 	<p class="animate-pulse mt-4 text-sm text-stone-500 dark:text-stone-400">Beadás, pontozás…</p>
+{:else if pendingOffline}
+	<section class="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center dark:border-amber-500/30 dark:bg-amber-500/10">
+		<p class="font-display text-[22px] font-extrabold text-amber-800 dark:text-amber-200">Beadva offline ✓</p>
+		<p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
+			Automatikusan beküldjük, ha újra online leszel. Az eredmény a Tanteremben jelenik meg.
+		</p>
+		<button onclick={() => goto('/tanterem')} class="mt-4 w-full rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white">
+			Vissza a tanterembe
+		</button>
+	</section>
 {:else if result}
 	<section class="mt-3 rounded-2xl border border-stone-200 bg-white p-5 text-center sm:p-6 dark:border-white/10 dark:bg-stone-900">
 		{#if result.delayed}

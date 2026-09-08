@@ -92,7 +92,12 @@
 	</div>
 	<div class="mt-3" class:pointer-events-none={picked !== null}>
 		{#key q.id}
-			<Game q={{ id: q.id, question_text: q.question_text, type: q.type, options: q.options, left: q.left }} onAnswer={answer} />
+			<Game
+				q={{ id: q.id, question_text: q.question_text, type: q.type, options: q.options, left: q.left }}
+				onAnswer={answer}
+				picked={picked}
+				correct={reveal && picked !== null ? q.correct_answer : null}
+			/>
 		{/key}
 	</div>
 
@@ -100,10 +105,10 @@
 		<div
 			role="status"
 			class={[
-				'mt-3 rounded-2xl p-4',
+				'anim-pop mt-3 rounded-2xl p-4',
 				pickedOk
 					? 'bg-emerald-50 dark:bg-emerald-400/10'
-					: 'bg-red-50 dark:bg-red-400/10'
+					: 'anim-shake bg-red-50 dark:bg-red-400/10'
 			]}
 		>
 			<p class={['flex items-center gap-2 text-[16px] font-extrabold', pickedOk ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-300']}>

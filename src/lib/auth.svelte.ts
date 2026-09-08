@@ -72,13 +72,10 @@ class AuthStore {
 		}
 	}
 
-	/** Induláskor: szerver-session a D1-ből. Nincs helyi fallback. */
+	/** Induláskor: szerver-session a D1-ből. Hálózati hibánál az eddigi állapot marad. */
 	async refresh(): Promise<void> {
 		const me = await api<{ user?: ApiUser; error?: string }>('/api/auth/me');
-		if (!me) {
-			this.user = null;
-			return;
-		}
+		if (!me) return; // offline / nincs szerver: nem jelentkeztetünk ki
 		this.user = me.status === 200 && me.data.user ? me.data.user : null;
 	}
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { Check, Mic, Volume2, X } from '@lucide/svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import { canListen, listenOnce, norm, speak, type Card } from '$lib/study';
@@ -60,16 +61,31 @@
 	});
 
 	// --- Húzás (swipe): jobbra = Tudom, balra = Nem tudom ---
+	// Küszöb felett a lap nem pattan vissza, hanem kirepül az irányba,
+	// és csak utána cserélődik a szöveg.
 	const THROW = 90;
+	const FLY_OUT = 620;
+	const FLY_MS = 190;
 	let dragX = $state(0);
 	let dragging = $state(false);
+	let leaveDir = $state<0 | 1 | -1>(0);
 	let startX = 0;
 	let startY = 0;
+	let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+
+	onDestroy(() => {
+		if (leaveTimer) clearTimeout(leaveTimer);
+	});
 
 	function reset() {
+		if (leaveTimer) {
+			clearTimeout(leaveTimer);
+			leaveTimer = undefined;
+		}
 		flipped = false;
 		dragX = 0;
 		dragging = false;
+		leaveDir = 0;
 	}
 
 	function doGrade(known: boolean) {
@@ -77,7 +93,20 @@
 		onGrade(known);
 	}
 
+	/** Kirepülés az irányba, és csak a végén értékelünk + cserélünk. */
+	function fling(dir: 1 | -1) {
+		if (leaveDir !== 0) return;
+		leaveDir = dir;
+		dragging = false;
+		dragX = dir * FLY_OUT;
+		leaveTimer = setTimeout(() => {
+			leaveTimer = undefined;
+			doGrade(dir === 1);
+		}, FLY_MS);
+	}
+
 	function onDown(e: PointerEvent) {
+		if (leaveDir !== 0) return;
 		if (e.pointerType === 'mouse' && e.button !== 0) return;
 		dragging = true;
 		startX = e.clientX;
@@ -91,7 +120,7 @@
 	}
 
 	function onMove(e: PointerEvent) {
-		if (!dragging) return;
+		if (!dragging || leaveDir !== 0) return;
 		const dx = e.clientX - startX;
 		const dy = e.clientY - startY;
 		if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx)) {
@@ -102,10 +131,10 @@
 	}
 
 	function onUp() {
-		if (!dragging) return;
+		if (!dragging || leaveDir !== 0) return;
 		dragging = false;
-		if (dragX > THROW) doGrade(true);
-		else if (dragX < -THROW) doGrade(false);
+		if (dragX > THROW) fling(1);
+		else if (dragX < -THROW) fling(-1);
 		else {
 			if (Math.abs(dragX) < 10) toggleFlip();
 			dragX = 0;
@@ -134,20 +163,21 @@
 			dragX = 0;
 		}}
 		onkeydown={(e) => {
-			if (e.key === 'ArrowRight') doGrade(true);
-			if (e.key === 'ArrowLeft') doGrade(false);
+			if (leaveDir !== 0) return;
+			if (e.key === 'ArrowRight') fling(1);
+			if (e.key === 'ArrowLeft') fling(-1);
 			if (e.key === ' ' || e.key === 'Enter') {
 				e.preventDefault();
 				toggleFlip();
 			}
 		}}
-		class="relative mt-1 h-[46vh] max-h-[440px] min-h-[300px] w-full cursor-grab touch-pan-y [perspective:1200px] active:cursor-grabbing"
+		class="anim-fade relative mt-1 h-[46vh] max-h-[440px] min-h-[300px] w-full cursor-grab touch-pan-y [perspective:1200px] active:cursor-grabbing"
 	>
 		<div
 			class="absolute inset-0 [transform-style:preserve-3d]"
-			class:transition-transform={!dragging}
+			class:transition={!dragging}
 			class:duration-200={!dragging}
-			style="transform: translateX({dragX}px) rotate({dragX / 18}deg) rotateY({flipped ? 180 : 0}deg)"
+			style="transform: translateX({dragX}px) rotate({dragX / 18}deg) rotateY({flipped ? 180 : 0}deg); opacity: {leaveDir !== 0 ? 0 : 1}"
 		>
 			<div class="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[28px] border border-stone-200 bg-stone-100 px-6 shadow-sm [backface-visibility:hidden] dark:border-white/10 dark:bg-white/5">
 				<span class="text-[11px] font-extrabold tracking-[0.14em] text-stone-400 uppercase select-none">Kérdés</span>
@@ -155,13 +185,13 @@
 					{q}
 				</p>
 			</div>
-			<div class="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[28px] bg-ink-900 px-6 shadow-sm [backface-visibility:hidden] [transform:rotateY(180deg)] dark:bg-white">
-				<span class="text-[11px] font-extrabold tracking-[0.14em] text-white/50 uppercase select-none dark:text-stone-500">Válasz</span>
-				<p class="text-center text-4xl font-extrabold tracking-tight text-white select-none sm:text-5xl dark:text-ink-900">
+			<div class="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[28px] bg-ink-900 px-6 shadow-sm [backface-visibility:hidden] [transform:rotateY(180deg)]">
+				<span class="text-[11px] font-extrabold tracking-[0.14em] text-white/50 uppercase select-none">Válasz</span>
+				<p class="text-center text-4xl font-extrabold tracking-tight text-white select-none sm:text-5xl">
 					{a}
 				</p>
 				{#if isLanguage && card.ipa}
-					<p class="text-base font-medium text-white/60 select-none dark:text-stone-500">[{card.ipa}]</p>
+					<p class="text-base font-medium text-white/60 select-none">[{card.ipa}]</p>
 				{/if}
 			</div>
 		</div>

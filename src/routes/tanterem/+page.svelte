@@ -175,8 +175,8 @@
 			<p class="mt-2 text-sm text-stone-500 dark:text-stone-400">Nincs kiadott feladat. Ha csatlakozol egy csoporthoz, itt látod a házikat.</p>
 		{:else}
 			<ul class="mt-3 space-y-2.5">
-				{#each assigns as a (a.id)}
-					<li class="flex items-center gap-3.5 rounded-xl border border-stone-100 p-3.5 dark:border-white/10">
+				{#each assigns as a, i (a.id)}
+					<li style="--d:{Math.min(i * 45, 270)}ms" class="anim-rise flex items-center gap-3.5 rounded-xl border border-stone-100 p-3.5 dark:border-white/10">
 						<span class="grid size-10 shrink-0 place-items-center rounded-lg {a.is_exam ? 'bg-red-50 text-red-600 dark:bg-red-400/10 dark:text-red-300' : 'bg-stone-100 text-ink-600 dark:bg-white/10 dark:text-white'}">
 							<Bell size={19} />
 						</span>
@@ -231,8 +231,8 @@
 			{/if}
 		</div>
 		<ul class="mt-3 space-y-2">
-			{#each rooms as r (r.id)}
-				<li>
+			{#each rooms as r, i (r.id)}
+				<li style="--d:{Math.min(i * 45, 270)}ms" class="anim-rise">
 					<a
 						href="/tanterem/{r.id}"
 						class="flex items-center gap-3 rounded-xl bg-stone-100 px-3.5 py-2.5 transition hover:bg-stone-200/70 dark:bg-white/5 dark:hover:bg-white/10"

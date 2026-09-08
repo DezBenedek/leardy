@@ -1,4 +1,7 @@
 // Megosztott típusok + API kliens + apró helperek a Topic->Lesson rendszerhez.
+import { enqueueOutbox, QueuedOffline } from './outbox.svelte';
+
+export { QueuedOffline };
 
 export type TopicType = 'language' | 'general';
 export type ReviewFilter = 'mind' | 'language' | 'general';
@@ -56,6 +59,15 @@ export interface QuizQ {
 	correct_answer: string;
 	/** Nyers options_json a szerkesztőnek (sorrend/párosítás kanonikus adata). */
 	options_raw?: string;
+	/** Melyik leckéből jön (témazáró statisztikához). */
+	lesson_id?: string;
+}
+
+export interface ExamLast {
+	score: number;
+	total: number;
+	created_at: number;
+	mistakes: { lesson_id: string; title: string; wrong: number; total: number }[];
 }
 
 export interface LessonDetail {
@@ -114,14 +126,28 @@ export interface AssignmentRow {
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
 	const method = (init?.method ?? 'GET').toUpperCase();
-	if (method !== 'GET') {
-		try {
-			if (typeof navigator !== 'undefined' && !navigator.onLine) {
-				throw new Error('Offline vagy — csatlakozz a netre, és próbáld újra!');
-			}
-		} catch (e) {
-			if (e instanceof Error && e.message.startsWith('Offline')) throw e;
+	let offline = false;
+	try {
+		offline = typeof navigator !== 'undefined' && !navigator.onLine;
+	} catch {
+		offline = false;
+	}
+	if (offline && method !== 'GET') {
+		if (path.startsWith('/api/auth/') || path.endsWith('/start')) {
+			throw new Error('Offline vagy — ez csak online megy.');
 		}
+		// Offline írás: sorba áll, visszakapcsolódáskor automatikusan beküldődik.
+		let body: unknown;
+		const raw = init?.body;
+		if (typeof raw === 'string' && raw) {
+			try {
+				body = JSON.parse(raw);
+			} catch {
+				body = raw;
+			}
+		}
+		enqueueOutbox(path, method, body);
+		throw new QueuedOffline('Offline mentve — automatikusan beküldjük, ha újra online leszel.');
 	}
 	const res = await fetch(path, {
 		headers: { 'content-type': 'application/json' },
@@ -195,9 +221,14 @@ export const studyApi = {
 	enroll: (id: string) =>
 		req<{ ok: boolean }>(`/api/topics/${encodeURIComponent(id)}/enroll`, { method: 'POST' }),
 	exam: (id: string) =>
-		req<{ topic: { title: string; type: TopicType }; quiz: QuizQ[] }>(
+		req<{ topic: { title: string; type: TopicType }; quiz: QuizQ[]; lessons: { id: string; title: string }[]; last: ExamLast | null }>(
 			`/api/topics/${encodeURIComponent(id)}/exam`
 		),
+	submitExam: (id: string, body: { score: number; total: number; mistakes: Record<string, { wrong: number; total: number }> }) =>
+		req<{ ok: boolean }>(`/api/topics/${encodeURIComponent(id)}/exam/attempt`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
 	lesson: (id: string) => req<LessonDetail>(`/api/lessons/${encodeURIComponent(id)}`),
 	completeLesson: (id: string, body: { kind: 'theory' | 'cards' | 'quiz'; score?: number; done?: boolean }) =>
 		req<{ ok: boolean; xp: number; streak: number }>(`/api/lessons/${encodeURIComponent(id)}/complete`, {

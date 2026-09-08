@@ -185,6 +185,14 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 				started_at INTEGER NOT NULL DEFAULT 0, submitted_at INTEGER NOT NULL DEFAULT 0,
 				answers_json TEXT NOT NULL DEFAULT '{}'
 			)`
+		),
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS exam_attempts (
+				id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				topic_id TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+				score INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0,
+				mistakes_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL
+			)`
 		)
 	]);
 	await db.batch([
@@ -195,7 +203,8 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_topics_public ON topics(is_public, category)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_members_user ON classroom_members(user_id)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_assign_class ON assignments(classroom_id)`),
-		db.prepare(`CREATE INDEX IF NOT EXISTS idx_subm_assign ON submissions(assignment_id, student_id)`)
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_subm_assign ON submissions(assignment_id, student_id)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_exam_user_topic ON exam_attempts(user_id, topic_id, created_at)`)
 	]);
 }
 

@@ -118,6 +118,7 @@ export const DELETE: RequestHandler = async (event) => {
 		db.prepare(`DELETE FROM quiz_questions WHERE lesson_id IN (SELECT id FROM lessons WHERE topic_id = ?)`).bind(id),
 		db.prepare(`DELETE FROM lessons WHERE topic_id = ?`).bind(id),
 		db.prepare(`DELETE FROM enrollments WHERE topic_id = ?`).bind(id),
+		db.prepare(`DELETE FROM exam_attempts WHERE topic_id = ?`).bind(id),
 		db.prepare(`DELETE FROM topics WHERE id = ?`).bind(id)
 	]);
 	return json({ ok: true });
