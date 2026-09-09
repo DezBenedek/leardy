@@ -152,6 +152,7 @@
 							</p>
 							<p class="text-[13px] text-ink-400 dark:text-stone-500">
 								{a.classroom_name} · határidő: {fmtDue(a.due_date)}
+								{#if (a.min_score ?? 0) > 0} · cél: {a.min_score}%{/if}
 								{#if a.best !== null} · legjobb: {a.best}{/if}
 							</p>
 						</div>
@@ -171,28 +172,37 @@
 		{/if}
 	</section>
 
-	<!-- 2. Osztálylista -->
-	<section class="mt-3 rounded-2xl border border-stone-200 bg-white p-5 dark:border-white/10 dark:bg-stone-900" aria-label="Osztályok">
-		<h2 class="text-[16px] font-bold text-ink-900 dark:text-white">Osztályaim</h2>
-		<ul class="mt-3 space-y-2">
-			{#each rooms as r, i (r.id)}
-				<li style="--d:{Math.min(i * 45, 270)}ms" class="anim-rise">
-					<a
-						href="/tanterem/{r.id}"
-						class="flex items-center gap-3 rounded-xl bg-stone-100 px-3.5 py-2.5 transition hover:bg-stone-200/70 dark:bg-white/5 dark:hover:bg-white/10"
-					>
-						<span class="flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">{r.name}</span>
+	<!-- 2. Osztálylista: cím bal oldalt, alatta külön cardok — belépve a fal nyílik -->
+	<div class="mt-5 flex items-end justify-between gap-2" aria-label="Osztályok">
+		<h2 class="text-left text-[18px] font-extrabold tracking-tight text-ink-900 dark:text-white">Osztályaim</h2>
+		<span class="shrink-0 text-[13px] font-medium text-stone-500 tabular-nums dark:text-stone-400">{rooms.length} db</span>
+	</div>
+	<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2">
+		{#each rooms as r, i (r.id)}
+			<a
+				href="/tanterem/{r.id}"
+				style="--d:{Math.min(i * 45, 270)}ms"
+				class="anim-rise group flex items-center gap-3.5 rounded-2xl border border-stone-200 bg-white p-4 transition hover:bg-stone-50 hover:shadow-sm active:scale-[0.995] dark:border-white/10 dark:bg-stone-900 dark:hover:bg-white/5"
+			>
+				<span class="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/20 dark:text-white">
+					<Users size={22} />
+				</span>
+				<span class="min-w-0 flex-1">
+					<span class="block truncate text-[15px] font-bold text-ink-900 dark:text-white">{r.name}</span>
+					<span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[13px] text-stone-500 dark:text-stone-400">
 						{#if r.subject}
-							<span class="shrink-0 rounded-full bg-stone-200 px-2 py-0.5 text-[11px] font-bold text-stone-600 dark:bg-white/10 dark:text-stone-300">{r.subject}</span>
+							<span class="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-bold text-stone-600 dark:bg-white/10 dark:text-stone-300">{r.subject}</span>
 						{/if}
-						<span class="text-xs font-bold text-stone-400 dark:text-stone-500">{r.members ?? 0} fő</span>
-					</a>
-				</li>
-			{:else}
-				<p class="text-sm text-stone-500 dark:text-stone-400">Még nem vagy egy osztályban sem — csatlakozz lejjebb kóddal!</p>
-			{/each}
-		</ul>
-	</section>
+						<span class="tabular-nums">{r.members ?? 0} fő</span>
+						<span class="text-stone-300 dark:text-stone-600">·</span>
+						<span class="font-semibold text-brand-600 dark:text-brand-300">Fal megnyitása →</span>
+					</span>
+				</span>
+			</a>
+		{:else}
+			<p class="rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500 sm:col-span-2 dark:border-white/15 dark:text-stone-400">Még nem vagy egy osztályban sem — csatlakozz lejjebb kóddal!</p>
+		{/each}
+	</div>
 
 	<!-- 3. Csatlakozás új csoporthoz (gomb → drawer) -->
 	<section class="mt-3" aria-label="Csatlakozás új csoporthoz">

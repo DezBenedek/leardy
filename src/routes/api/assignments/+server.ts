@@ -10,8 +10,8 @@ export const GET: RequestHandler = async (event) => {
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	const rows = await db
 		.prepare(
-			`SELECT a.id, s.title, c.name AS classroom_name, a.due_date, a.time_limit_mins,
-				a.max_attempts, a.is_exam, a.feedback_delayed,
+			`SELECT a.id, s.title, c.name AS classroom_name, a.start_date, a.due_date, a.time_limit_mins,
+				a.max_attempts, a.is_exam, a.feedback_delayed, COALESCE(a.min_score, 0) AS min_score,
 				(SELECT COUNT(*) FROM submissions sm WHERE sm.assignment_id = a.id AND sm.student_id = ? AND sm.submitted_at > 0) AS attempts,
 				(SELECT MAX(sm.score) FROM submissions sm WHERE sm.assignment_id = a.id AND sm.student_id = ? AND sm.submitted_at > 0) AS best
 			 FROM assignments a
@@ -44,7 +44,7 @@ export const POST: RequestHandler = async (event) => {
 	let body: {
 		assessment_id?: unknown; classroom_id?: unknown; due_date?: unknown;
 		max_attempts?: unknown; time_limit_mins?: unknown; shuffle?: unknown;
-		feedback_delayed?: unknown; is_exam?: unknown;
+		feedback_delayed?: unknown; is_exam?: unknown; min_score?: unknown;
 	};
 	try {
 		body = await event.request.json();
@@ -77,8 +77,8 @@ export const POST: RequestHandler = async (event) => {
 	await db
 		.prepare(
 			`INSERT INTO assignments (id, assessment_id, classroom_id, start_date, due_date,
-				max_attempts, time_limit_mins, shuffle, feedback_delayed, is_exam)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+				max_attempts, time_limit_mins, shuffle, feedback_delayed, is_exam, min_score)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		)
 		.bind(
 			id, assessment_id, classroom_id, Date.now(), due_date,
@@ -86,7 +86,8 @@ export const POST: RequestHandler = async (event) => {
 			clamp(body.time_limit_mins, asm.time_limit_mins, 0, 180),
 			flag(body.shuffle, asm.shuffle),
 			flag(body.feedback_delayed, asm.feedback_delayed),
-			flag(body.is_exam, asm.is_exam)
+			flag(body.is_exam, asm.is_exam),
+			Math.max(0, Math.min(100, Number(body.min_score ?? 0) || 0))
 		)
 		.run();
 	return json({ assignment: { id } }, { status: 201 });

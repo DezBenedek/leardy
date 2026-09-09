@@ -23,12 +23,13 @@ export const GET: RequestHandler = async (event) => {
 	}
 	const assigns = await db
 		.prepare(
-			`SELECT a.id, s.title, a.due_date, a.time_limit_mins, a.max_attempts, a.is_exam, a.feedback_delayed,
+			`SELECT a.id, s.title, a.start_date, a.due_date, a.time_limit_mins, a.max_attempts, a.is_exam, a.feedback_delayed,
+				COALESCE(a.min_score, 0) AS min_score,
 				(SELECT COUNT(*) FROM submissions sm WHERE sm.assignment_id = a.id AND sm.student_id = ? AND sm.submitted_at > 0) AS attempts,
 				(SELECT COUNT(*) FROM submissions sm WHERE sm.assignment_id = a.id AND sm.student_id = ? AND sm.submitted_at > 0) AS submitted,
 				(SELECT MAX(sm.score) FROM submissions sm WHERE sm.assignment_id = a.id AND sm.student_id = ? AND sm.submitted_at > 0) AS best
 			 FROM assignments a JOIN assessments s ON s.id = a.assessment_id
-			 WHERE a.classroom_id = ? ORDER BY a.due_date`
+			 WHERE a.classroom_id = ? ORDER BY a.start_date DESC, a.due_date`
 		)
 		.bind(user.id, user.id, user.id, id)
 		.all();

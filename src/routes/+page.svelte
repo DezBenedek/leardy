@@ -3,6 +3,7 @@
 	import { CalendarDays, Check, Layers, Play, Settings } from '@lucide/svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { authUI } from '$lib/auth-ui.svelte';
+	import WeekActivity from '$lib/components/WeekActivity.svelte';
 	import { get as cacheGet, peek } from '$lib/cache';
 	import { studyApi, type AssignmentRow, type Stats } from '$lib/study';
 
@@ -12,20 +13,11 @@
 	let assigns = $state<AssignmentRow[]>([]);
 	let err = $state<string | null>(null);
 
-	/** A nap betűjele a valódi dátumból (az oszlopok az elmúlt 7 napot mutatják, nem hétfőtől). */
-	function dayLetter(day: string): string {
-		try {
-			return new Date(day + 'T12:00:00').toLocaleDateString('hu-HU', { weekday: 'short' });
-		} catch {
-			return '';
-		}
-	}
-
 	async function load() {
 		if (!auth.user) return;
 		try {
 			const [s, a] = await Promise.all([
-				cacheGet('stats', () => studyApi.stats(), 30000),
+				cacheGet('stats:30', () => studyApi.stats(30), 30000),
 				cacheGet('assignments', () => studyApi.assignments(), 30000)
 			]);
 			stats = s.data;
@@ -36,7 +28,7 @@
 	}
 
 	onMount(() => {
-		stats = peek<Stats>('stats') ?? null;
+		stats = peek<Stats>('stats:30') ?? peek<Stats>('stats') ?? null;
 		assigns = peek<{ assignments: AssignmentRow[] }>('assignments')?.assignments ?? [];
 		void load();
 	});
@@ -46,10 +38,7 @@
 		void load();
 	});
 
-	let maxXp = $derived(Math.max(1, ...((stats?.week ?? []).map((d) => d.xp)), 1));
-	let lastDay = $derived(stats?.week?.length ? stats.week[stats.week.length - 1] : undefined);
-	let todayReviews = $derived(lastDay?.reviews ?? 0);
-	let weekTotal = $derived((stats?.week ?? []).reduce((n, d) => n + d.xp, 0));
+	let todayReviews = $derived(stats?.week?.length ? (stats.week[stats.week.length - 1]?.reviews ?? 0) : 0);
 	let upcoming = $derived(
 		assigns
 			.filter((a) => a.due_date > 0)
@@ -177,31 +166,10 @@
 		</a>
 	{/if}
 
-	<!-- Heti aktivitás: üres nap = üres pálya, semmi csík -->
-	<section class="anim-rise mt-2.5 rounded-[20px] bg-stone-100 p-4 dark:bg-white/5" style="--d:180ms" aria-label="Heti aktivitás">
-		<div class="mb-2 flex items-baseline justify-between">
-			<h2 class="text-[15px] font-bold text-ink-900 dark:text-white">Heti aktivitás</h2>
-			<p class="text-[13px] font-semibold text-stone-500 tabular-nums dark:text-stone-400">{weekTotal} XP</p>
-		</div>
-		<div class="grid grid-cols-7 items-end gap-2">
-			{#each (stats?.week ?? []) as d, i (d.day)}
-				{@const isToday = stats !== null && i === stats.week.length - 1}
-				{@const h = d.xp > 0 ? Math.max(25, Math.round((d.xp / maxXp) * 100)) : 0}
-				<div class="flex flex-col items-center gap-1">
-					<div class="flex h-12 w-full items-end overflow-hidden rounded-full bg-stone-300/50 dark:bg-white/10">
-						{#if h > 0}
-							<div
-								class="w-full rounded-full {isToday ? 'bg-brand-500' : 'bg-stone-400 dark:bg-stone-500'}"
-								style="height: {h}%"
-								title="{d.day}: {d.xp} XP"
-							></div>
-						{/if}
-					</div>
-					<span class={['text-[11px] font-extrabold', isToday ? 'text-brand-600 dark:text-white' : 'text-stone-400']}>{dayLetter(d.day)}</span>
-				</div>
-			{/each}
-		</div>
-	</section>
+	<!-- Aktivitás: görgethető, visszamenőleg több nap -->
+	<div class="anim-rise mt-2.5" style="--d:180ms">
+		<WeekActivity week={stats?.week ?? []} streak={stats?.streak ?? 0} />
+	</div>
 
 	<!-- Közelgő határidők -->
 	{#if upcoming.length > 0}

@@ -29,6 +29,31 @@ export const GET: RequestHandler = async (event) => {
 	return json({ assessment: asm, items: items.results ?? [] });
 };
 
+// PATCH /api/assessments/[id] — saját dolgozat átnevezése (tanár).
+export const PATCH: RequestHandler = async (event) => {
+	const db = getDb(event);
+	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
+	await ensureAuthSchema(db);
+	const user = await requireUser(event, db);
+	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
+	const id = event.params.id ?? '';
+	const asm = await db
+		.prepare(`SELECT id FROM assessments WHERE id = ? AND teacher_id = ?`)
+		.bind(id, user.id)
+		.first();
+	if (!asm) return json({ error: 'Nincs ilyen dolgozatod.' }, { status: 404 });
+	let body: { title?: unknown };
+	try {
+		body = await event.request.json();
+	} catch {
+		return json({ error: 'Hibás kérés.' }, { status: 400 });
+	}
+	const title = String(body.title ?? '').trim();
+	if (title.length < 3) return json({ error: 'Adj legalább 3 karakteres címet.' }, { status: 400 });
+	await db.prepare(`UPDATE assessments SET title = ? WHERE id = ?`).bind(title, id).run();
+	return json({ ok: true });
+};
+
 // DELETE /api/assessments/[id] — saját dolgozat törlése (csak ha még nincs kiadva).
 export const DELETE: RequestHandler = async (event) => {
 	const db = getDb(event);

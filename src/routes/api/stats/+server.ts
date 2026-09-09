@@ -15,7 +15,8 @@ export const GET: RequestHandler = async (event) => {
 		.first<{ xp: number; streak: number; role: string }>();
 
 	const days: string[] = [];
-	for (let i = 6; i >= 0; i--) days.push(todayStr(-i));
+	const range = Math.max(7, Math.min(90, Number(event.url.searchParams.get('days') ?? 7) || 7));
+	for (let i = range - 1; i >= 0; i--) days.push(todayStr(-i));
 	const acts = await db
 		.prepare(`SELECT day, xp, reviews FROM activity WHERE user_id = ? AND day >= ?`)
 		.bind(user.id, days[0])

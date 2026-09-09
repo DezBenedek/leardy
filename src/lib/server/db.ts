@@ -77,7 +77,8 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 		`ALTER TABLE assignments ADD COLUMN time_limit_mins INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE assignments ADD COLUMN shuffle INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE assignments ADD COLUMN feedback_delayed INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE assignments ADD COLUMN is_exam INTEGER NOT NULL DEFAULT 0`
+		`ALTER TABLE assignments ADD COLUMN is_exam INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE assignments ADD COLUMN min_score INTEGER NOT NULL DEFAULT 0`
 	]) {
 		try {
 			await db.prepare(ddl).run();
@@ -184,7 +185,7 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 				start_date INTEGER NOT NULL DEFAULT 0, due_date INTEGER NOT NULL DEFAULT 0,
 				max_attempts INTEGER NOT NULL DEFAULT 0, time_limit_mins INTEGER NOT NULL DEFAULT 0,
 				shuffle INTEGER NOT NULL DEFAULT 1, feedback_delayed INTEGER NOT NULL DEFAULT 0,
-				is_exam INTEGER NOT NULL DEFAULT 0
+				is_exam INTEGER NOT NULL DEFAULT 0, min_score INTEGER NOT NULL DEFAULT 0
 			)`
 		),
 		db.prepare(

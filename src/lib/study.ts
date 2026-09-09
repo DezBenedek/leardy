@@ -73,13 +73,23 @@ export interface MessageRow {
 	title: string;
 	body: string;
 	link_url: string | null;
-	ref_type: string | null;
+	ref_type: 'topic' | 'lesson' | 'deck' | 'assessment' | string | null;
 	ref_id: string | null;
 	ref_link: string | null;
 	ref_title: string | null;
 	created_at: number;
 	teacher_name: string;
 }
+
+export type AttachmentKind = 'link' | 'lesson' | 'topic' | 'deck' | 'quiz';
+
+export const ATTACH_LABEL: Record<AttachmentKind, string> = {
+	link: 'Link',
+	lesson: 'Lecke',
+	topic: 'Témakör',
+	deck: 'Kártya',
+	quiz: 'Kvíz'
+};
 
 export interface Topic {
 	id: string;
@@ -179,11 +189,13 @@ export interface AssignmentRow {
 	id: string;
 	title: string;
 	classroom_name: string;
+	start_date: number;
 	due_date: number;
 	time_limit_mins: number;
 	max_attempts: number;
 	is_exam: number;
 	feedback_delayed: number;
+	min_score: number;
 	attempts: number;
 	submitted: number;
 	best: number | null;
@@ -314,7 +326,7 @@ export const studyApi = {
 			method: 'POST',
 			body: JSON.stringify({ flashcard_id, known, cram })
 		}),
-	stats: () => req<Stats>(`/api/stats`),
+	stats: (days = 7) => req<Stats>(days === 7 ? `/api/stats` : `/api/stats?days=${days}`),
 	classrooms: () => req<{ classrooms: Classroom[] }>(`/api/classrooms`),
 	createClassroom: (name: string, subject: string) =>
 		req<{ classroom: Classroom }>(`/api/classrooms`, {
@@ -344,6 +356,11 @@ export const studyApi = {
 		req<{ assessment: AssessmentRow; items: AssessmentItem[] }>(`/api/assessments/${encodeURIComponent(id)}`),
 	deleteAssessment: (id: string) =>
 		req<{ ok: boolean }>(`/api/assessments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	updateAssessment: (id: string, body: { title: string }) =>
+		req<{ ok: boolean }>(`/api/assessments/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(body)
+		}),
 	addAssessmentItem: (
 		id: string,
 		body: { question_text: string; type: string; options?: string[]; left?: string; correct_answer: string }
@@ -354,6 +371,14 @@ export const studyApi = {
 		}),
 	deleteAssessmentItem: (id: string) =>
 		req<{ ok: boolean }>(`/api/assessment-items/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	updateAssessmentItem: (
+		id: string,
+		body: { question_text?: string; type?: string; options?: string[]; left?: string; correct_answer?: string }
+	) =>
+		req<{ ok: boolean }>(`/api/assessment-items/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(body)
+		}),
 	revokeAssignment: (id: string) =>
 		req<{ ok: boolean }>(`/api/assignments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 	myCards: () =>
@@ -379,6 +404,7 @@ export const studyApi = {
 		shuffle?: boolean;
 		feedback_delayed?: boolean;
 		is_exam?: boolean;
+		min_score?: number;
 	}) =>
 		req<{ assignment: { id: string } }>(`/api/assignments`, { method: 'POST', body: JSON.stringify(body) }),
 	startSubmission: (assignmentId: string) =>

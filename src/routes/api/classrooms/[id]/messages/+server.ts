@@ -23,6 +23,18 @@ function refLink(ref_type: string | null, ref_id: string | null): string | null 
 	if (!ref_type || !ref_id) return null;
 	if (ref_type === 'topic') return `/temakorok/${ref_id}`;
 	if (ref_type === 'lesson') return `/lecke/${ref_id}`;
+	// Kártyacsomag = témakör (deck) — a falról a témakör-nézet nyílik, diákoknak is.
+	if (ref_type === 'deck' || ref_type === 'card') return `/temakorok/${ref_id}`;
+	// Kvíz = tanári feladatsor — tanárnak a szerkesztő, diáknak tájékoztató.
+	if (ref_type === 'assessment' || ref_type === 'quiz') return `/kvizek/${ref_id}`;
+	return null;
+}
+
+function refKind(ref_type: string | null): string | null {
+	if (!ref_type) return null;
+	if (ref_type === 'card') return 'deck';
+	if (ref_type === 'quiz') return 'assessment';
+	if (['topic', 'lesson', 'deck', 'assessment'].includes(ref_type)) return ref_type;
 	return null;
 }
 
@@ -51,14 +63,18 @@ export const GET: RequestHandler = async (event) => {
 	const messages = await Promise.all(
 		(rows.results ?? []).map(async (m) => {
 			let ref_title: string | null = null;
-			if (m.ref_type === 'topic' && m.ref_id) {
+			const kind = refKind(m.ref_type);
+			if ((kind === 'topic' || kind === 'deck') && m.ref_id) {
 				const t = await db.prepare(`SELECT title FROM topics WHERE id = ?`).bind(m.ref_id).first<{ title: string }>();
 				ref_title = t?.title ?? null;
-			} else if (m.ref_type === 'lesson' && m.ref_id) {
+			} else if (kind === 'lesson' && m.ref_id) {
 				const l = await db.prepare(`SELECT title FROM lessons WHERE id = ?`).bind(m.ref_id).first<{ title: string }>();
 				ref_title = l?.title ?? null;
+			} else if (kind === 'assessment' && m.ref_id) {
+				const a = await db.prepare(`SELECT title FROM assessments WHERE id = ?`).bind(m.ref_id).first<{ title: string }>();
+				ref_title = a?.title ?? null;
 			}
-			return { ...m, ref_link: refLink(m.ref_type, m.ref_id), ref_title };
+			return { ...m, ref_type: kind, ref_link: refLink(kind, m.ref_id), ref_title };
 		})
 	);
 	return json({ messages });
@@ -85,15 +101,20 @@ export const POST: RequestHandler = async (event) => {
 	if (title.length < 2) return json({ error: 'Adj legalább 2 karakteres címet.' }, { status: 400 });
 	const linkRaw = String(body.link_url ?? '').trim();
 	const link_url = linkRaw ? (/^https?:\/\//i.test(linkRaw) ? linkRaw : `https://${linkRaw}`) : null;
-	const ref_type = body.ref_type === 'topic' || body.ref_type === 'lesson' ? String(body.ref_type) : null;
+	const rawType = String(body.ref_type ?? '');
+	const ref_type = refKind(rawType === 'card' || rawType === 'quiz' ? rawType : rawType);
 	const ref_id = ref_type ? String(body.ref_id ?? '').trim() || null : null;
-	if (ref_type === 'topic' && ref_id) {
+	if ((ref_type === 'topic' || ref_type === 'deck') && ref_id) {
 		const t = await db.prepare(`SELECT id FROM topics WHERE id = ?`).bind(ref_id).first();
-		if (!t) return json({ error: 'Nincs ilyen témakör.' }, { status: 404 });
+		if (!t) return json({ error: 'Nincs ilyen témakör / kártyacsomag.' }, { status: 404 });
 	}
 	if (ref_type === 'lesson' && ref_id) {
 		const l = await db.prepare(`SELECT id FROM lessons WHERE id = ?`).bind(ref_id).first();
 		if (!l) return json({ error: 'Nincs ilyen lecke.' }, { status: 404 });
+	}
+	if (ref_type === 'assessment' && ref_id) {
+		const a = await db.prepare(`SELECT id FROM assessments WHERE id = ? AND teacher_id = ?`).bind(ref_id, user.id).first();
+		if (!a) return json({ error: 'Nincs ilyen kvízed.' }, { status: 404 });
 	}
 	const msgId = newId();
 	await db
