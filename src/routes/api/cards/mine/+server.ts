@@ -28,7 +28,7 @@ export const GET: RequestHandler = async (event) => {
 		.all();
 	const cards = await db
 		.prepare(
-			`SELECT f.id, f.front_text, f.back_text, f.ipa, f.lesson_id, l.title AS lesson_title,
+			`SELECT f.id, f.front_text, f.back_text, f.ipa, f.example, f.lesson_id, l.title AS lesson_title,
 				l.topic_id, t.title AS topic_title
 			 FROM flashcards f
 			 JOIN lessons l ON l.id = f.lesson_id

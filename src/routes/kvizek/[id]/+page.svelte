@@ -1,11 +1,20 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { ArrowLeft, ChevronRight, ClipboardList, Pencil, Plus, Send } from '@lucide/svelte';
+	import { ArrowLeft, ChevronRight, ClipboardList, Pencil, Plus } from '@lucide/svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { get as cacheGet, invalidate } from '$lib/cache';
 	import Drawer from '$lib/components/Drawer.svelte';
-	import { studyApi, type AssessmentItem, type AssessmentRow, type Classroom } from '$lib/study';
+	import QuestionForm, {
+		blankQForm,
+		pairCountOf,
+		qFormFromItem,
+		serializeQForm,
+		typeLabel,
+		validateQForm,
+		type QFormValue
+	} from '$lib/components/QuestionForm.svelte';
+	import { studyApi, type AssessmentItem, type AssessmentRow } from '$lib/study';
 
 	let { params } = $props();
 
@@ -14,69 +23,31 @@
 
 	let asm = $state<AssessmentRow | null>(null);
 	let items = $state<AssessmentItem[]>([]);
-	let rooms = $state<Classroom[]>([]);
 	let err = $state<string | null>(null);
+	let formErr = $state<string | null>(null);
 	let loaded = $state(false);
 	let busy = $state(false);
 
 	// ---------- Drawerek ----------
 	type QSheet = { mode: 'new' } | { mode: 'view' | 'edit'; item: AssessmentItem } | null;
 	let qSheet = $state<QSheet>(null);
-	let assignOpen = $state(false);
 	let settingsOpen = $state(false);
 
 	// ---------- Kérdés űrlap ----------
-	let fText = $state('');
-	let fType = $state('choice');
-	let fOptions = $state('');
-	let fLeft = $state('');
-	let fCorrect = $state('');
-
-	// ---------- Kiadás / elvárások ----------
-	let aClass = $state('');
-	let aDue = $state('');
-	let aAttempts = $state(0);
-	let aTime = $state(0);
-	let aShuffle = $state(true);
-	let aDelayed = $state(false);
-	let aExam = $state(false);
-	let aMin = $state(0);
-	let aMsg = $state<string | null>(null);
+	let form = $state<QFormValue>(blankQForm());
 
 	// ---------- Kvíz beállítások ----------
 	let eTitle = $state('');
 	let delQuizArm = $state(false);
 	let delQArm = $state<string | null>(null);
 
-	const QTYPES = [
-		{ id: 'choice', label: 'Feleletválasztós' },
-		{ id: 'text', label: 'Beírós' },
-		{ id: 'match', label: 'Párosítós' },
-		{ id: 'order', label: 'Sorrendbe rakós' },
-		{ id: 'tf', label: 'Igaz / hamis' }
-	];
-
-	function typeLabel(t: string): string {
-		return QTYPES.find((x) => x.id === t)?.label ?? t;
-	}
-
 	async function load() {
 		if (!isTeacher) return;
 		err = null;
 		try {
-			const [d, c] = await Promise.all([
-				cacheGet(`assessment:${params.id}`, () => studyApi.assessment(params.id), 30000),
-				cacheGet('classrooms', () => studyApi.classrooms(), 30000)
-			]);
+			const d = await cacheGet(`assessment:${params.id}`, () => studyApi.assessment(params.id), 30000);
 			asm = d.data.assessment;
 			items = d.data.items;
-			rooms = c.data.classrooms.filter((r) => r.mine === 1);
-			if (!aClass && rooms.length > 0) aClass = rooms[0].id;
-			aAttempts = asm.max_attempts;
-			aTime = asm.time_limit_mins;
-			aShuffle = asm.shuffle === 1;
-			aDelayed = asm.feedback_delayed === 1;
-			aExam = asm.is_exam === 1;
 			if (!eTitle) eTitle = asm.title;
 		} catch (e) {
 			err = e instanceof Error ? e.message : 'Hiba történt.';
@@ -92,13 +63,6 @@
 		void load();
 	});
 
-	function lines(s: string): string[] {
-		return s
-			.split('\n')
-			.map((x) => x.trim())
-			.filter(Boolean);
-	}
-
 	async function refresh() {
 		invalidate(`assessment:${params.id}`);
 		invalidate('assessments');
@@ -108,11 +72,8 @@
 	}
 
 	function openNew() {
-		fText = '';
-		fType = 'choice';
-		fOptions = '';
-		fLeft = '';
-		fCorrect = '';
+		form = blankQForm();
+		formErr = null;
 		delQArm = null;
 		qSheet = { mode: 'new' };
 	}
@@ -122,31 +83,9 @@
 		qSheet = { mode: 'view', item };
 	}
 
-	function prefill(item: AssessmentItem) {
-		fText = item.question_text;
-		fType = item.type;
-		fLeft = '';
-		fCorrect = item.type === 'order' ? '' : item.correct_answer;
-		try {
-			const p: unknown = JSON.parse(item.options_json);
-			if (item.type === 'match' && p && typeof p === 'object' && !Array.isArray(p)) {
-				const m = p as { left?: string; options?: string[]; answer?: string };
-				fOptions = Array.isArray(m.options) ? m.options.join('\n') : '';
-				fLeft = m.left ?? '';
-				fCorrect = m.answer ?? item.correct_answer;
-			} else if (Array.isArray(p)) {
-				fOptions = p.map(String).join('\n');
-			} else {
-				fOptions = '';
-			}
-		} catch {
-			fOptions = '';
-		}
-		if (item.type === 'tf' && fCorrect !== 'Hamis') fCorrect = 'Igaz';
-	}
-
 	function startEdit(item: AssessmentItem) {
-		prefill(item);
+		form = qFormFromItem(item);
+		formErr = null;
 		delQArm = null;
 		qSheet = { mode: 'edit', item };
 	}
@@ -165,30 +104,34 @@
 		return [];
 	}
 
-	function viewLeft(item: AssessmentItem): string {
+	function viewPairs(item: AssessmentItem): { left: string; right: string }[] {
 		try {
-			const p = JSON.parse(item.options_json) as { left?: string };
-			return typeof p?.left === 'string' ? p.left : '';
+			const p = JSON.parse(item.options_json) as {
+				pairs?: { left?: string; right?: string }[];
+				left?: string;
+				answer?: string;
+			};
+			if (Array.isArray(p?.pairs)) {
+				return p.pairs
+					.map((x) => ({ left: String(x?.left ?? ''), right: String(x?.right ?? '') }))
+					.filter((x) => x.left && x.right);
+			}
+			if (typeof p?.left === 'string') {
+				return [{ left: p.left, right: item.correct_answer }];
+			}
 		} catch {
-			return '';
+			// üres lista
 		}
+		return [];
 	}
 
 	async function saveQuestion() {
 		if (!qSheet || qSheet.mode === 'view' || busy) return;
-		if (!fText.trim()) {
-			err = 'Add meg a kérdés szövegét.';
-			return;
-		}
+		formErr = validateQForm(form);
+		if (formErr) return;
 		busy = true;
 		try {
-			const payload = {
-				question_text: fText.trim(),
-				type: fType,
-				options: lines(fOptions),
-				left: fLeft.trim(),
-				correct_answer: fType === 'tf' ? (fCorrect === 'Hamis' ? 'Hamis' : 'Igaz') : fCorrect.trim()
-			};
+			const payload = serializeQForm(form);
 			if (qSheet.mode === 'new') {
 				await studyApi.addAssessmentItem(params.id, payload);
 			} else {
@@ -197,7 +140,7 @@
 			qSheet = null;
 			await refresh();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Hiba történt.';
+			formErr = e instanceof Error ? e.message : 'Hiba történt.';
 		} finally {
 			busy = false;
 		}
@@ -218,31 +161,6 @@
 			await refresh();
 		} catch (e) {
 			err = e instanceof Error ? e.message : 'Hiba történt.';
-		}
-	}
-
-	async function assign() {
-		if (!aClass) {
-			aMsg = 'Nincs osztályod — hozz létre egyet a Tanteremben!';
-			return;
-		}
-		try {
-			const due = aDue ? new Date(aDue).getTime() : 0;
-			await studyApi.assign({
-				assessment_id: params.id,
-				classroom_id: aClass,
-				due_date: due,
-				max_attempts: aAttempts,
-				time_limit_mins: aTime,
-				shuffle: aShuffle,
-				feedback_delayed: aDelayed,
-				is_exam: aExam,
-				min_score: aMin
-			});
-			aMsg = aExam ? 'Dolgozat kiadva!' : 'Feladat kiadva!';
-			invalidate('assignments');
-		} catch (e) {
-			aMsg = e instanceof Error ? e.message : 'Hiba történt.';
 		}
 	}
 
@@ -277,8 +195,13 @@
 		}
 	}
 
-	const input =
-		'w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-ink-900 outline-none focus:border-brand-500 dark:border-white/15 dark:bg-white/5 dark:text-white';
+	function rowSub(it: AssessmentItem): string {
+		if (it.type === 'match') {
+			const n = pairCountOf(it);
+			return n > 0 ? `Párosítós · ${n} pár` : 'Párosítós';
+		}
+		return typeLabel(it.type);
+	}
 </script>
 
 <svelte:head>
@@ -303,16 +226,6 @@
 			class="grid size-10 shrink-0 place-items-center rounded-full bg-brand-500 text-white transition hover:bg-brand-600 active:scale-95"
 		>
 			<Plus size={20} strokeWidth={2.5} />
-		</button>
-		<button
-			onclick={() => {
-				aMsg = null;
-				assignOpen = true;
-			}}
-			aria-label="Kiadás"
-			class="grid size-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-white transition hover:brightness-95 active:scale-95"
-		>
-			<Send size={18} />
 		</button>
 		<button
 			onclick={() => {
@@ -351,15 +264,6 @@
 				{asm.topic_title ?? 'Nincs témakör'} · {items.length} kérdés{asm.assigned > 0 ? ` · ${asm.assigned} kiadás` : ''}
 			</p>
 		</div>
-		<button
-			onclick={() => {
-				aMsg = null;
-				assignOpen = true;
-			}}
-			class="shrink-0 rounded-full bg-emerald-500 px-4 py-2 text-[13px] font-bold text-white transition hover:brightness-95 active:scale-95"
-		>
-			Kiadás
-		</button>
 	</section>
 
 	<!-- Kérdések: koppintásra drawerben a részletek -->
@@ -377,7 +281,7 @@
 				<span class="grid size-7 shrink-0 place-items-center rounded-full bg-stone-100 text-[12px] font-bold text-stone-600 tabular-nums dark:bg-white/10 dark:text-stone-300">{i + 1}</span>
 				<span class="min-w-0 flex-1">
 					<span class="block truncate text-[15px] font-semibold text-ink-900 dark:text-white">{it.question_text}</span>
-					<span class="block text-[13px] text-stone-500 dark:text-stone-400">{typeLabel(it.type)}</span>
+					<span class="block text-[13px] text-stone-500 dark:text-stone-400">{rowSub(it)}</span>
 				</span>
 				<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
 			</button>
@@ -407,40 +311,42 @@
 			{#if qSheet.mode === 'view'}
 				{@const item = qSheet.item}
 				{@const opts = viewOptions(item)}
+				{@const pairs = viewPairs(item)}
 				<p class="inline-block rounded-full bg-stone-100 px-2.5 py-0.5 text-[12px] font-bold text-stone-600 dark:bg-white/10 dark:text-stone-300">
 					{typeLabel(item.type)}
 				</p>
 				<h2 class="font-display mt-2 text-[20px] leading-snug font-bold tracking-tight text-ink-900 dark:text-white">
 					{item.question_text}
 				</h2>
-				{#if item.type === 'match'}
-					<p class="mt-3 text-[13px] font-semibold text-ink-900 dark:text-white">Bal oldal: <span class="font-bold">{viewLeft(item)}</span></p>
-				{/if}
-				{#if opts.length > 0}
-					<ul class="mt-2 space-y-1.5">
-						{#each opts as o (o)}
-							{@const isRight = item.type === 'order' ? true : o === item.correct_answer}
-							<li class={['rounded-xl px-3 py-2 text-sm font-medium', isRight ? 'bg-emerald-50 font-bold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300' : 'bg-stone-100 text-ink-600 dark:bg-white/5 dark:text-stone-300']}>
-								{isRight ? '✓ ' : ''}{o}
+				{#if item.type === 'match' && pairs.length > 0}
+					<ul class="mt-3 space-y-1.5">
+						{#each pairs as p (p.left + '→' + p.right)}
+							<li class="flex items-center gap-2 rounded-xl bg-stone-100 px-3 py-2 text-sm dark:bg-white/5">
+								<span class="min-w-0 flex-1 truncate font-semibold text-ink-900 dark:text-white">{p.left}</span>
+								<span class="shrink-0 font-extrabold text-stone-400">→</span>
+								<span class="min-w-0 flex-1 truncate text-right font-bold text-emerald-700 dark:text-emerald-300">{p.right}</span>
 							</li>
 						{/each}
 					</ul>
-					{#if item.type === 'order'}
-						<p class="mt-1.5 text-[13px] text-stone-500 dark:text-stone-400">A fenti sorrend a helyes.</p>
+				{:else}
+					{#if opts.length > 0}
+						<ul class="mt-3 space-y-1.5">
+							{#each opts as o (o)}
+								{@const isRight = item.type === 'order' ? true : o === item.correct_answer}
+								<li class={['rounded-xl px-3 py-2 text-sm font-medium', isRight ? 'bg-emerald-50 font-bold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300' : 'bg-stone-100 text-ink-600 dark:bg-white/5 dark:text-stone-300']}>
+									{isRight ? '✓ ' : ''}{o}
+								</li>
+							{/each}
+						</ul>
+						{#if item.type === 'order'}
+							<p class="mt-1.5 text-[13px] text-stone-500 dark:text-stone-400">A fenti sorrend a helyes.</p>
+						{/if}
 					{/if}
-				{/if}
-				{#if item.type === 'text' || item.type === 'tf' || (item.type === 'match' && opts.length === 0)}
-					<p class="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
-						Helyes: {item.correct_answer}
-					</p>
-				{:else if item.type === 'match'}
-					<p class="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
-						Helyes pár: {item.correct_answer}
-					</p>
-				{:else if item.type === 'choice' && opts.length === 0}
-					<p class="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
-						Helyes: {item.correct_answer}
-					</p>
+					{#if item.type === 'text' || item.type === 'tf' || (item.type === 'choice' && opts.length === 0)}
+						<p class="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
+							Helyes: {item.correct_answer}
+						</p>
+					{/if}
 				{/if}
 				<div class="mt-4 flex gap-2">
 					<button
@@ -460,53 +366,15 @@
 				<h2 class="font-display text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">
 					{qSheet.mode === 'new' ? 'Új kérdés' : 'Kérdés szerkesztése'}
 				</h2>
-				<div class="mt-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Típus">
-					{#each QTYPES as t (t.id)}
-						<button
-							role="tab"
-							aria-selected={fType === t.id}
-							onclick={() => (fType = t.id)}
-							class={['rounded-full px-3 py-1.5 text-[13px] font-bold transition', fType === t.id ? 'bg-ink-900 text-white dark:bg-white dark:text-ink-900' : 'bg-stone-100 text-ink-600 dark:bg-white/10 dark:text-stone-300']}
-						>
-							{t.label}
-						</button>
-					{/each}
+				<div class="mt-3">
+					<QuestionForm bind:value={form} />
 				</div>
-				<div class="mt-3 grid gap-2">
-					<label class="text-[13px] font-semibold text-ink-900 dark:text-white">
-						Kérdés
-						<input bind:value={fText} placeholder="Kérdés szövege" aria-label="Kérdés" class="mt-1 {input}" />
-					</label>
-					{#if fType === 'match'}
-						<label class="text-[13px] font-semibold text-ink-900 dark:text-white">
-							Bal oldal
-							<input bind:value={fLeft} placeholder="Pl. 1526" aria-label="Bal oldal" class="mt-1 {input}" />
-						</label>
-					{/if}
-					{#if fType === 'choice' || fType === 'match' || fType === 'order'}
-						<label class="text-[13px] font-semibold text-ink-900 dark:text-white">
-							Opciók <span class="font-normal text-stone-400">(soronként{fType === 'order' ? ', helyes sorrendben' : ''})</span>
-							<textarea bind:value={fOptions} rows="3" placeholder="Opciók, soronként" aria-label="Opciók" class="mt-1 {input} font-mono"></textarea>
-						</label>
-					{/if}
-					{#if fType === 'tf'}
-						<label class="text-[13px] font-semibold text-ink-900 dark:text-white">
-							Helyes válasz
-							<select bind:value={fCorrect} aria-label="Helyes válasz" class="mt-1 {input}">
-								<option value="Igaz">Igaz</option>
-								<option value="Hamis">Hamis</option>
-							</select>
-						</label>
-					{:else if fType !== 'order'}
-						<label class="text-[13px] font-semibold text-ink-900 dark:text-white">
-							Helyes válasz
-							<input bind:value={fCorrect} placeholder="Helyes válasz" aria-label="Helyes válasz" class="mt-1 {input}" />
-						</label>
-					{/if}
-				</div>
+				{#if formErr}
+					<p role="alert" class="mt-2.5 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{formErr}</p>
+				{/if}
 				<button
 					onclick={() => void saveQuestion()}
-					disabled={busy || !fText.trim()}
+					disabled={busy || !form.text.trim()}
 					class="mt-4 w-full rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white transition hover:bg-brand-600 disabled:opacity-60"
 				>
 					{busy ? 'Mentés…' : qSheet.mode === 'new' ? 'Hozzáadás' : 'Mentés'}
@@ -525,57 +393,6 @@
 					</button>
 				{/if}
 			{/if}
-		{/if}
-	</div>
-</Drawer>
-
-<!-- KIADÁS drawer -->
-<Drawer open={assignOpen} label="Kiadás" onClose={() => (assignOpen = false)}>
-	<div class="px-6 pt-1 pb-6 sm:px-7 sm:pb-7">
-		<h2 class="font-display text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">Kiadás és elvárások</h2>
-		<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Mit kell elérni: határidő, próbálkozás, idő, minimum pont.</p>
-		<div class="mt-4 grid gap-2 sm:grid-cols-2">
-			<select bind:value={aClass} aria-label="Osztály" class={input}>
-				{#each rooms as r (r.id)}
-					<option value={r.id}>{r.name}</option>
-				{/each}
-			</select>
-			<input type="datetime-local" bind:value={aDue} aria-label="Határidő" class={input} />
-			<label class="flex items-center gap-2 text-[13px] text-ink-600 dark:text-stone-300">
-				Próbálkozás
-				<input type="number" min="0" max="20" bind:value={aAttempts} class="w-16 rounded-lg border border-stone-300 bg-white px-2 py-1.5 dark:border-white/15 dark:bg-white/5 dark:text-white" />
-			</label>
-			<label class="flex items-center gap-2 text-[13px] text-ink-600 dark:text-stone-300">
-				Idő (perc)
-				<input type="number" min="0" max="180" bind:value={aTime} class="w-16 rounded-lg border border-stone-300 bg-white px-2 py-1.5 dark:border-white/15 dark:bg-white/5 dark:text-white" />
-			</label>
-			<label class="flex items-center gap-2 text-[13px] sm:col-span-2 text-ink-600 dark:text-stone-300">
-				Minimum pont
-				<input type="number" min="0" max="100" step="5" bind:value={aMin} class="w-20 rounded-lg border border-stone-300 bg-white px-2 py-1.5 dark:border-white/15 dark:bg-white/5 dark:text-white" />
-				<span class="font-bold">%</span>
-				<span class="text-stone-400">— ennyit kell elérni</span>
-			</label>
-			<label class="flex items-center gap-1.5 text-[13px] text-ink-600 dark:text-stone-300">
-				<input type="checkbox" bind:checked={aShuffle} class="size-4 accent-brand-500" /> Keverés
-			</label>
-			<label class="flex items-center gap-1.5 text-[13px] text-ink-600 dark:text-stone-300">
-				<input type="checkbox" bind:checked={aExam} class="size-4 accent-red-500" /> Dolgozat
-			</label>
-			<label class="flex items-center gap-1.5 text-[13px] text-ink-600 sm:col-span-2 dark:text-stone-300">
-				<input type="checkbox" bind:checked={aDelayed} class="size-4 accent-brand-500" /> Eredmény csak határidő után
-			</label>
-		</div>
-		{#if aExam && aAttempts !== 1}
-			<p class="mt-1.5 text-[13px] font-medium text-amber-700 dark:text-amber-300">Dolgozathoz állítsd a próbálkozást 1-re.</p>
-		{/if}
-		<button
-			onclick={() => void assign()}
-			class="mt-4 w-full rounded-full bg-emerald-500 py-3 text-[15px] font-bold text-white transition hover:brightness-95"
-		>
-			{aExam ? 'Dolgozat kiadása' : 'Feladat kiadása'}
-		</button>
-		{#if aMsg}
-			<p class="mt-2 text-center text-[13px] font-medium text-ink-600 dark:text-stone-300">{aMsg}</p>
 		{/if}
 	</div>
 </Drawer>

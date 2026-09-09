@@ -22,7 +22,7 @@ export const GET: RequestHandler = async (event) => {
 	if (!lesson) return json({ error: 'Nincs ilyen lecke.' }, { status: 404 });
 	const cards = await db
 		.prepare(
-			`SELECT id, lesson_id, front_text, back_text, audio_url, image_url, ipa
+			`SELECT id, lesson_id, front_text, back_text, audio_url, image_url, ipa, example
 			 FROM flashcards WHERE lesson_id = ? ORDER BY rowid`
 		)
 		.bind(id)

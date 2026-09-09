@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, newId, requireUser, shuffle } from '$lib/server/db';
-import { hideAnswer, toQuizQ, type QuizRow } from '$lib/server/study';
+import { hideAnswer, expandQuizQs, type QuizRow } from '$lib/server/study';
 
 async function loadAssignment(db: NonNullable<ReturnType<typeof getDb>>, assignmentId: string) {
 	return db
@@ -49,7 +49,7 @@ export const POST: RequestHandler = async (event) => {
 		)
 		.bind(asm.assessment_id)
 		.all<QuizRow>();
-	let items = (rows.results ?? []).map(toQuizQ);
+	let items = expandQuizQs(rows.results ?? []);
 	if (asm.shuffle) items = shuffle(items);
 	const submission_id = newId();
 	await db

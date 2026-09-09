@@ -15,7 +15,7 @@ export const POST: RequestHandler = async (event) => {
 	if (!topicId || !(await isTopicOwner(db, topicId, user.id))) {
 		return json({ error: 'Csak a saját leckédet szerkesztheted.' }, { status: 403 });
 	}
-	let body: { front_text?: unknown; back_text?: unknown; ipa?: unknown };
+	let body: { front_text?: unknown; back_text?: unknown; ipa?: unknown; example?: unknown; audio_url?: unknown };
 	try {
 		body = await event.request.json();
 	} catch {
@@ -27,10 +27,18 @@ export const POST: RequestHandler = async (event) => {
 	const id = newId();
 	await db
 		.prepare(
-			`INSERT INTO flashcards (id, lesson_id, front_text, back_text, audio_url, image_url, ipa)
-			 VALUES (?, ?, ?, ?, NULL, NULL, ?)`
+			`INSERT INTO flashcards (id, lesson_id, front_text, back_text, audio_url, image_url, ipa, example)
+			 VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`
 		)
-		.bind(id, lessonId, front_text, back_text, String(body.ipa ?? '').trim() || null)
+		.bind(
+			id,
+			lessonId,
+			front_text,
+			back_text,
+			String(body.audio_url ?? '').trim() || null,
+			String(body.ipa ?? '').trim() || null,
+			String(body.example ?? '').trim() || null
+		)
 		.run();
 	return json({ card: { id, front_text, back_text } }, { status: 201 });
 };

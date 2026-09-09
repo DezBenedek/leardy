@@ -7,9 +7,11 @@
 		label: string;
 		onClose: () => void;
 		children: Snippet;
+		/** Gépen szélesebb párbeszéd (pl. választók, hosszú űrlapok). */
+		wide?: boolean;
 	}
 
-	let { open, label, onClose, children }: Props = $props();
+	let { open, label, onClose, children, wide = false }: Props = $props();
 
 	let panel: HTMLElement | null = $state(null);
 	let render = $state(false);
@@ -122,7 +124,8 @@
 				aria-modal="true"
 				aria-label={label}
 				class={[
-					'pointer-events-auto flex max-h-[92dvh] w-full flex-col bg-white shadow-2xl transition-all outline-none sm:max-w-md dark:bg-stone-900',
+					'pointer-events-auto flex max-h-[92dvh] w-full flex-col bg-white shadow-2xl transition-all outline-none dark:bg-stone-900',
+					wide ? 'sm:max-w-xl' : 'sm:max-w-md',
 					'rounded-t-[28px] sm:rounded-[28px]',
 					anim,
 					shown

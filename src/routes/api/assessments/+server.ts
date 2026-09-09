@@ -36,7 +36,7 @@ export const POST: RequestHandler = async (event) => {
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	if (user.role !== 'teacher') return json({ error: 'Dolgozatot csak tanár állíthat össze.' }, { status: 403 });
 	let body: {
-		topic_id?: unknown; title?: unknown; max_attempts?: unknown; time_limit_mins?: unknown;
+		topic_id?: unknown; topic_ids?: unknown; title?: unknown; max_attempts?: unknown; time_limit_mins?: unknown;
 		shuffle?: unknown; feedback_delayed?: unknown; is_exam?: unknown; count?: unknown;
 		lesson_ids?: unknown;
 	};
@@ -45,7 +45,15 @@ export const POST: RequestHandler = async (event) => {
 	} catch {
 		return json({ error: 'Hibás kérés.' }, { status: 400 });
 	}
-	const topic_id = String(body.topic_id ?? '');
+	// Több témakörből is generálhatunk (pl. dolgozat több kártyacsomagból).
+	const topicIds = [
+		...new Set(
+			(Array.isArray(body.topic_ids) ? body.topic_ids : [])
+				.map((x) => String(x))
+				.filter(Boolean)
+		)
+	].slice(0, 10);
+	const topic_id = topicIds[0] ?? String(body.topic_id ?? '');
 	const title = String(body.title ?? '').trim();
 	if (title.length < 3) return json({ error: 'Adj legalább 3 karakteres címet.' }, { status: 400 });
 	let topic: { id: string; type: string; category: string } | null = null;
@@ -55,6 +63,15 @@ export const POST: RequestHandler = async (event) => {
 			.bind(topic_id)
 			.first<{ id: string; type: string; category: string }>();
 		if (!topic) return json({ error: 'Nincs ilyen témakör.' }, { status: 404 });
+	}
+	// A további témaköröknek létezniük kell (csendben eldobjuk a többit).
+	let extraIds: string[] = [];
+	if (topic && topicIds.length > 1) {
+		const found = await db
+			.prepare(`SELECT id FROM topics WHERE id IN (${topicIds.slice(1).map(() => '?').join(',')})`)
+			.bind(...topicIds.slice(1))
+			.all<{ id: string }>();
+		extraIds = (found.results ?? []).map((r) => r.id).filter((x) => x !== topic.id);
 	}
 	const lessonIds = Array.isArray(body.lesson_ids)
 		? body.lesson_ids.map((x) => String(x)).filter(Boolean).slice(0, 30)
@@ -106,10 +123,10 @@ export const POST: RequestHandler = async (event) => {
 			return json({ error: 'A kiválasztott leckékben nincs kvízkérdés.' }, { status: 400 });
 		}
 	} else if ((Number(body.count ?? 0) > 0 || body.count === undefined) && topic) {
-		n = await buildAssessmentItems(db, id, topic.id, topic.type, Number(body.count ?? 10) || 10, langAdverb(topic.category));
+		n = await buildAssessmentItems(db, id, [topic.id, ...extraIds], topic.type, Number(body.count ?? 10) || 10, langAdverb(topic.category));
 		if (n === 0) {
 			await db.prepare(`DELETE FROM assessments WHERE id = ?`).bind(id).run();
-			return json({ error: 'A témakörben nincs kártya vagy kvíz, amiből generálhatnék.' }, { status: 400 });
+			return json({ error: 'A témakörökben nincs kártya vagy kvíz, amiből generálhatnék.' }, { status: 400 });
 		}
 	}
 	// count === 0 és nincs lesson_ids: üres, egyedi kérdésekkel tölthető.

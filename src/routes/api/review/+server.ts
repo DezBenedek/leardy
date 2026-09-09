@@ -52,7 +52,7 @@ export const GET: RequestHandler = async (event) => {
 		scopeConds.push(`AND t.category IN (${catIds.map(() => '?').join(',')})`);
 		scopeArgs.push(...catIds);
 	}
-	const SELECT = `SELECT f.id, f.lesson_id, f.front_text, f.back_text, f.audio_url, f.image_url, f.ipa,
+	const SELECT = `SELECT f.id, f.lesson_id, f.front_text, f.back_text, f.audio_url, f.image_url, f.ipa, f.example,
 		l.topic_id, t.title AS topic_title, t.type AS topic_type,
 		COALESCE(p.ease_interval, 0) AS ease_interval, COALESCE(p.status, 'new') AS status
 	 FROM flashcards f

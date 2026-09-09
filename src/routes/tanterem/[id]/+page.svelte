@@ -3,16 +3,22 @@
 	import {
 		ArrowLeft,
 		Bell,
+		BookOpenText,
+		ChevronRight,
 		ClipboardList,
 		FileText,
+		FolderOpen,
+		Layers,
 		Link2,
 		Megaphone,
 		Plus,
+		Share2,
 		Trash2,
 		X
 	} from '@lucide/svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { get as cacheGet, invalidate, peek } from '$lib/cache';
+	import ContentPicker, { type PickedRef, type PickerKind } from '$lib/components/ContentPicker.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import {
 		studyApi,
@@ -22,7 +28,6 @@
 		type Classroom,
 		type LessonRow,
 		type MessageRow,
-		type MyLesson,
 		type MyTopic,
 		type Topic
 	} from '$lib/study';
@@ -41,20 +46,18 @@
 
 	// + menü + drawerek
 	let plusOpen = $state(false);
-	let drawer = $state<'message' | 'task' | 'exam' | null>(null);
+	let drawer = $state<'message' | 'share' | 'task' | 'exam' | null>(null);
 	let busy = $state(false);
 
-	function openDrawer(kind: 'message' | 'task' | 'exam') {
+	function openDrawer(kind: 'message' | 'share' | 'task' | 'exam') {
 		plusOpen = false;
 		drawer = kind;
-		if (kind === 'message' || kind === 'task') void loadLib();
-		if (kind === 'exam') void loadExamLib();
+		if (kind !== 'message') void loadLib();
 	}
 
 	// ---------- Közös könyvtár a csatolmányokhoz ----------
 	let libTopics = $state<Topic[]>([]);
 	let libDecks = $state<MyTopic[]>([]);
-	let libDeckLessons = $state<MyLesson[]>([]);
 	let libQuizzes = $state<AssessmentRow[]>([]);
 	let libLoaded = $state(false);
 
@@ -68,7 +71,6 @@
 			]);
 			libTopics = t.topics;
 			libDecks = m.topics;
-			libDeckLessons = m.lessons;
 			libQuizzes = q.assessments;
 			libLoaded = true;
 		} catch {
@@ -76,69 +78,110 @@
 		}
 	}
 
-	async function loadExamLib() {
-		await loadLib();
-	}
-
-	// ---------- Üzenet ----------
+	// ---------- Üzenet (sima hír + opcionális link) ----------
 	let mTitle = $state('');
 	let mBody = $state('');
-	let attachKind = $state<AttachmentKind | null>(null);
 	let mLink = $state('');
-	let mTopic = $state('');
-	let mLesson = $state('');
-	let topicLessons = $state<LessonRow[]>([]);
 
-	async function loadTopicLessons(tid: string) {
-		mLesson = '';
-		topicLessons = [];
-		if (!tid) return;
+	// ---------- Megosztás (lecke / kártya / kvíz / témakör / link a falra) ----------
+	let shareKind = $state<AttachmentKind>('lesson');
+	let sTopic = $state('');
+	let sTopicTitle = $state('');
+	let sLesson = $state('');
+	let sLessonTitle = $state('');
+	let sLink = $state('');
+	let sTitle = $state('');
+	let sBody = $state('');
+	let sMsg = $state<string | null>(null);
+
+	const SHARE_KINDS: { id: AttachmentKind; label: string }[] = [
+		{ id: 'lesson', label: 'Lecke' },
+		{ id: 'deck', label: 'Kártya' },
+		{ id: 'quiz', label: 'Kvíz' },
+		{ id: 'topic', label: 'Témakör' },
+		{ id: 'link', label: 'Link' }
+	];
+
+	function shareIcon(kind: AttachmentKind) {
+		if (kind === 'lesson') return BookOpenText;
+		if (kind === 'deck') return Layers;
+		if (kind === 'quiz') return ClipboardList;
+		if (kind === 'topic') return FolderOpen;
+		return Link2;
+	}
+
+	async function fetchLessons(topicId: string): Promise<LessonRow[]> {
 		try {
-			topicLessons = (await studyApi.topic(tid)).lessons;
+			return (await studyApi.topic(topicId)).lessons;
 		} catch {
-			// üresen marad
+			return [];
 		}
 	}
 
-	function attachLabel(kind: AttachmentKind): string {
-		if (kind === 'link') return 'Link';
-		if (kind === 'lesson') return 'Lecke';
-		if (kind === 'topic') return 'Témakör';
-		if (kind === 'deck') return 'Kártya';
-		return 'Kvíz';
+	// ---------- Tartalomválasztó: témakör -> lecke leolvasás, mindenhol drawerben ----------
+	type PickerKey =
+		| 'share-lesson'
+		| 'share-deck'
+		| 'share-quiz'
+		| 'share-topic'
+		| 'task-quiz'
+		| 'task-lesson'
+		| 'exam-quiz'
+		| 'exam-deck';
+	let picker = $state<{ key: PickerKey; kind: PickerKind; multiple?: boolean } | null>(null);
+
+	async function openPicker(key: PickerKey, kind: PickerKind, multiple = false) {
+		await loadLib();
+		picker = { key, kind, multiple };
+	}
+
+	function onPick(v: PickedRef) {
+		const key = picker?.key;
+		picker = null;
+		if (!key) return;
+		if (key === 'share-lesson' && v.parentId) {
+			sTopic = v.parentId;
+			sTopicTitle = v.parentTitle ?? '';
+			sLesson = v.id;
+			sLessonTitle = v.title;
+			sTitle = v.title;
+		} else if (key === 'share-deck' || key === 'share-quiz' || key === 'share-topic') {
+			sTopic = v.id;
+			sTopicTitle = v.title;
+			sTitle = v.title;
+		} else if (key === 'task-quiz') {
+			tQuiz = v.id;
+			tQuizTitle = v.title;
+		} else if (key === 'task-lesson' && v.parentId) {
+			tTopic = v.parentId;
+			tTopicTitle = v.parentTitle ?? '';
+			tLesson = v.id;
+			tLessonTitle = v.title;
+		}
+	}
+
+	function onPickMulti(ids: string[]) {
+		const key = picker?.key;
+		picker = null;
+		if (key === 'exam-deck') {
+			eDecks = ids.map((id) => ({ id, title: libDecks.find((d) => d.id === id)?.title ?? 'Csomag' }));
+		} else if (key === 'exam-quiz') {
+			eQuizzes = ids.map((id) => ({ id, title: libQuizzes.find((x) => x.id === id)?.title ?? 'Kvíz' }));
+		}
 	}
 
 	async function send() {
 		if (!mTitle.trim() || busy) return;
 		busy = true;
 		try {
-			let ref_type: string | undefined;
-			let ref_id: string | undefined;
-			if (attachKind === 'topic' && mTopic) {
-				ref_type = 'topic';
-				ref_id = mTopic;
-			} else if (attachKind === 'lesson' && mLesson) {
-				ref_type = 'lesson';
-				ref_id = mLesson;
-			} else if (attachKind === 'deck' && mTopic) {
-				ref_type = 'deck';
-				ref_id = mTopic;
-			} else if (attachKind === 'quiz' && mTopic) {
-				ref_type = 'assessment';
-				ref_id = mTopic;
-			}
 			await studyApi.sendMessage(params.id, {
 				title: mTitle.trim(),
 				body: mBody.trim(),
-				link_url: attachKind === 'link' ? mLink.trim() : '',
-				...(ref_type && ref_id ? { ref_type, ref_id } : {})
+				link_url: mLink.trim()
 			});
 			mTitle = '';
 			mBody = '';
 			mLink = '';
-			mTopic = '';
-			mLesson = '';
-			attachKind = null;
 			drawer = null;
 			await loadMessages();
 		} catch (e) {
@@ -148,11 +191,85 @@
 		}
 	}
 
+	function selectedShareTitle(): string | null {
+		if (shareKind === 'lesson') return sLessonTitle || null;
+		if (shareKind === 'link') return null;
+		return sTopicTitle || null;
+	}
+
+	async function submitShare() {
+		if (busy) return;
+		sMsg = null;
+		if (!sTitle.trim()) {
+			sMsg = 'Adj címet a megosztásnak!';
+			return;
+		}
+		let ref_type: string | undefined;
+		let ref_id: string | undefined;
+		if (shareKind === 'lesson') {
+			if (!sLesson) {
+				sMsg = 'Válassz leckét!';
+				return;
+			}
+			ref_type = 'lesson';
+			ref_id = sLesson;
+		} else if (shareKind === 'deck') {
+			if (!sTopic) {
+				sMsg = 'Válassz kártyacsomagot!';
+				return;
+			}
+			ref_type = 'deck';
+			ref_id = sTopic;
+		} else if (shareKind === 'quiz') {
+			if (!sTopic) {
+				sMsg = 'Válassz kvízt!';
+				return;
+			}
+			ref_type = 'assessment';
+			ref_id = sTopic;
+		} else if (shareKind === 'topic') {
+			if (!sTopic) {
+				sMsg = 'Válassz témakört!';
+				return;
+			}
+			ref_type = 'topic';
+			ref_id = sTopic;
+		} else if (!sLink.trim()) {
+			sMsg = 'Add meg a linket!';
+			return;
+		}
+		busy = true;
+		try {
+			await studyApi.sendMessage(params.id, {
+				title: sTitle.trim(),
+				body: sBody.trim(),
+				link_url: shareKind === 'link' ? sLink.trim() : '',
+				...(ref_type && ref_id ? { ref_type, ref_id } : {})
+			});
+			sTopic = '';
+			sTopicTitle = '';
+			sLesson = '';
+			sLessonTitle = '';
+			sLink = '';
+			sTitle = '';
+			sBody = '';
+			drawer = null;
+			await loadMessages();
+		} catch (e) {
+			sMsg = e instanceof Error ? e.message : 'Hiba történt.';
+		} finally {
+			busy = false;
+		}
+	}
+
 	// ---------- Feladat: melyik kvízt / leckét kell megcsinálni + mit kell elérni ----------
 	let tMode = $state<'quiz' | 'lesson'>('quiz');
 	let tQuiz = $state('');
+	let tQuizTitle = $state('');
 	let tTopic = $state('');
+	let tTopicTitle = $state('');
 	let tLesson = $state('');
+	let tLessonTitle = $state('');
 	let tDue = $state('');
 	let tAttempts = $state(0);
 	let tTime = $state(0);
@@ -173,7 +290,7 @@
 					tMsg = 'Válassz leckét a feladathoz!';
 					return;
 				}
-				const lessonTitle = topicLessons.find((l) => l.id === tLesson)?.title ?? 'Lecke';
+				const lessonTitle = tLessonTitle || 'Lecke';
 				const built = await studyApi.buildAssessment({
 					topic_id: tTopic,
 					title: `${lessonTitle} — feladat`,
@@ -215,10 +332,10 @@
 		}
 	}
 
-	// ---------- Doga: kvízből ÉS kártyacsomagból is ----------
+	// ---------- Doga: kvízből ÉS (akár több) kártyacsomagból is ----------
 	let eMode = $state<'quiz' | 'deck'>('quiz');
-	let eQuiz = $state('');
-	let eDeck = $state('');
+	let eQuizzes = $state<{ id: string; title: string }[]>([]);
+	let eDecks = $state<{ id: string; title: string }[]>([]);
 	let eCount = $state(10);
 	let eDue = $state('');
 	let eTime = $state(45);
@@ -231,15 +348,39 @@
 		busy = true;
 		try {
 			const due = eDue ? new Date(eDue).getTime() : 0;
-			let assessmentId = eQuiz;
-			if (eMode === 'deck') {
-				if (!eDeck) {
-					eMsg = 'Válassz kártyacsomagot!';
+			let assessmentId = '';
+			if (eMode === 'quiz') {
+				if (eQuizzes.length === 0) {
+					eMsg = 'Válassz legalább egy kvízt!';
 					return;
 				}
-				const deckTitle = libDecks.find((d) => d.id === eDeck)?.title ?? 'Kártyacsomag';
+				if (eQuizzes.length === 1) {
+					assessmentId = eQuizzes[0].id;
+				} else {
+					const ids = eQuizzes.map((x) => x.id);
+					const quizTitle = `${eQuizzes[0].title} +${eQuizzes.length - 1}`;
+					const merged = await studyApi.mergeAssessments({
+						assessment_ids: ids,
+						title: `${quizTitle} — dolgozat`,
+						max_attempts: 1,
+						time_limit_mins: eTime,
+						shuffle: true,
+						feedback_delayed: true,
+						is_exam: true
+					});
+					assessmentId = merged.assessment.id;
+				}
+			}
+			if (eMode === 'deck') {
+				if (eDecks.length === 0) {
+					eMsg = 'Válassz legalább egy kártyacsomagot!';
+					return;
+				}
+				const ids = eDecks.map((d) => d.id);
+				const deckTitle = eDecks.length === 1 ? eDecks[0].title : `${eDecks[0].title} +${eDecks.length - 1}`;
 				const built = await studyApi.buildAssessment({
-					topic_id: eDeck,
+					topic_id: ids[0],
+					topic_ids: ids,
 					title: `${deckTitle} — dolgozat`,
 					max_attempts: 1,
 					time_limit_mins: eTime,
@@ -251,7 +392,7 @@
 				assessmentId = built.assessment.id;
 			}
 			if (!assessmentId) {
-				eMsg = 'Válassz kvízt a dolgozathoz!';
+				eMsg = 'Válassz forrást a dolgozathoz!';
 				return;
 			}
 			await studyApi.assign({
@@ -397,7 +538,14 @@
 						<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/20 dark:text-white"><Megaphone size={19} /></span>
 						<span class="min-w-0 flex-1">
 							<span class="block text-[14px] font-bold text-ink-900 dark:text-white">Üzenet</span>
-							<span class="block truncate text-[12px] text-stone-500 dark:text-stone-400">Hír + csatolmány a falra</span>
+							<span class="block truncate text-[12px] text-stone-500 dark:text-stone-400">Rövid hír a falra</span>
+						</span>
+					</button>
+					<button onclick={() => openDrawer('share')} class="flex w-full items-center gap-3 border-t border-stone-100 px-4 py-3 text-left transition hover:bg-stone-50 dark:border-white/5 dark:hover:bg-white/5">
+						<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-sky-600 dark:bg-sky-400/10 dark:text-sky-300"><Share2 size={19} /></span>
+						<span class="min-w-0 flex-1">
+							<span class="block text-[14px] font-bold text-ink-900 dark:text-white">Megosztás</span>
+							<span class="block truncate text-[12px] text-stone-500 dark:text-stone-400">Lecke, kártya, kvíz a falra</span>
 						</span>
 					</button>
 					<button onclick={() => openDrawer('task')} class="flex w-full items-center gap-3 border-t border-stone-100 px-4 py-3 text-left transition hover:bg-stone-50 dark:border-white/5 dark:hover:bg-white/5">
@@ -440,7 +588,7 @@
 
 	{#if wall.length === 0}
 		<p class="mt-2.5 rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500 dark:border-white/15 dark:text-stone-400">
-			Még üres a fal.{#if canPost} A jobb felső + gombbal adj ki üzenetet, feladatot vagy dolgozatot!{/if}
+			Még üres a fal.{#if canPost} A jobb felső + gombbal ossz meg tartalmat, vagy adj ki feladatot, dolgozatot!{/if}
 		</p>
 	{:else}
 		<ul class="mt-2.5 space-y-2.5">
@@ -556,85 +704,26 @@
 	{/if}
 {/if}
 
-<!-- ÜZENET drawer -->
-<Drawer open={drawer === 'message'} label="Új üzenet" onClose={() => (drawer = null)}>
+<!-- ÜZENET drawer: sima hír -->
+<Drawer open={drawer === 'message'} label="Új üzenet" wide onClose={() => (drawer = null)}>
 	<div class="px-6 pt-1 pb-6 sm:px-7 sm:pb-7">
-		<h2 class="font-display text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">Üzenet kiadása</h2>
-		<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Hír a falra, csatolmánnyal.</p>
+		<h2 class="font-display text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">Üzenet</h2>
+		<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Rövid hír az osztály falára.</p>
 		{#if err}
 			<p role="alert" class="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err}</p>
 		{/if}
-		<input bind:value={mTitle} placeholder="Cím" aria-label="Üzenet címe" class="{input} mt-4" />
-		<textarea bind:value={mBody} rows="3" placeholder="Szöveg (opcionális)" aria-label="Üzenet szövege" class="{input} mt-2"></textarea>
-
-		{#if !attachKind}
-			<button
-				onclick={() => (attachKind = 'link')}
-				class="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-stone-300 p-3 text-sm font-bold text-stone-500 dark:border-white/15 dark:text-stone-300"
-			>
-				<Plus size={16} /> Csatolmány
-			</button>
-		{:else}
-			<div class="mt-3 rounded-2xl bg-stone-100 p-3 dark:bg-white/5">
-				<p class="text-[13px] font-bold text-ink-900 dark:text-white">Csatolmány típusa</p>
-				<div class="mt-2 flex flex-wrap gap-1.5">
-					{#each (['link', 'lesson', 'topic', 'deck', 'quiz'] as AttachmentKind[]) as k (k)}
-						<button
-							onclick={() => {
-								attachKind = k;
-								mTopic = '';
-								mLesson = '';
-								if (k === 'lesson' || k === 'topic') void loadTopicLessons(mTopic);
-							}}
-							aria-pressed={attachKind === k}
-							class={['rounded-full px-3 py-1.5 text-[13px] font-bold transition', attachKind === k ? 'bg-ink-900 text-white dark:bg-white dark:text-ink-900' : 'bg-white text-ink-600 dark:bg-white/10 dark:text-stone-300']}
-						>
-							{attachLabel(k)}
-						</button>
-					{/each}
-				</div>
-				{#if attachKind === 'link'}
-					<input bind:value={mLink} placeholder="https://…" inputmode="url" aria-label="Link" class="{input} mt-2" />
-				{:else if attachKind === 'topic'}
-					<select bind:value={mTopic} aria-label="Témakör" class="{input} mt-2">
-						<option value="">Válassz témakört…</option>
-						{#each libTopics as t (t.id)}
-							<option value={t.id}>{t.title}</option>
-						{/each}
-					</select>
-				{:else if attachKind === 'lesson'}
-					<div class="mt-2 grid gap-1.5">
-						<select bind:value={mTopic} onchange={() => void loadTopicLessons(mTopic)} aria-label="Témakör" class={input}>
-							<option value="">Témakör…</option>
-							{#each libTopics as t (t.id)}
-								<option value={t.id}>{t.title}</option>
-							{/each}
-						</select>
-						<select bind:value={mLesson} aria-label="Lecke" class={input} disabled={!mTopic}>
-							<option value="">Lecke…</option>
-							{#each topicLessons as l (l.id)}
-								<option value={l.id}>{l.title}</option>
-							{/each}
-						</select>
-					</div>
-				{:else if attachKind === 'deck'}
-					<select bind:value={mTopic} aria-label="Kártyacsomag" class="{input} mt-2">
-						<option value="">Válassz kártyacsomagot…</option>
-						{#each libDecks as d (d.id)}
-							<option value={d.id}>{d.title}</option>
-						{/each}
-					</select>
-				{:else}
-					<select bind:value={mTopic} aria-label="Kvíz" class="{input} mt-2">
-						<option value="">Válassz kvízt…</option>
-						{#each libQuizzes as qz (qz.id)}
-							<option value={qz.id}>{qz.title} ({qz.items} kérdés)</option>
-						{/each}
-					</select>
-				{/if}
-				<button onclick={() => (attachKind = null)} class="mt-2 text-[13px] font-semibold text-stone-500 dark:text-stone-400">Csatolmány eltávolítása</button>
-			</div>
-		{/if}
+		<label class="mt-4 block text-[13px] font-semibold text-ink-900 dark:text-white">
+			Cím
+			<input bind:value={mTitle} placeholder="Pl. Holnapi óra elmarad" aria-label="Üzenet címe" class="mt-1 {input}" />
+		</label>
+		<label class="mt-2.5 block text-[13px] font-semibold text-ink-900 dark:text-white">
+			Szöveg <span class="font-normal text-stone-400">(opcionális)</span>
+			<textarea bind:value={mBody} rows="3" placeholder="Részletek…" aria-label="Üzenet szövege" class="mt-1 {input}"></textarea>
+		</label>
+		<label class="mt-2.5 block text-[13px] font-semibold text-ink-900 dark:text-white">
+			Link <span class="font-normal text-stone-400">(opcionális)</span>
+			<input bind:value={mLink} placeholder="https://…" inputmode="url" aria-label="Link" class="mt-1 {input}" />
+		</label>
 
 		<button
 			onclick={() => void send()}
@@ -646,140 +735,362 @@
 	</div>
 </Drawer>
 
-<!-- FELADAT drawer: melyik kvízt / leckét kell megcsinálni + mit kell elérni -->
-<Drawer open={drawer === 'task'} label="Új feladat" onClose={() => (drawer = null)}>
+<!-- MEGOSZTÁS drawer: lecke / kártya / kvíz / témakör / link -->
+<Drawer open={drawer === 'share'} label="Megosztás" wide onClose={() => (drawer = null)}>
 	<div class="px-6 pt-1 pb-6 sm:px-7 sm:pb-7">
-		<h2 class="font-display text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">Feladat kiadása</h2>
-		<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Válaszd ki, mit kell megcsinálni, és mit kell elérni.</p>
-		<div class="mt-3 flex gap-2" role="tablist" aria-label="Forrás">
-			{#each [{ id: 'quiz', label: 'Kvíz' }, { id: 'lesson', label: 'Lecke' }] as m (m.id)}
+		<h2 class="font-display text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">Megosztás</h2>
+		<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Tartalom az osztály falára.</p>
+
+		<div class="mt-4 grid grid-cols-3 gap-1.5" role="tablist" aria-label="Megosztás típusa">
+			{#each SHARE_KINDS as k (k.id)}
+				{@const Icon = shareIcon(k.id)}
 				<button
 					role="tab"
-					aria-selected={tMode === m.id}
-					onclick={() => (tMode = m.id as typeof tMode)}
-					class={['flex-1 rounded-full py-2 text-[13px] font-bold transition', tMode === m.id ? 'bg-ink-900 text-white dark:bg-white dark:text-ink-900' : 'bg-stone-100 text-ink-600 dark:bg-white/10 dark:text-stone-300']}
+					aria-selected={shareKind === k.id}
+					onclick={() => {
+						shareKind = k.id;
+						sTopic = '';
+						sTopicTitle = '';
+						sLesson = '';
+						sLessonTitle = '';
+						sLink = '';
+					}}
+					class={['flex flex-col items-center gap-1 rounded-2xl border-2 px-2 py-2.5 transition active:scale-95', shareKind === k.id ? 'border-brand-500 bg-brand-50 dark:bg-brand-500/15' : 'border-stone-200 dark:border-white/10']}
 				>
-					{m.label}
+					<Icon size={20} class={shareKind === k.id ? 'text-brand-600 dark:text-white' : 'text-stone-400'} />
+					<span class={['text-[12px] font-bold', shareKind === k.id ? 'text-brand-700 dark:text-white' : 'text-stone-500 dark:text-stone-400']}>{k.label}</span>
 				</button>
 			{/each}
 		</div>
-		{#if tMode === 'quiz'}
-			<select bind:value={tQuiz} aria-label="Kvíz" class="{input} mt-2.5">
-				<option value="">Válassz kvízt…</option>
-				{#each libQuizzes as qz (qz.id)}
-					<option value={qz.id}>{qz.title} ({qz.items} kérdés)</option>
-				{/each}
-			</select>
-			<a href="/kvizek" class="mt-1.5 block text-[13px] font-semibold text-brand-600 dark:text-brand-300">+ Új kvíz készítése a Kvízek oldalon →</a>
-		{:else}
-			<div class="mt-2.5 grid gap-1.5">
-				<select bind:value={tTopic} onchange={() => void loadTopicLessons(tTopic)} aria-label="Témakör" class={input}>
-					<option value="">Témakör…</option>
-					{#each libTopics as t (t.id)}
-						<option value={t.id}>{t.title}</option>
-					{/each}
-				</select>
-				<select bind:value={tLesson} aria-label="Lecke" class={input} disabled={!tTopic}>
-					<option value="">Lecke… — ezt kell megcsinálni</option>
-					{#each topicLessons as l (l.id)}
-						<option value={l.id}>{l.title}</option>
-					{/each}
-				</select>
-			</div>
-		{/if}
-		<p class="mt-4 text-[13px] font-bold text-ink-900 dark:text-white">Elvárások</p>
-		<div class="mt-2 grid gap-2 sm:grid-cols-2">
-			<input type="datetime-local" bind:value={tDue} aria-label="Határidő" class={input} />
-			<label class="flex items-center gap-2 text-[13px] text-ink-600 dark:text-stone-300">
-				Minimum pont
-				<input type="number" min="0" max="100" step="5" bind:value={tMin} class="w-20 rounded-lg border border-stone-300 bg-white px-2 py-1.5 dark:border-white/15 dark:bg-white/5 dark:text-white" />
-				<span class="font-bold">%</span>
-			</label>
-			<label class="flex items-center gap-2 text-[13px] text-ink-600 dark:text-stone-300">
-				Próbálkozás
-				<input type="number" min="0" max="20" bind:value={tAttempts} class="w-16 rounded-lg border border-stone-300 bg-white px-2 py-1.5 dark:border-white/15 dark:bg-white/5 dark:text-white" />
-			</label>
-			<label class="flex items-center gap-2 text-[13px] text-ink-600 dark:text-stone-300">
-				Idő (perc)
-				<input type="number" min="0" max="180" bind:value={tTime} class="w-16 rounded-lg border border-stone-300 bg-white px-2 py-1.5 dark:border-white/15 dark:bg-white/5 dark:text-white" />
-			</label>
-			<label class="flex items-center gap-1.5 text-[13px] text-ink-600 dark:text-stone-300">
-				<input type="checkbox" bind:checked={tShuffle} class="size-4 accent-brand-500" /> Keverés
-			</label>
-			<label class="flex items-center gap-1.5 text-[13px] text-ink-600 dark:text-stone-300">
-				<input type="checkbox" bind:checked={tDelayed} class="size-4 accent-brand-500" /> Eredmény csak határidő után
-			</label>
+
+		<div class="mt-3 rounded-2xl bg-stone-100 p-3.5 dark:bg-white/5">
+			{#if shareKind === 'lesson'}
+				<button
+					onclick={() => void openPicker('share-lesson', 'lesson')}
+					class="flex w-full items-center gap-2.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-left transition hover:border-brand-500 active:scale-[0.99] dark:border-white/15 dark:bg-white/5"
+				>
+					<BookOpenText size={18} class="shrink-0 text-brand-600 dark:text-white" />
+					<span class="min-w-0 flex-1">
+						<span class="block truncate text-[14px] font-bold text-ink-900 dark:text-white">
+							{sLessonTitle || 'Válassz leckét…'}
+						</span>
+						{#if sLessonTitle}
+							<span class="block truncate text-[12px] text-stone-500 dark:text-stone-400">{sTopicTitle}</span>
+						{:else}
+							<span class="block text-[12px] text-stone-500 dark:text-stone-400">Témakör → lecke</span>
+						{/if}
+					</span>
+					<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
+				</button>
+			{:else if shareKind === 'deck'}
+				<button
+					onclick={() => void openPicker('share-deck', 'deck')}
+					class="flex w-full items-center gap-2.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-left transition hover:border-brand-500 active:scale-[0.99] dark:border-white/15 dark:bg-white/5"
+				>
+					<Layers size={18} class="shrink-0 text-emerald-600 dark:text-emerald-300" />
+					<span class="min-w-0 flex-1 truncate text-[14px] font-bold text-ink-900 dark:text-white">
+						{sTopicTitle || 'Válassz kártyacsomagot…'}
+					</span>
+					<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
+				</button>
+			{:else if shareKind === 'quiz'}
+				<button
+					onclick={() => void openPicker('share-quiz', 'quiz')}
+					class="flex w-full items-center gap-2.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-left transition hover:border-brand-500 active:scale-[0.99] dark:border-white/15 dark:bg-white/5"
+				>
+					<ClipboardList size={18} class="shrink-0 text-brand-600 dark:text-white" />
+					<span class="min-w-0 flex-1 truncate text-[14px] font-bold text-ink-900 dark:text-white">
+						{sTopicTitle || 'Válassz kvízt…'}
+					</span>
+					<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
+				</button>
+				<a href="/kvizek" class="mt-1.5 block text-[13px] font-semibold text-brand-600 dark:text-brand-300">+ Új kvíz a Kvízek oldalon →</a>
+			{:else if shareKind === 'topic'}
+				<button
+					onclick={() => void openPicker('share-topic', 'topic')}
+					class="flex w-full items-center gap-2.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-left transition hover:border-brand-500 active:scale-[0.99] dark:border-white/15 dark:bg-white/5"
+				>
+					<FolderOpen size={18} class="shrink-0 text-amber-600 dark:text-amber-300" />
+					<span class="min-w-0 flex-1 truncate text-[14px] font-bold text-ink-900 dark:text-white">
+						{sTopicTitle || 'Válassz témakört…'}
+					</span>
+					<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
+				</button>
+			{:else}
+				<label class="block text-[13px] font-semibold text-ink-900 dark:text-white">
+					Link
+					<input bind:value={sLink} placeholder="https://…" inputmode="url" aria-label="Link" class="mt-1 {input}" />
+				</label>
+			{/if}
+
+			{#if selectedShareTitle()}
+				{@const SIcon = shareIcon(shareKind)}
+				<div class="mt-2.5 flex items-center gap-2.5 rounded-xl bg-white px-3 py-2.5 dark:bg-white/10">
+					<span class="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/20 dark:text-white">
+						<SIcon size={17} />
+					</span>
+					<p class="min-w-0 flex-1 truncate text-sm font-bold text-ink-900 dark:text-white">{selectedShareTitle()}</p>
+				</div>
+			{/if}
 		</div>
+
+		<label class="mt-3 block text-[13px] font-semibold text-ink-900 dark:text-white">
+			Cím a falon
+			<input bind:value={sTitle} placeholder="Pl. Ezt nézzétek át!" aria-label="Megosztás címe" class="mt-1 {input}" />
+		</label>
+		<label class="mt-2.5 block text-[13px] font-semibold text-ink-900 dark:text-white">
+			Megjegyzés <span class="font-normal text-stone-400">(opcionális)</span>
+			<textarea bind:value={sBody} rows="2" placeholder="Pár szó hozzá…" aria-label="Megjegyzés" class="mt-1 {input}"></textarea>
+		</label>
+
+		{#if sMsg}
+			<p class="mt-2 text-[13px] font-medium text-ink-600 dark:text-stone-300">{sMsg}</p>
+		{/if}
+		<button
+			onclick={() => void submitShare()}
+			disabled={busy || !sTitle.trim()}
+			class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white transition hover:bg-brand-600 disabled:opacity-60"
+		>
+			<Share2 size={17} /> {busy ? 'Megosztás…' : 'Megosztás a falon'}
+		</button>
+	</div>
+</Drawer>
+
+<!-- FELADAT drawer: melyik kvízt / leckét kell megcsinálni + mit kell elérni -->
+<Drawer open={drawer === 'task'} label="Új feladat" wide onClose={() => (drawer = null)}>
+	<div class="px-6 pt-1 pb-6 sm:px-7 sm:pb-7">
+		<h2 class="font-display text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">Feladat kiadása</h2>
+		<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Mit kell megcsinálni, és mit kell elérni.</p>
+
+		<section class="mt-4 rounded-2xl bg-stone-100 p-3.5 dark:bg-white/5" aria-label="Mit kell megcsinálni">
+			<p class="text-[12px] font-extrabold tracking-wide text-stone-400 uppercase dark:text-stone-500">1 · Tananyag</p>
+			<div class="mt-2 grid grid-cols-2 gap-1.5" role="tablist" aria-label="Forrás">
+				{#each [{ id: 'quiz', label: 'Kvíz' }, { id: 'lesson', label: 'Lecke' }] as m (m.id)}
+					<button
+						role="tab"
+						aria-selected={tMode === m.id}
+						onclick={() => (tMode = m.id as typeof tMode)}
+						class={['rounded-xl py-2.5 text-[14px] font-bold transition active:scale-95', tMode === m.id ? 'bg-ink-900 text-white shadow-sm dark:bg-white dark:text-ink-900' : 'bg-white text-ink-600 dark:bg-white/10 dark:text-stone-300']}
+					>
+						{m.label}
+					</button>
+				{/each}
+			</div>
+			{#if tMode === 'quiz'}
+				<button
+					onclick={() => void openPicker('task-quiz', 'quiz')}
+					class="mt-2 flex w-full items-center gap-2.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-left transition hover:border-brand-500 active:scale-[0.99] dark:border-white/15 dark:bg-white/5"
+				>
+					<ClipboardList size={18} class="shrink-0 text-brand-600 dark:text-white" />
+					<span class="min-w-0 flex-1 truncate text-[14px] font-bold text-ink-900 dark:text-white">
+						{tQuizTitle || 'Válassz kvízt…'}
+					</span>
+					<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
+				</button>
+				<a href="/kvizek" class="mt-1.5 block text-[13px] font-semibold text-brand-600 dark:text-brand-300">+ Új kvíz készítése a Kvízek oldalon →</a>
+			{:else}
+				<button
+					onclick={() => void openPicker('task-lesson', 'lesson')}
+					class="mt-2 flex w-full items-center gap-2.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-left transition hover:border-brand-500 active:scale-[0.99] dark:border-white/15 dark:bg-white/5"
+				>
+					<BookOpenText size={18} class="shrink-0 text-brand-600 dark:text-white" />
+					<span class="min-w-0 flex-1">
+						<span class="block truncate text-[14px] font-bold text-ink-900 dark:text-white">
+							{tLessonTitle || 'Válassz leckét…'}
+						</span>
+						{#if tLessonTitle}
+							<span class="block truncate text-[12px] text-stone-500 dark:text-stone-400">{tTopicTitle}</span>
+						{:else}
+							<span class="block text-[12px] text-stone-500 dark:text-stone-400">Témakör → lecke — ezt kell megcsinálni</span>
+						{/if}
+					</span>
+					<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
+				</button>
+			{/if}
+		</section>
+
+		<section class="mt-2.5 rounded-2xl bg-stone-100 p-3.5 dark:bg-white/5" aria-label="Elvárások">
+			<p class="text-[12px] font-extrabold tracking-wide text-stone-400 uppercase dark:text-stone-500">2 · Elvárások</p>
+			<label class="mt-2 block text-[13px] font-semibold text-ink-900 dark:text-white">
+				Határidő
+				<input type="datetime-local" bind:value={tDue} aria-label="Határidő" class="mt-1 {input}" />
+			</label>
+			<div class="mt-2 grid grid-cols-3 gap-1.5">
+				<label class="rounded-xl bg-white px-2.5 py-2 text-center dark:bg-white/10">
+					<span class="block text-[11px] font-bold text-stone-400 uppercase">Cél %</span>
+					<input type="number" min="0" max="100" step="5" bind:value={tMin} aria-label="Minimum pont százalék" class="mt-0.5 w-full bg-transparent text-center text-[16px] font-extrabold text-ink-900 outline-none tabular-nums dark:text-white" />
+				</label>
+				<label class="rounded-xl bg-white px-2.5 py-2 text-center dark:bg-white/10">
+					<span class="block text-[11px] font-bold text-stone-400 uppercase">Próba</span>
+					<input type="number" min="0" max="20" bind:value={tAttempts} aria-label="Próbálkozások száma" class="mt-0.5 w-full bg-transparent text-center text-[16px] font-extrabold text-ink-900 outline-none tabular-nums dark:text-white" />
+				</label>
+				<label class="rounded-xl bg-white px-2.5 py-2 text-center dark:bg-white/10">
+					<span class="block text-[11px] font-bold text-stone-400 uppercase">Perc</span>
+					<input type="number" min="0" max="180" bind:value={tTime} aria-label="Időkorlát percben" class="mt-0.5 w-full bg-transparent text-center text-[16px] font-extrabold text-ink-900 outline-none tabular-nums dark:text-white" />
+				</label>
+			</div>
+		</section>
+
+		<section class="mt-2.5 divide-y divide-stone-200 rounded-2xl bg-stone-100 px-3.5 dark:divide-white/10 dark:bg-white/5" aria-label="Beállítások">
+			<label class="flex cursor-pointer items-center gap-3 py-3">
+				<span class="min-w-0 flex-1">
+					<span class="block text-[14px] font-bold text-ink-900 dark:text-white">Keverés</span>
+					<span class="block text-[12px] text-stone-500 dark:text-stone-400">Más sorrend mindenkinek</span>
+				</span>
+				<input type="checkbox" bind:checked={tShuffle} class="size-5 shrink-0 accent-emerald-500" />
+			</label>
+			<label class="flex cursor-pointer items-center gap-3 py-3">
+				<span class="min-w-0 flex-1">
+					<span class="block text-[14px] font-bold text-ink-900 dark:text-white">Eredmény csak határidő után</span>
+					<span class="block text-[12px] text-stone-500 dark:text-stone-400">Addig csak a beadás látszik</span>
+				</span>
+				<input type="checkbox" bind:checked={tDelayed} class="size-5 shrink-0 accent-emerald-500" />
+			</label>
+		</section>
+
 		{#if tMsg}
-			<p class="mt-2 text-[13px] font-medium text-ink-600 dark:text-stone-300">{tMsg}</p>
+			<p class="mt-2.5 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-center text-[13px] font-bold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">{tMsg}</p>
 		{/if}
 		<button
 			onclick={() => void submitTask()}
 			disabled={busy}
-			class="mt-4 w-full rounded-full bg-emerald-500 py-3 text-[15px] font-bold text-white transition hover:brightness-95 disabled:opacity-60"
+			class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 py-3.5 text-[15px] font-bold text-white transition hover:brightness-95 active:scale-[0.99] disabled:opacity-60"
 		>
-			{busy ? 'Kiadás…' : 'Feladat kiadása'}
+			<ClipboardList size={18} /> {busy ? 'Kiadás…' : 'Feladat kiadása'}
 		</button>
 	</div>
 </Drawer>
 
 <!-- DOLGOZAT drawer: kvízből ÉS kártyacsomagból is -->
-<Drawer open={drawer === 'exam'} label="Új dolgozat" onClose={() => (drawer = null)}>
+<Drawer open={drawer === 'exam'} label="Új dolgozat" wide onClose={() => (drawer = null)}>
 	<div class="px-6 pt-1 pb-6 sm:px-7 sm:pb-7">
 		<h2 class="font-display text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">Dolgozat indítása</h2>
 		<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Kvízből vagy kártyacsomagból — 1 próbálkozás, szigorú.</p>
-		<div class="mt-3 flex gap-2" role="tablist" aria-label="Forrás">
-			{#each [{ id: 'quiz', label: 'Kvízből' }, { id: 'deck', label: 'Kártyacsomagból' }] as m (m.id)}
+
+		<section class="mt-4 rounded-2xl bg-red-50/60 p-3.5 dark:bg-red-400/10" aria-label="Forrás">
+			<p class="text-[12px] font-extrabold tracking-wide text-red-400 uppercase dark:text-red-300">1 · Forrás</p>
+			<div class="mt-2 grid grid-cols-2 gap-1.5" role="tablist" aria-label="Forrás">
+				{#each [{ id: 'quiz', label: 'Kvízből' }, { id: 'deck', label: 'Kártyából' }] as m (m.id)}
+					<button
+						role="tab"
+						aria-selected={eMode === m.id}
+						onclick={() => (eMode = m.id as typeof eMode)}
+						class={['rounded-xl py-2.5 text-[14px] font-bold transition active:scale-95', eMode === m.id ? 'bg-red-600 text-white shadow-sm' : 'bg-white text-ink-600 dark:bg-white/10 dark:text-stone-300']}
+					>
+						{m.label}
+					</button>
+				{/each}
+			</div>
+			{#if eMode === 'quiz'}
 				<button
-					role="tab"
-					aria-selected={eMode === m.id}
-					onclick={() => (eMode = m.id as typeof eMode)}
-					class={['flex-1 rounded-full py-2 text-[13px] font-bold transition', eMode === m.id ? 'bg-red-600 text-white' : 'bg-stone-100 text-ink-600 dark:bg-white/10 dark:text-stone-300']}
+					onclick={() => void openPicker('exam-quiz', 'quiz', true)}
+					class="mt-2 flex w-full items-center gap-2.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-left transition hover:border-red-400 active:scale-[0.99] dark:border-white/15 dark:bg-white/5"
 				>
-					{m.label}
+					<ClipboardList size={18} class="shrink-0 text-red-500" />
+					<span class="min-w-0 flex-1 truncate text-[14px] font-bold text-ink-900 dark:text-white">
+						{eQuizzes.length === 0 ? 'Válassz kvízeket… (több is mehet)' : eQuizzes.length === 1 ? eQuizzes[0].title : `${eQuizzes.length} kvíz kiválasztva`}
+					</span>
+					<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
 				</button>
-			{/each}
-		</div>
-		{#if eMode === 'quiz'}
-			<select bind:value={eQuiz} aria-label="Kvíz" class="{input} mt-2.5">
-				<option value="">Válassz kvízt…</option>
-				{#each libQuizzes as qz (qz.id)}
-					<option value={qz.id}>{qz.title} ({qz.items} kérdés)</option>
-				{/each}
-			</select>
-		{:else}
-			<select bind:value={eDeck} aria-label="Kártyacsomag" class="{input} mt-2.5">
-				<option value="">Válassz kártyacsomagot…</option>
-				{#each libDecks as d (d.id)}
-					<option value={d.id}>{d.title}</option>
-				{/each}
-			</select>
-			<label class="mt-2.5 flex items-center gap-2 text-sm text-ink-600 dark:text-stone-300">
-				Kérdésszám
-				<input type="number" min="3" max="30" bind:value={eCount} class="w-20 rounded-lg border border-stone-300 bg-white px-2 py-1.5 dark:border-white/15 dark:bg-white/5 dark:text-white" />
+				{#if eQuizzes.length > 1}
+					<div class="mt-1.5 flex flex-wrap gap-1.5">
+						{#each eQuizzes as qz (qz.id)}
+							<button
+								onclick={() => (eQuizzes = eQuizzes.filter((x) => x.id !== qz.id))}
+								title="Eltávolítás"
+								class="inline-flex max-w-full items-center gap-1 rounded-full bg-ink-900 py-1 pr-2 pl-3 text-[12px] font-bold text-white dark:bg-white dark:text-ink-900"
+							>
+								<span class="truncate">{qz.title}</span> ✕
+							</button>
+						{/each}
+					</div>
+				{/if}
+			{:else}
+				<button
+					onclick={() => void openPicker('exam-deck', 'deck', true)}
+					class="mt-2 flex w-full items-center gap-2.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-left transition hover:border-red-400 active:scale-[0.99] dark:border-white/15 dark:bg-white/5"
+				>
+					<Layers size={18} class="shrink-0 text-emerald-600 dark:text-emerald-300" />
+					<span class="min-w-0 flex-1 truncate text-[14px] font-bold text-ink-900 dark:text-white">
+						{eDecks.length === 0 ? 'Válassz csomagokat… (több is mehet)' : `${eDecks.length} csomag kiválasztva`}
+					</span>
+					<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
+				</button>
+				{#if eDecks.length > 0}
+					<div class="mt-1.5 flex flex-wrap gap-1.5">
+						{#each eDecks as deck (deck.id)}
+							<button
+								onclick={() => (eDecks = eDecks.filter((x) => x.id !== deck.id))}
+								title="Eltávolítás"
+								class="inline-flex max-w-full items-center gap-1 rounded-full bg-ink-900 py-1 pr-2 pl-3 text-[12px] font-bold text-white dark:bg-white dark:text-ink-900"
+							>
+								<span class="truncate">{deck.title}</span> ✕
+							</button>
+						{/each}
+					</div>
+				{/if}
+				<div class="mt-2 flex items-center gap-2 rounded-xl bg-white px-3 py-2 dark:bg-white/10">
+					<span class="flex-1 text-[13px] font-bold text-ink-900 dark:text-white">Kérdésszám</span>
+					<input type="number" min="3" max="30" bind:value={eCount} aria-label="Kérdésszám" class="w-16 rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-center font-extrabold tabular-nums dark:border-white/15 dark:bg-white/5 dark:text-white" />
+				</div>
+			{/if}
+		</section>
+
+		<section class="mt-2.5 rounded-2xl bg-stone-100 p-3.5 dark:bg-white/5" aria-label="Elvárások">
+			<p class="text-[12px] font-extrabold tracking-wide text-stone-400 uppercase dark:text-stone-500">2 · Elvárások</p>
+			<label class="mt-2 block text-[13px] font-semibold text-ink-900 dark:text-white">
+				Határidő
+				<input type="datetime-local" bind:value={eDue} aria-label="Határidő" class="mt-1 {input}" />
 			</label>
-		{/if}
-		<div class="mt-3 grid gap-2 sm:grid-cols-2">
-			<input type="datetime-local" bind:value={eDue} aria-label="Határidő" class={input} />
-			<label class="flex items-center gap-2 text-[13px] text-ink-600 dark:text-stone-300">
-				Idő (perc)
-				<input type="number" min="0" max="180" bind:value={eTime} class="w-16 rounded-lg border border-stone-300 bg-white px-2 py-1.5 dark:border-white/15 dark:bg-white/5 dark:text-white" />
-			</label>
-			<label class="flex items-center gap-2 text-[13px] text-ink-600 sm:col-span-2 dark:text-stone-300">
-				Minimum pont
-				<input type="number" min="0" max="100" step="5" bind:value={eMin} class="w-20 rounded-lg border border-stone-300 bg-white px-2 py-1.5 dark:border-white/15 dark:bg-white/5 dark:text-white" />
-				<span class="font-bold">%</span>
-			</label>
-		</div>
+			<div class="mt-2 grid grid-cols-2 gap-1.5">
+				<label class="rounded-xl bg-white px-2.5 py-2 text-center dark:bg-white/10">
+					<span class="block text-[11px] font-bold text-stone-400 uppercase">Idő (perc)</span>
+					<input type="number" min="0" max="180" bind:value={eTime} aria-label="Időkorlát percben" class="mt-0.5 w-full bg-transparent text-center text-[16px] font-extrabold text-ink-900 outline-none tabular-nums dark:text-white" />
+				</label>
+				<label class="rounded-xl bg-white px-2.5 py-2 text-center dark:bg-white/10">
+					<span class="block text-[11px] font-bold text-stone-400 uppercase">Cél %</span>
+					<input type="number" min="0" max="100" step="5" bind:value={eMin} aria-label="Minimum pont százalék" class="mt-0.5 w-full bg-transparent text-center text-[16px] font-extrabold text-ink-900 outline-none tabular-nums dark:text-white" />
+				</label>
+			</div>
+		</section>
+
 		{#if eMsg}
-			<p class="mt-2 text-[13px] font-medium text-ink-600 dark:text-stone-300">{eMsg}</p>
+			<p class="mt-2.5 rounded-xl bg-red-50 px-3.5 py-2.5 text-center text-[13px] font-bold text-red-700 dark:bg-red-400/10 dark:text-red-300">{eMsg}</p>
 		{/if}
 		<button
 			onclick={() => void submitExam()}
 			disabled={busy}
-			class="mt-4 w-full rounded-full bg-red-600 py-3 text-[15px] font-bold text-white transition hover:brightness-95 disabled:opacity-60"
+			class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-red-600 py-3.5 text-[15px] font-bold text-white transition hover:brightness-95 active:scale-[0.99] disabled:opacity-60"
 		>
-			{busy ? 'Indítás…' : 'Dolgozat indítása'}
+			<FileText size={18} /> {busy ? 'Indítás…' : 'Dolgozat indítása'}
 		</button>
 	</div>
 </Drawer>
+
+<!-- Tartalomválasztó: minden osztály-megosztás innen választ (témakör -> lecke leolvasással) -->
+{#if picker}
+	{@const pickerTitle =
+		picker.key === 'share-lesson' || picker.key === 'task-lesson'
+			? 'Lecke választása'
+			: picker.key === 'exam-deck'
+				? 'Csomagok választása'
+				: picker.key === 'share-deck'
+					? 'Kártyacsomag választása'
+					: picker.key === 'share-topic'
+						? 'Témakör választása'
+						: 'Kvíz választása'}
+	<ContentPicker
+		open={true}
+		kind={picker.kind}
+		title={pickerTitle}
+		topics={libTopics}
+		decks={libDecks}
+		quizzes={libQuizzes}
+		multiple={picker.multiple}
+		selected={picker.key === 'exam-deck' ? eDecks.map((d) => d.id) : picker.key === 'exam-quiz' ? eQuizzes.map((x) => x.id) : []}
+		loadLessons={fetchLessons}
+		onSelect={onPick}
+		onMulti={onPickMulti}
+		onClose={() => (picker = null)}
+	/>
+{/if}

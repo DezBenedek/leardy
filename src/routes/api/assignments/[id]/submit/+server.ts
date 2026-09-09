@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, logActivity, requireUser } from '$lib/server/db';
-import type { QuizRow } from '$lib/server/study';
+import { expandQuizQs, type QuizRow } from '$lib/server/study';
 
 // POST /api/assignments/[id]/submit { submission_id, answers } — beadás + pontozás.
 export const POST: RequestHandler = async (event) => {
@@ -40,7 +40,8 @@ export const POST: RequestHandler = async (event) => {
 		.bind(asm?.assessment_id ?? '')
 		.all<QuizRow>();
 	let score = 0;
-	const results = (items.results ?? []).map((it) => {
+	// Többpáros párosítós ugyanúgy bővül, mint indításkor (determinisztikus id-k).
+	const results = expandQuizQs(items.results ?? []).map((it) => {
 		const given = String(answers[it.id] ?? '').trim();
 		const correct = given !== '' && given === it.correct_answer;
 		if (correct) score++;

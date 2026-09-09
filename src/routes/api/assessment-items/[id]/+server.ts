@@ -54,7 +54,7 @@ export const PATCH: RequestHandler = async (event) => {
 	if (!(await ownerItem(db, id, user.id))) {
 		return json({ error: 'Nincs ilyen kérdésed.' }, { status: 404 });
 	}
-	let body: { question_text?: unknown; type?: unknown; options?: unknown; left?: unknown; correct_answer?: unknown };
+	let body: { question_text?: unknown; type?: unknown; options?: unknown; left?: unknown; correct_answer?: unknown; pairs?: unknown };
 	try {
 		body = await event.request.json();
 	} catch {
@@ -89,6 +89,25 @@ export const PATCH: RequestHandler = async (event) => {
 	}
 	if (body.left !== undefined) left = String(body.left).trim();
 	if (!question_text) return json({ error: 'Kérdés szövege kell.' }, { status: 400 });
+	if (type === 'match') {
+		const incomingPairs = Array.isArray(body.pairs)
+			? (body.pairs as { left?: unknown; right?: unknown }[])
+					.map((x) => ({ left: String(x?.left ?? '').trim(), right: String(x?.right ?? '').trim() }))
+					.filter((x) => x.left && x.right)
+					.slice(0, 12)
+			: null;
+		if (incomingPairs) {
+			if (incomingPairs.length < 2) {
+				return json({ error: 'Párosítóshoz legalább 2 kitöltött pár kell.' }, { status: 400 });
+			}
+			const built = { options_json: JSON.stringify({ pairs: incomingPairs }), correct_answer: incomingPairs[0].right };
+			await db
+				.prepare(`UPDATE assessment_items SET question_text = ?, type = ?, options_json = ?, correct_answer = ? WHERE id = ?`)
+				.bind(question_text, type, built.options_json, built.correct_answer, id)
+				.run();
+			return json({ ok: true });
+		}
+	}
 	if (type === 'match' && (!left || options.length < 2 || !correct)) {
 		return json({ error: 'Párosítóshoz bal oldal, legalább 2 opció és helyes válasz kell.' }, { status: 400 });
 	}

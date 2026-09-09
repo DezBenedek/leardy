@@ -78,7 +78,8 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 		`ALTER TABLE assignments ADD COLUMN shuffle INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE assignments ADD COLUMN feedback_delayed INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE assignments ADD COLUMN is_exam INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE assignments ADD COLUMN min_score INTEGER NOT NULL DEFAULT 0`
+		`ALTER TABLE assignments ADD COLUMN min_score INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE flashcards ADD COLUMN example TEXT`
 	]) {
 		try {
 			await db.prepare(ddl).run();
@@ -126,7 +127,7 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 			`CREATE TABLE IF NOT EXISTS flashcards (
 				id TEXT PRIMARY KEY, lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
 				front_text TEXT NOT NULL, back_text TEXT NOT NULL,
-				audio_url TEXT, image_url TEXT, ipa TEXT
+				audio_url TEXT, image_url TEXT, ipa TEXT, example TEXT
 			)`
 		),
 		db.prepare(

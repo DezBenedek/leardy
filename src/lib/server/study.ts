@@ -105,33 +105,99 @@ export function toQuizQ(r: QuizRow): QuizQ {
 	};
 }
 
+export interface MatchPair {
+	left: string;
+	right: string;
+}
+
+/** Párosítós sor párjai: új {pairs:[...]} és régi {left,options,answer} formátumot is ért. */
+export function parseMatchPairs(options_json: string, correct_answer: string): MatchPair[] {
+	try {
+		const p: unknown = JSON.parse(options_json);
+		if (p && typeof p === 'object' && !Array.isArray(p)) {
+			const o = p as { left?: string; options?: string[]; answer?: string; pairs?: { left?: string; right?: string }[] };
+			if (Array.isArray(o.pairs)) {
+				return o.pairs
+					.map((x) => ({ left: String(x?.left ?? '').trim(), right: String(x?.right ?? '').trim() }))
+					.filter((x) => x.left && x.right);
+			}
+			const right = String(o.answer ?? correct_answer).trim();
+			if (String(o.left ?? '').trim() && right) {
+				return [{ left: String(o.left).trim(), right }];
+			}
+		}
+	} catch {
+		// üres lista
+	}
+	return [];
+}
+
+/**
+ * Tárolt sorok -> játszható kérdések. A többpáros párosítós 1 sorból N kérdést
+ * nyit (páronként, a többi jobb oldal a disztraktor) — az id determinisztikus,
+ * így az indítás és a pontozás ugyanazt a listát kapja.
+ */
+export function expandQuizQs(rows: QuizRow[]): QuizQ[] {
+	const out: QuizQ[] = [];
+	for (const r of rows) {
+		if (r.type === 'match') {
+			let pairs: MatchPair[] = [];
+			try {
+				const p = JSON.parse(r.options_json) as { pairs?: unknown };
+				if (p && typeof p === 'object' && Array.isArray((p as { pairs?: unknown }).pairs)) {
+					pairs = parseMatchPairs(r.options_json, r.correct_answer);
+				}
+			} catch {
+				pairs = [];
+			}
+			if (pairs.length > 0) {
+				const rights = pairs.map((x) => x.right);
+				pairs.forEach((pair, i) => {
+					const distractors = shuffle(rights.filter((x) => x !== pair.right)).slice(0, 3);
+					out.push({
+						id: `${r.id}::${i}`,
+						question_text: r.question_text,
+						type: 'match',
+						options: shuffle([pair.right, ...distractors]),
+						left: pair.left,
+						correct_answer: pair.right
+					});
+				});
+				continue;
+			}
+		}
+		out.push(toQuizQ(r));
+	}
+	return out;
+}
 /** Megoldás levétele a kliensnek küldött kérdésről (éles dolgozat). */
 export function hideAnswer(q: QuizQ): Omit<QuizQ, 'correct_answer'> {
 	const { correct_answer: _ca, ...rest } = q;
 	return rest;
 }
 
-/** Automatikus dolgozat-generálás egy témakör szókincséből/fogalmaiból.
+/** Automatikus dolgozat-generálás egy vagy több témakör szókincséből/fogalmaiból.
  *  Nyelveknél az irány: magyar kérdés -> idegen válasz. */
 export async function buildAssessmentItems(
 	db: D1Database,
 	assessmentId: string,
-	topicId: string,
+	topicIds: string[],
 	topicType: string,
 	count: number,
 	langLabel = 'angolul'
 ): Promise<number> {
+	const ph = topicIds.map(() => '?').join(',');
 	const cards = await db
 		.prepare(
 			`SELECT f.front_text, f.back_text FROM flashcards f
-			 JOIN lessons l ON l.id = f.lesson_id WHERE l.topic_id = ?`
+			 JOIN lessons l ON l.id = f.lesson_id WHERE l.topic_id IN (${ph})`
 		)
-		.bind(topicId)
+		.bind(...topicIds)
 		.all<{ front_text: string; back_text: string }>();
 	const quizzes = await db
 		.prepare(`SELECT qq.id, qq.question_text, qq.type, qq.options_json, qq.correct_answer FROM quiz_questions qq
-			JOIN lessons l ON l.id = qq.lesson_id WHERE l.topic_id = ?`)
-		.bind(topicId)
+			JOIN lessons l ON l.id = qq.lesson_id WHERE l.topic_id IN (${ph})`)
+		.bind(...topicIds)
 		.all<QuizRow>();
 	const backs = (cards.results ?? []).map((c) => c.back_text);
 	const items: { question_text: string; type: string; options_json: string; correct_answer: string }[] = [];

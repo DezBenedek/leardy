@@ -16,7 +16,7 @@ export const POST: RequestHandler = async (event) => {
 		.bind(id, user.id)
 		.first();
 	if (!asm) return json({ error: 'Nincs ilyen dolgozatod.' }, { status: 404 });
-	let body: { question_text?: unknown; type?: unknown; options?: unknown; left?: unknown; correct_answer?: unknown };
+	let body: { question_text?: unknown; type?: unknown; options?: unknown; left?: unknown; correct_answer?: unknown; pairs?: unknown };
 	try {
 		body = await event.request.json();
 	} catch {
@@ -29,11 +29,24 @@ export const POST: RequestHandler = async (event) => {
 		: [];
 	const left = String(body.left ?? '').trim();
 	const correct = String(body.correct_answer ?? '').trim();
+	const pairs = Array.isArray(body.pairs)
+		? body.pairs
+				.map((x) => {
+					const o = x as { left?: unknown; right?: unknown };
+					return { left: String(o?.left ?? '').trim(), right: String(o?.right ?? '').trim() };
+				})
+				.filter((x) => x.left && x.right)
+				.slice(0, 12)
+		: [];
 	if (!question_text) return json({ error: 'Kérdés szövege kell.' }, { status: 400 });
 	let options_json = JSON.stringify(options);
 	if (type === 'match') {
+		if (pairs.length >= 2) {
+			options_json = JSON.stringify({ pairs });
+			return await insertItem(db, id, question_text, type, options_json, pairs[0].right);
+		}
 		if (!left || options.length < 2 || !correct) {
-			return json({ error: 'Párosítóshoz bal oldal, legalább 2 opció és helyes válasz kell.' }, { status: 400 });
+			return json({ error: 'Párosítóshoz legalább 2 kitöltött pár kell.' }, { status: 400 });
 		}
 		options_json = JSON.stringify({ left, options, answer: correct });
 	} else if (type === 'order') {

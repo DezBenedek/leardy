@@ -2,6 +2,7 @@
 	import { onDestroy } from 'svelte';
 	import { Check, Mic, Volume2, X } from '@lucide/svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
+	import { fmtIpa } from '$lib/pronunciation';
 	import { canListen, listenOnce, norm, speak, type Card } from '$lib/study';
 
 	interface Props {
@@ -20,6 +21,7 @@
 
 	let flipped = $state(false);
 	const listenOK = canListen();
+	let ipaFmt = $derived(fmtIpa(card.ipa));
 
 	/** Automata felolvasás forgatás után — csak ha a Szókártya-beállításban be van kapcsolva. */
 	function autoAudio(): boolean {
@@ -145,6 +147,16 @@
 
 	function playAudio() {
 		if (!isLanguage) return;
+		// Ha van mentett anyanyelvi hang, azt játsszuk, különben felolvasás.
+		if (card.audio_url) {
+			try {
+				const el = new Audio(card.audio_url);
+				el.play().catch(() => speak(foreign, 'en-US'));
+				return;
+			} catch {
+				// esés vissza a felolvasásra
+			}
+		}
 		speak(foreign, 'en-US');
 	}
 </script>
@@ -192,8 +204,11 @@
 				<p class="text-center text-4xl font-extrabold tracking-tight text-white select-none sm:text-5xl">
 					{a}
 				</p>
-				{#if isLanguage && card.ipa}
-					<p class="text-base font-medium text-white/60 select-none">[{card.ipa}]</p>
+				{#if isLanguage && ipaFmt}
+					<p class="text-base font-medium text-white/60 select-none">{ipaFmt}</p>
+				{/if}
+				{#if isLanguage && card.example}
+					<p class="max-w-full truncate px-2 text-center text-sm text-white/50 italic select-none">„{card.example}”</p>
 				{/if}
 			</div>
 		</div>
@@ -266,7 +281,7 @@
 			{foreign}
 		</p>
 		{#if card.ipa}
-			<p class="mt-1 text-sm font-medium text-stone-400 dark:text-stone-500">[{card.ipa}]</p>
+			<p class="mt-1 text-sm font-medium text-stone-400 dark:text-stone-500">{fmtIpa(card.ipa)}</p>
 		{/if}
 
 		<div class="mt-5" role="status">

@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ArrowLeft, Layers, Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import { ArrowLeft, Layers, Pencil, Plus, RefreshCw, Trash2 } from '@lucide/svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { get as cacheGet, invalidate } from '$lib/cache';
 	import Drawer from '$lib/components/Drawer.svelte';
+	import { fmtIpa, lookupWord } from '$lib/pronunciation';
 	import { studyApi, type MyCard, type MyLesson, type MyTopic } from '$lib/study';
 
 	let { params } = $props();
@@ -20,10 +21,15 @@
 
 	type Sheet = { kind: 'new'; lessonId: string } | { kind: 'edit'; card: MyCard } | null;
 	let sheet = $state<Sheet>(null);
-	let fFront = $state('');
-	let fBack = $state('');
+	// Sorrend a felületen: Magyar -> Idegen (nyelveknél), Kérdés -> Válasz (egyébként).
+	let fHu = $state('');
+	let fFo = $state('');
 	let fIpa = $state('');
+	let fExample = $state('');
+	let fAudio = $state('');
 	let fLesson = $state('');
+	let pronBusy = $state(false);
+	let pronMsg = $state<string | null>(null);
 
 	async function load() {
 		if (!isTeacher) return;
@@ -69,40 +75,76 @@
 
 	function openNew(lessonId: string) {
 		fLesson = lessonId;
-		fFront = '';
-		fBack = '';
+		fHu = '';
+		fFo = '';
 		fIpa = '';
+		fExample = '';
+		fAudio = '';
+		pronMsg = null;
 		sheet = { kind: 'new', lessonId };
 	}
 
 	function openEdit(card: MyCard) {
 		const lang = isLang();
 		fLesson = card.lesson_id;
-		fFront = lang ? card.back_text : card.front_text;
-		fBack = lang ? card.front_text : card.back_text;
+		fHu = lang ? card.back_text : card.front_text;
+		fFo = lang ? card.front_text : card.back_text;
 		fIpa = card.ipa ?? '';
+		fExample = card.example ?? '';
+		fAudio = '';
+		pronMsg = null;
 		sheet = { kind: 'edit', card };
+	}
+
+	/** Automatikus IPA + példamondat (+ hang) az idegen szóhoz. */
+	async function autoPron(force = false) {
+		if (!isLang() || !topic || pronBusy) return;
+		const foreign = fFo.trim();
+		if (!foreign) return;
+		// Kézi tartalmat nem írunk felül, csak kérésre (frissítés gomb).
+		if (!force && (fIpa.trim() || fExample.trim())) return;
+		pronBusy = true;
+		pronMsg = 'Kiejtés keresése…';
+		try {
+			const meta = await lookupWord(foreign, topic.category);
+			const filled: string[] = [];
+			if (meta.ipa && (!fIpa.trim() || force)) {
+				fIpa = meta.ipa;
+				filled.push('IPA');
+			}
+			if (meta.example && (!fExample.trim() || force)) {
+				fExample = meta.example;
+				filled.push('példamondat');
+			}
+			if (meta.audio && !fAudio) fAudio = meta.audio;
+			pronMsg = filled.length > 0 ? `Automatikus kitöltés: ${filled.join(' + ')} ✓` : 'Nem találtam — írd be kézzel.';
+		} finally {
+			pronBusy = false;
+		}
 	}
 
 	async function save() {
 		if (!sheet) return;
 		try {
 			const lang = isLang();
+			const base = {
+				front_text: lang ? fFo.trim() : fHu.trim(),
+				back_text: lang ? fHu.trim() : fFo.trim(),
+				ipa: fIpa.trim(),
+				...(lang ? { example: fExample.trim() } : {}),
+				...(fAudio ? { audio_url: fAudio } : {})
+			};
 			if (sheet.kind === 'new') {
-				await studyApi.addCard(fLesson || sheet.lessonId, {
-					front_text: lang ? fBack.trim() : fFront.trim(),
-					back_text: lang ? fFront.trim() : fBack.trim(),
-					ipa: fIpa.trim()
-				});
-				fFront = '';
-				fBack = '';
+				await studyApi.addCard(fLesson || sheet.lessonId, base);
+				// Marad nyitva a gyors sorozat-bővítéshez.
+				fHu = '';
+				fFo = '';
 				fIpa = '';
+				fExample = '';
+				fAudio = '';
+				pronMsg = null;
 			} else {
-				await studyApi.updateCard(sheet.card.id, {
-					front_text: lang ? fBack.trim() : fFront.trim(),
-					back_text: lang ? fFront.trim() : fBack.trim(),
-					ipa: fIpa.trim()
-				});
+				await studyApi.updateCard(sheet.card.id, base);
 				sheet = null;
 			}
 			await refresh();
@@ -216,11 +258,18 @@
 				<ul class="space-y-1.5">
 					{#each lc as c (c.id)}
 						{@const lang = isLang()}
+						{@const cIpa = lang ? fmtIpa(c.ipa) : null}
 						<li class="flex items-center gap-2 rounded-xl bg-stone-100 px-3 py-2.5 dark:bg-white/5">
-							<button onclick={() => openEdit(c)} class="min-w-0 flex-1 truncate text-left text-sm dark:text-white">
-								<span class="font-semibold">{lang ? c.back_text : c.front_text}</span>
-								<span class="text-stone-400"> → </span>
-								{lang ? c.front_text : c.back_text}
+							<button onclick={() => openEdit(c)} class="min-w-0 flex-1 text-left">
+								<span class="block truncate text-sm dark:text-white">
+									<span class="font-semibold">{lang ? c.back_text : c.front_text}</span>
+									<span class="text-stone-400"> → </span>
+									{lang ? c.front_text : c.back_text}
+									{#if cIpa}<span class="ml-1 font-normal text-stone-400">{cIpa}</span>{/if}
+								</span>
+								{#if lang && c.example}
+									<span class="block truncate text-[12px] text-stone-400 italic">„{c.example}”</span>
+								{/if}
 							</button>
 							<button onclick={() => openEdit(c)} aria-label="Szerkesztés" class="grid size-8 shrink-0 place-items-center rounded-full text-stone-400 hover:bg-stone-200 dark:hover:bg-white/10">
 								<Pencil size={15} />
@@ -251,19 +300,45 @@
 		</h2>
 		{#if sheet}
 			{@const lang = isLang()}
-			<div class="mt-4 grid gap-2">
+			<div class="mt-4 grid gap-2.5">
 				<label class="text-[13px] font-semibold text-ink-900 dark:text-white">
-					{lang ? 'magyar' : 'kérdés'}{#if lang} (magyar){/if}
-					<input bind:value={fFront} placeholder="…" class="mt-1 {input}" />
+					{lang ? 'Magyar' : 'Kérdés'}
+					<input bind:value={fHu} placeholder={lang ? 'Pl. alma' : 'Kérdés…'} class="mt-1 {input}" />
 				</label>
 				<label class="text-[13px] font-semibold text-ink-900 dark:text-white">
-					{lang ? 'idegen' : 'válasz'}{#if lang} (idegen){/if}
-					<input bind:value={fBack} placeholder="…" class="mt-1 {input}" />
+					{lang ? 'Idegen' : 'Válasz'}
+					<input
+						bind:value={fFo}
+						placeholder={lang ? 'Pl. apple' : 'Válasz…'}
+						onblur={() => void autoPron(false)}
+						class="mt-1 {input}"
+					/>
 				</label>
 				{#if lang}
+					<div>
+						<div class="flex items-end gap-1.5">
+							<label class="min-w-0 flex-1 text-[13px] font-semibold text-ink-900 dark:text-white">
+								IPA <span class="font-normal text-stone-400">— automatikus</span>
+								<input bind:value={fIpa} placeholder="/ˈæpəl/" class="mt-1 {input} font-mono" />
+							</label>
+							<button
+								type="button"
+								onclick={() => void autoPron(true)}
+								disabled={pronBusy || !fFo.trim()}
+								title="Automatikus IPA- és példamondat-keresés"
+								aria-label="Automatikus IPA- és példamondat-keresés"
+								class="grid size-[42px] shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600 transition hover:bg-brand-100 active:scale-95 disabled:opacity-40 dark:bg-brand-500/20 dark:text-white"
+							>
+								<RefreshCw size={18} class={pronBusy ? 'animate-spin' : ''} />
+							</button>
+						</div>
+						{#if pronMsg}
+							<p aria-live="polite" class="mt-1 text-[12px] font-medium text-stone-500 dark:text-stone-400">{pronMsg}</p>
+						{/if}
+					</div>
 					<label class="text-[13px] font-semibold text-ink-900 dark:text-white">
-						IPA <span class="font-normal text-stone-400">(opcionális)</span>
-						<input bind:value={fIpa} placeholder="/…/" class="mt-1 {input}" />
+						Példamondat <span class="font-normal text-stone-400">(idegen nyelven)</span>
+						<textarea bind:value={fExample} rows="2" placeholder="Pl. I eat an apple every day." class="mt-1 {input}"></textarea>
 					</label>
 				{/if}
 				{#if sheet.kind === 'new' && lessons.length > 1}
@@ -280,7 +355,7 @@
 			{#if sheet.kind === 'new'}
 				<button
 					onclick={() => void save()}
-					disabled={!fFront.trim() || !fBack.trim()}
+					disabled={!fHu.trim() || !fFo.trim()}
 					class="mt-4 w-full rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white disabled:opacity-60"
 				>
 					Hozzáadás
@@ -292,7 +367,7 @@
 				<div class="mt-4 flex gap-2">
 					<button
 						onclick={() => void save()}
-						disabled={!fFront.trim() || !fBack.trim()}
+						disabled={!fHu.trim() || !fFo.trim()}
 						class="flex-1 rounded-full bg-brand-500 py-3 text-[15px] font-bold text-white disabled:opacity-60"
 					>
 						Mentés

@@ -45,6 +45,7 @@ export interface MyCard {
 	front_text: string;
 	back_text: string;
 	ipa: string | null;
+	example: string | null;
 	lesson_id: string;
 	lesson_title: string;
 	topic_id: string;
@@ -121,6 +122,7 @@ export interface Card {
 	audio_url: string | null;
 	image_url: string | null;
 	ipa: string | null;
+	example: string | null;
 }
 
 export interface QuizQ {
@@ -260,12 +262,12 @@ export const studyApi = {
 		}),
 	deleteLesson: (id: string) =>
 		req<{ ok: boolean }>(`/api/lessons/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-	addCard: (lessonId: string, body: { front_text: string; back_text: string; ipa?: string }) =>
+	addCard: (lessonId: string, body: { front_text: string; back_text: string; ipa?: string; example?: string; audio_url?: string }) =>
 		req<{ card: { id: string } }>(`/api/lessons/${encodeURIComponent(lessonId)}/cards`, {
 			method: 'POST',
 			body: JSON.stringify(body)
 		}),
-	updateCard: (id: string, body: { front_text?: string; back_text?: string; ipa?: string }) =>
+	updateCard: (id: string, body: { front_text?: string; back_text?: string; ipa?: string; example?: string; audio_url?: string }) =>
 		req<{ ok: boolean }>(`/api/cards/${encodeURIComponent(id)}`, {
 			method: 'PATCH',
 			body: JSON.stringify(body)
@@ -342,6 +344,7 @@ export const studyApi = {
 	assignments: () => req<{ assignments: AssignmentRow[] }>(`/api/assignments`),
 	buildAssessment: (body: {
 		topic_id: string;
+		topic_ids?: string[];
 		title: string;
 		max_attempts: number;
 		time_limit_mins: number;
@@ -352,6 +355,15 @@ export const studyApi = {
 		lesson_ids?: string[];
 	}) => req<{ assessment: { id: string } }>(`/api/assessments`, { method: 'POST', body: JSON.stringify(body) }),
 	assessments: () => req<{ assessments: AssessmentRow[] }>(`/api/assessments`),
+	mergeAssessments: (body: {
+		assessment_ids: string[];
+		title: string;
+		max_attempts?: number;
+		time_limit_mins?: number;
+		shuffle?: boolean;
+		feedback_delayed?: boolean;
+		is_exam?: boolean;
+	}) => req<{ assessment: { id: string } }>(`/api/assessments/merge`, { method: 'POST', body: JSON.stringify(body) }),
 	assessment: (id: string) =>
 		req<{ assessment: AssessmentRow; items: AssessmentItem[] }>(`/api/assessments/${encodeURIComponent(id)}`),
 	deleteAssessment: (id: string) =>
@@ -363,7 +375,7 @@ export const studyApi = {
 		}),
 	addAssessmentItem: (
 		id: string,
-		body: { question_text: string; type: string; options?: string[]; left?: string; correct_answer: string }
+		body: { question_text: string; type: string; options?: string[]; left?: string; correct_answer: string; pairs?: { left: string; right: string }[] }
 	) =>
 		req<{ item: { id: string } }>(`/api/assessments/${encodeURIComponent(id)}/items`, {
 			method: 'POST',
@@ -373,7 +385,7 @@ export const studyApi = {
 		req<{ ok: boolean }>(`/api/assessment-items/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 	updateAssessmentItem: (
 		id: string,
-		body: { question_text?: string; type?: string; options?: string[]; left?: string; correct_answer?: string }
+		body: { question_text?: string; type?: string; options?: string[]; left?: string; correct_answer?: string; pairs?: { left: string; right: string }[] }
 	) =>
 		req<{ ok: boolean }>(`/api/assessment-items/${encodeURIComponent(id)}`, {
 			method: 'PATCH',

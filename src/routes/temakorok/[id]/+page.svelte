@@ -2,9 +2,10 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { CheckCircle2, Circle, FileText, Pencil, Plus, Trash2, ArrowLeft } from '@lucide/svelte';
+	import { CheckCircle2, Circle, FileText, Pencil, Plus, Trash2, ArrowLeft, RefreshCw } from '@lucide/svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { authUI } from '$lib/auth-ui.svelte';
+	import { lookupWord } from '$lib/pronunciation';
 	import { get as cacheGet, invalidate, peek } from '$lib/cache';
 	import { CATEGORIES, QueuedOffline, studyApi, type LessonDetail, type LessonRow, type Topic } from '$lib/study';
 
@@ -33,11 +34,13 @@
 	let newLessonTitle = $state('');
 	let showNewLesson = $state(false);
 
-	let newCard = $state<Record<string, { front: string; back: string; ipa: string }>>({});
+	let newCard = $state<Record<string, { front: string; back: string; ipa: string; example: string }>>({});
 	let editCard = $state<string | null>(null);
 	let ecFront = $state('');
 	let ecBack = $state('');
 	let ecIpa = $state('');
+	let ecExample = $state('');
+	let pronBusy = $state(false);
 
 	let newQ = $state<Record<string, { text: string; type: string; options: string; left: string; correct: string }>>({});
 	let editQ = $state<string | null>(null);
@@ -228,7 +231,30 @@
 	// ---------- Kártyák ----------
 
 	function cardForm(lid: string) {
-		return (newCard[lid] ??= { front: '', back: '', ipa: '' });
+		return (newCard[lid] ??= { front: '', back: '', ipa: '', example: '' });
+	}
+
+	/** Automatikus IPA + példamondat az idegen szóhoz (nyelvi témakör). */
+	async function autoCardPron(
+		foreign: string,
+		curIpa: string,
+		curExample: string,
+		apply: (ipa: string | null, example: string | null) => void,
+		force = false
+	) {
+		if (topic?.type !== 'language' || pronBusy) return;
+		if (!foreign.trim()) return;
+		if (!force && (curIpa.trim() || curExample.trim())) return;
+		pronBusy = true;
+		try {
+			const meta = await lookupWord(foreign, topic?.category ?? '');
+			apply(
+				meta.ipa && (!curIpa.trim() || force) ? meta.ipa : null,
+				meta.example && (!curExample.trim() || force) ? meta.example : null
+			);
+		} finally {
+			pronBusy = false;
+		}
 	}
 
 	async function addCard(lid: string) {
@@ -237,13 +263,14 @@
 		try {
 			// Nyelveknél az irány: elöl a magyar kérdés — az adatban front = idegen, back = magyar,
 			// ezért a bevitelt megfordítva tároljuk.
-			const lang = topic?.type === 'language';
-			await studyApi.addCard(lid, {
-				front_text: lang ? f.back.trim() : f.front.trim(),
-				back_text: lang ? f.front.trim() : f.back.trim(),
-				ipa: f.ipa.trim()
-			});
-			newCard[lid] = { front: '', back: '', ipa: '' };
+		const lang = topic?.type === 'language';
+		await studyApi.addCard(lid, {
+			front_text: lang ? f.back.trim() : f.front.trim(),
+			back_text: lang ? f.front.trim() : f.back.trim(),
+			ipa: f.ipa.trim(),
+			...(lang ? { example: f.example.trim() } : {})
+		});
+		newCard[lid] = { front: '', back: '', ipa: '', example: '' };
 			delete details[lid];
 			invalidate(`lesson:${lid}`);
 			invalidate('sources');
@@ -253,12 +280,13 @@
 		}
 	}
 
-	function startEditCard(lid: string, cid: string, front: string, back: string, ipa: string | null) {
+	function startEditCard(lid: string, cid: string, front: string, back: string, ipa: string | null, example: string | null) {
 		const lang = topic?.type === 'language';
 		editCard = cid;
 		ecFront = lang ? back : front;
 		ecBack = lang ? front : back;
 		ecIpa = ipa ?? '';
+		ecExample = example ?? '';
 		void lid;
 	}
 
@@ -268,7 +296,8 @@
 			await studyApi.updateCard(cid, {
 				front_text: lang ? ecBack.trim() : ecFront.trim(),
 				back_text: lang ? ecFront.trim() : ecBack.trim(),
-				ipa: ecIpa.trim()
+				ipa: ecIpa.trim(),
+				...(lang ? { example: ecExample.trim() } : {})
 			});
 			editCard = null;
 			delete details[lid];
@@ -538,10 +567,34 @@
 									{@const lang = topic?.type === 'language'}
 									{#if editCard === c.id}
 										<div class="grid gap-1.5 rounded-xl bg-stone-50 p-2.5 dark:bg-white/5">
-											<input bind:value={ecFront} aria-label={lang ? 'Magyar kérdés' : 'Kérdés'} placeholder={lang ? 'Magyar kérdés' : 'Kérdés'} class={input} />
-											<input bind:value={ecBack} aria-label={lang ? 'Idegen válasz' : 'Válasz'} placeholder={lang ? 'Idegen válasz' : 'Válasz'} class={input} />
+											<input bind:value={ecFront} aria-label={lang ? 'Magyar' : 'Kérdés'} placeholder={lang ? 'Magyar' : 'Kérdés'} class={input} />
+											<input
+												bind:value={ecBack}
+												aria-label={lang ? 'Idegen' : 'Válasz'}
+												placeholder={lang ? 'Idegen' : 'Válasz'}
+												onblur={() => void autoCardPron(ecBack, ecIpa, ecExample, (ipa, ex) => {
+													if (ipa) ecIpa = ipa;
+													if (ex) ecExample = ex;
+												})}
+												class={input}
+											/>
 											{#if lang}
-												<input bind:value={ecIpa} aria-label="IPA" placeholder="IPA (pl. /wɜːd/)" class={input} />
+												<div class="flex items-center gap-1.5">
+													<input bind:value={ecIpa} aria-label="IPA (automatikus)" placeholder="IPA — automatikus" class="{input} font-mono" />
+													<button
+														onclick={() => void autoCardPron(ecBack, ecIpa, ecExample, (ipa, ex) => {
+															if (ipa) ecIpa = ipa;
+															if (ex) ecExample = ex;
+														}, true)}
+														disabled={pronBusy || !ecBack.trim()}
+														title="Automatikus IPA- és példamondat-keresés"
+														aria-label="Automatikus IPA- és példamondat-keresés"
+														class="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600 transition active:scale-95 disabled:opacity-40 dark:bg-brand-500/20 dark:text-white"
+													>
+														<RefreshCw size={15} class={pronBusy ? 'animate-spin' : ''} />
+													</button>
+												</div>
+												<input bind:value={ecExample} aria-label="Példamondat" placeholder="Példamondat (idegen nyelven)" class={input} />
 											{/if}
 											<div class="flex gap-2">
 												<button onclick={() => saveCard(l.id, c.id)} class="flex-1 rounded-full bg-brand-500 py-1.5 text-[13px] font-bold text-white">Mentés</button>
@@ -555,7 +608,7 @@
 												<span class="text-stone-400"> → </span>
 												{lang ? c.front_text : c.back_text}
 											</p>
-											<button onclick={() => startEditCard(l.id, c.id, c.front_text, c.back_text, c.ipa)} aria-label="Kártya szerkesztése" class="grid size-7 shrink-0 place-items-center rounded-full text-stone-400 hover:bg-stone-100 dark:hover:bg-white/10">
+											<button onclick={() => startEditCard(l.id, c.id, c.front_text, c.back_text, c.ipa, c.example)} aria-label="Kártya szerkesztése" class="grid size-7 shrink-0 place-items-center rounded-full text-stone-400 hover:bg-stone-100 dark:hover:bg-white/10">
 												<Pencil size={14} />
 											</button>
 											<button onclick={() => removeCard(l.id, c.id)} aria-label="Kártya törlése" class={['grid size-7 shrink-0 place-items-center rounded-full', delArm === c.id ? 'bg-red-600 px-2 text-[11px] font-bold text-white' : 'text-stone-400 hover:text-red-600 dark:hover:text-red-300']}>
@@ -566,10 +619,34 @@
 								{/each}
 							{/if}
 							<div class="grid gap-1.5 rounded-xl border border-dashed border-stone-300 p-2.5 dark:border-white/15">
-								<input bind:value={f.front} placeholder={topic?.type === 'language' ? 'Magyar kérdés' : 'Kérdés'} aria-label="Új kártya kérdése" class={input} />
-								<input bind:value={f.back} placeholder={topic?.type === 'language' ? 'Idegen válasz' : 'Válasz'} aria-label="Új kártya válasza" class={input} />
+								<input bind:value={f.front} placeholder={topic?.type === 'language' ? 'Magyar' : 'Kérdés'} aria-label="Új kártya kérdése" class={input} />
+								<input
+									bind:value={f.back}
+									placeholder={topic?.type === 'language' ? 'Idegen' : 'Válasz'}
+									aria-label="Új kártya válasza"
+									onblur={() => void autoCardPron(f.back, f.ipa, f.example, (ipa, ex) => {
+										if (ipa) f.ipa = ipa;
+										if (ex) f.example = ex;
+									})}
+									class={input}
+								/>
 								{#if topic?.type === 'language'}
-									<input bind:value={f.ipa} placeholder="IPA (opcionális)" aria-label="IPA" class={input} />
+									<div class="flex items-center gap-1.5">
+										<input bind:value={f.ipa} placeholder="IPA — automatikus" aria-label="IPA" class="{input} font-mono" />
+										<button
+											onclick={() => void autoCardPron(f.back, f.ipa, f.example, (ipa, ex) => {
+												if (ipa) f.ipa = ipa;
+												if (ex) f.example = ex;
+											}, true)}
+											disabled={pronBusy || !f.back.trim()}
+											title="Automatikus IPA- és példamondat-keresés"
+											aria-label="Automatikus IPA- és példamondat-keresés"
+											class="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600 transition active:scale-95 disabled:opacity-40 dark:bg-brand-500/20 dark:text-white"
+										>
+											<RefreshCw size={15} class={pronBusy ? 'animate-spin' : ''} />
+										</button>
+									</div>
+									<input bind:value={f.example} placeholder="Példamondat (idegen nyelven)" aria-label="Példamondat" class={input} />
 								{/if}
 								<button onclick={() => addCard(l.id)} class="inline-flex items-center justify-center gap-1 rounded-full bg-ink-900 py-1.5 text-[13px] font-bold text-white dark:bg-white dark:text-ink-900">
 									<Plus size={14} /> Kártya
