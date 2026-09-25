@@ -133,10 +133,10 @@
 	<section class="mt-3 rounded-[24px] border border-stone-200 bg-white p-8 text-center dark:border-white/10 dark:bg-stone-900">
 		<p class="text-[16px] font-bold text-ink-900 dark:text-white">Ez tanári felület</p>
 		<p class="mx-auto mt-1 max-w-xs text-sm text-stone-500 dark:text-stone-400">
-			Kapcsold be a Tanár módot a Beállítások → Fejlesztői beállítások alatt.
+			Tanári hozzáférést az adminisztrátor tud adni.
 		</p>
-		<a href="/beallitasok" class="mt-4 inline-block rounded-full bg-brand-500 px-5 py-2.5 text-sm font-bold text-white">
-			Beállítások
+		<a href="/" class="mt-4 inline-block rounded-full bg-brand-500 px-5 py-2.5 text-sm font-bold text-white">
+			Vissza a főoldalra
 		</a>
 	</section>
 {:else}

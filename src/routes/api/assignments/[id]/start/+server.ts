@@ -6,13 +6,13 @@ async function loadAssignment(db: NonNullable<ReturnType<typeof getDb>>, assignm
 	return db
 		.prepare(
 			`SELECT a.id AS assignment_id, a.due_date, a.max_attempts, a.time_limit_mins, a.shuffle,
-				a.feedback_delayed, a.is_exam, s.id AS assessment_id, s.title
+				a.feedback_delayed, a.is_exam, COALESCE(a.min_score, 0) AS min_score, s.id AS assessment_id, s.title
 			 FROM assignments a JOIN assessments s ON s.id = a.assessment_id
 			 WHERE a.id = ?`
 		)
 		.bind(assignmentId)
 		.first<{
-			assignment_id: string; due_date: number; assessment_id: string; title: string;
+			assignment_id: string; due_date: number; assessment_id: string; title: string; min_score: number;
 			max_attempts: number; time_limit_mins: number; shuffle: number; feedback_delayed: number; is_exam: number;
 		}>();
 }
@@ -36,6 +36,13 @@ export const POST: RequestHandler = async (event) => {
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	const asm = await loadAssignment(db, event.params.id ?? '');
 	if (!asm) return json({ error: 'Nincs ilyen feladat.' }, { status: 404 });
+	const live = await db
+		.prepare(`SELECT 1 AS x FROM live_sessions WHERE assignment_id = ?`)
+		.bind(asm.assignment_id)
+		.first();
+	if (live) {
+		return json({ error: 'Ez élő dolgozat volt — csak kóddal, élőben tölthető ki.' }, { status: 403 });
+	}
 	if (asm.due_date > 0 && Date.now() > asm.due_date) {
 		return json({ error: 'Lejárt a határidő.' }, { status: 410 });
 	}
@@ -64,6 +71,7 @@ export const POST: RequestHandler = async (event) => {
 		submission_id,
 		started_at: Date.now(),
 		time_limit_mins: asm.time_limit_mins,
+		min_score: asm.min_score ?? 0,
 		title: asm.title
 	});
 };

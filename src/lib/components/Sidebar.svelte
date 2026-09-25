@@ -3,7 +3,7 @@
 	import { auth } from '$lib/auth.svelte';
 	import { authUI } from '$lib/auth-ui.svelte';
 	import { NAV_ITEMS, isActive, navFor } from '$lib/navigation';
-	import { ClipboardList, Flame, House, Layers, LibraryBig, Users } from '@lucide/svelte';
+	import { ClipboardList, Flame, House, Layers, LibraryBig, ShieldCheck, Users } from '@lucide/svelte';
 	import Logo from './Logo.svelte';
 
 	const icons: Record<string, typeof House> = {
@@ -12,12 +12,16 @@
 		'/temakorok': LibraryBig,
 		'/gyakorlas': Layers,
 		'/kvizek': ClipboardList,
-		'/kartyak': Layers
+		'/kartyak': Layers,
+		'/admin': ShieldCheck
 	};
 
 	let pathname = $derived(page.url.pathname);
 	let user = $derived(auth.user);
-	let items = $derived(navFor(user?.role));
+	let items = $derived([
+		...navFor(user?.role),
+		...((user?.is_admin ?? 0) === 1 ? [{ href: '/admin', label: 'Admin', tagline: 'Fiókok kezelése' }] : [])
+	]);
 	let initial = $derived(user?.name.trim().charAt(0).toUpperCase() ?? '');
 </script>
 
@@ -66,7 +70,7 @@
 		{#if user}
 			{#if (user.role ?? 'student') === 'teacher'}
 				<div class="rounded-2xl border border-stone-200 bg-stone-100 p-4 dark:border-white/10 dark:bg-white/5">
-					<p class="text-sm font-bold text-ink-900 dark:text-white">Tanár mód</p>
+					<p class="text-sm font-bold text-ink-900 dark:text-white">Tanári felület</p>
 					<p class="mt-1 text-xs leading-relaxed text-ink-600 dark:text-stone-400">Kvízek, kártyák, osztályok egy helyen.</p>
 					<a
 						href="/kvizek"

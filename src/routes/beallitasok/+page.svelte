@@ -11,45 +11,18 @@
 		Palette,
 		Smartphone,
 		Sun,
-		Terminal,
 		UserRound
 	} from '@lucide/svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { authUI } from '$lib/auth-ui.svelte';
-	import { studyApi } from '$lib/study';
 	import { APP_VERSION, appBuildLabel } from '$lib/version';
 	import { theme, type ThemeChoice } from '$lib/theme.svelte';
 
-	type Sheet = null | 'account' | 'notif' | 'theme' | 'cards' | 'dev' | 'about';
+	type Sheet = null | 'account' | 'notif' | 'theme' | 'cards' | 'about';
 
 	let user = $derived(auth.user);
-
-	async function applyTeacherMode(want: string) {
-		try {
-			await studyApi.setRole(want);
-			await auth.refresh();
-		} catch {
-			// hiba (pl. offline sorba állt): visszaállunk a fiók szerinti értékre
-			teacherMode = (auth.user?.role ?? 'student') === 'teacher';
-		}
-	}
-
-	let teacherMode = $state(false);
-	let teacherInit = $state(false);
-
-	$effect(() => {
-		// A kapcsoló követi a fiókot (betöltés, másik eszköz, visszakapcsolódás).
-		teacherMode = (user?.role ?? 'student') === 'teacher';
-		teacherInit = true;
-	});
-
-	$effect(() => {
-		if (!teacherInit || !auth.user) return;
-		const want = teacherMode ? 'teacher' : 'student';
-		if (auth.user.role !== want) void applyTeacherMode(want);
-	});
 	let initial = $derived(user?.name.trim().charAt(0).toUpperCase() ?? '');
 	let sheet = $state<Sheet>(null);
 
@@ -58,7 +31,6 @@
 		notif: 'Értesítések',
 		theme: 'Megjelenés',
 		cards: 'Szókártyák',
-		dev: 'Fejlesztői beállítások',
 		about: 'Névjegy'
 	};
 
@@ -87,7 +59,6 @@
 		notifOn === 3 ? 'Mind bekapcsolva' : notifOn === 0 ? 'Kikapcsolva' : `${notifOn}/3 bekapcsolva`
 	);
 	let cardsSummary = $derived(settings.autoAudio ? 'Automatikus felolvasás be' : 'Csak gombnyomásra olvas fel');
-	let devSummary = $derived((user?.role ?? 'student') === 'teacher' ? 'Tanár mód bekapcsolva' : 'Tanár mód kikapcsolva');
 	let themeLabel = $derived(
 		theme.choice === 'light' ? 'Világos' : theme.choice === 'dark' ? 'Sötét' : 'Rendszer'
 	);
@@ -171,19 +142,6 @@
 		<span class="min-w-0 flex-1">
 			<span class="block text-[15px] font-bold text-ink-900 dark:text-white">Szókártyák</span>
 			<span class="block truncate text-[13px] text-ink-400 dark:text-stone-500">{cardsSummary}</span>
-		</span>
-		<ChevronRight size={19} class="shrink-0 text-stone-300 dark:text-stone-600" />
-	</button>
-	<button
-		onclick={() => (sheet = 'dev')}
-		class="flex w-full items-center gap-3.5 p-4 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:active:bg-white/10 dark:hover:bg-white/5"
-	>
-		<span class={tile}>
-			<Terminal size={22} />
-		</span>
-		<span class="min-w-0 flex-1">
-			<span class="block text-[15px] font-bold text-ink-900 dark:text-white">Fejlesztői beállítások</span>
-			<span class="block truncate text-[13px] text-ink-400 dark:text-stone-500">{devSummary}</span>
 		</span>
 		<ChevronRight size={19} class="shrink-0 text-stone-300 dark:text-stone-600" />
 	</button>
@@ -326,31 +284,6 @@
 					<Toggle bind:checked={settings.autoAudio} label="Automatikus felolvasás" />
 				</li>
 			</ul>
-		{:else if sheet === 'dev'}
-			{#if user}
-				<ul class="mt-2 divide-y divide-stone-100 dark:divide-white/5">
-					<li class="flex items-center gap-3 py-3.5">
-						<div class="min-w-0 flex-1">
-							<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Tanár mód</p>
-							<p class="text-[13px] text-ink-400 dark:text-stone-500">Osztályok létrehozása, dolgozatok kiadása</p>
-						</div>
-						<Toggle bind:checked={teacherMode} label="Tanár mód" />
-					</li>
-				</ul>
-			{:else}
-				<p class="mt-4 text-sm leading-relaxed text-stone-500 dark:text-stone-400">
-					A fejlesztői beállítások fiókhoz kötöttek.
-				</p>
-				<button
-					onclick={() => {
-						sheet = null;
-						authUI.show('login');
-					}}
-					class="mt-4 w-full rounded-full bg-brand-500 px-4 py-2.5 text-[15px] font-bold text-white transition hover:bg-brand-600 active:scale-[0.99]"
-				>
-					Bejelentkezés
-				</button>
-			{/if}
 		{:else if sheet === 'about'}
 			<div class="mt-4">
 				<div class="flex items-center justify-between py-2.5">

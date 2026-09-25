@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { createSession, ensureAuthSchema, getDb, hashPassword, makeSalt } from '$lib/server/db';
+import { createSession, ensureAuthSchema, getDb, hashPasswordScrypt } from '$lib/server/db';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -29,15 +29,14 @@ export const POST: RequestHandler = async (event) => {
 		return json({ error: 'Ezzel az e-mail címmel már regisztráltak.' }, { status: 409 });
 
 	const id = crypto.randomUUID();
-	const salt = makeSalt();
-	const pass_hash = await hashPassword(password, salt);
+	const pass_hash = await hashPasswordScrypt(password);
 	await db
 		.prepare(
 			'INSERT INTO users (id, name, email, pass_hash, salt, created_at) VALUES (?, ?, ?, ?, ?, ?)'
 		)
-		.bind(id, name, email, pass_hash, salt, Date.now())
+		.bind(id, name, email, pass_hash, '', Date.now())
 		.run();
 	await createSession(event, db, id);
 
-	return json({ user: { id, name, email, role: 'student', xp: 0, streak: 0 } }, { status: 201 });
+	return json({ user: { id, name, email, role: 'student', xp: 0, streak: 0, is_admin: 0 } }, { status: 201 });
 };

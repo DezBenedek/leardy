@@ -7,6 +7,7 @@ export interface User {
 	role?: string;
 	xp?: number;
 	streak?: number;
+	is_admin?: number;
 }
 
 export type AuthResult = { ok: true } | { ok: false; error: string };
@@ -21,6 +22,7 @@ interface ApiUser {
 	role?: string;
 	xp?: number;
 	streak?: number;
+	is_admin?: number;
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<{ status: number; data: T } | null> {

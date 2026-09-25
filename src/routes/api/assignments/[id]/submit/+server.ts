@@ -19,13 +19,14 @@ export const POST: RequestHandler = async (event) => {
 	const answers = (body.answers ?? {}) as Record<string, string>;
 	const sub = await db
 		.prepare(
-			`SELECT sm.id, sm.assignment_id, sm.submitted_at, a.due_date, a.feedback_delayed
+			`SELECT sm.id, sm.assignment_id, sm.submitted_at, a.due_date, a.feedback_delayed,
+				COALESCE(a.min_score, 0) AS min_score
 			 FROM submissions sm
 			 JOIN assignments a ON a.id = sm.assignment_id
 			 WHERE sm.id = ? AND sm.student_id = ?`
 		)
 		.bind(submission_id, user.id)
-		.first<{ id: string; assignment_id: string; submitted_at: number; due_date: number; feedback_delayed: number }>();
+		.first<{ id: string; assignment_id: string; submitted_at: number; due_date: number; feedback_delayed: number; min_score: number }>();
 	if (!sub) return json({ error: 'Nincs ilyen kitöltés.' }, { status: 404 });
 	if (sub.submitted_at > 0) return json({ error: 'Ezt már beadtad.' }, { status: 409 });
 	const asm = await db
@@ -55,9 +56,11 @@ export const POST: RequestHandler = async (event) => {
 		.run();
 	await logActivity(db, user.id, score * 2, 0);
 	const delayed = sub.feedback_delayed === 1 && sub.due_date > 0 && Date.now() < sub.due_date;
+	const min_score = sub.min_score ?? 0;
+	const passed = results.length > 0 ? score / results.length >= min_score / 100 : true;
 	if (delayed) {
 		// Visszajelzés késleltetve: csak a beadás ténye látszik a határidőig.
-		return json({ score: -1, total: results.length, delayed: true });
+		return json({ score: -1, total: results.length, delayed: true, min_score, passed: null });
 	}
-	return json({ score, total: results.length, delayed: false, results });
+	return json({ score, total: results.length, delayed: false, min_score, passed, results });
 };

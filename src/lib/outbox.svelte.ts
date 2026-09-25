@@ -60,6 +60,10 @@ function write(items: OutboxItem[]): void {
 /** Sorba állítás (offline íráskor hívja a studyApi réteg). */
 export function enqueueOutbox(path: string, method: string, body: unknown): void {
 	if (!browser) return;
+	// Valós idejű menetet soha nem sorolunk: lejárt válasznak nincs értelme visszaküldve.
+	if (path.startsWith('/api/live')) return;
+	if (path.startsWith('/api/classrooms')) return;
+	if (path === '/api/assignments' || (path.startsWith('/api/assignments/') && !path.endsWith('/submit'))) return;
 	const items = read();
 	let id = '';
 	try {
@@ -125,11 +129,18 @@ export async function flushOutbox(): Promise<void> {
 	}
 	if (sent > 0) {
 		// Ami sikerült, az látszódjon: cache-frissítés + friss XP/széria.
+		// A kulcsok egy része egyes számban van ('classroom:<id>'), ezért mindkét
+		// előtagot érvénytelenítjük — különben beragadt régi fal maradna.
 		invalidate('stats');
 		invalidate('topics');
+		invalidate('topic:');
 		invalidate('sources');
 		invalidate('assignments');
+		invalidate('assignment:');
+		invalidate('assessment:');
 		invalidate('classrooms');
+		invalidate('classroom:');
+		invalidate('mycards');
 		try {
 			await auth.refresh();
 		} catch {

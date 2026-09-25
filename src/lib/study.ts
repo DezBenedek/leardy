@@ -203,6 +203,21 @@ export interface AssignmentRow {
 	best: number | null;
 }
 
+/** Valós idejű / időérzékeny végpontok: offline NEM sorolódnak, mert később
+ *  már értelmetlenek lennének (lejárt kérdés, lezárt menet, duplikált létrehozás).
+ *  Kivétel: a hagyományos dolgozat-beadás (/submit) marad sorolható — arra külön
+ *  "Beadva offline" képernyő van. */
+function isRealtimePath(path: string): boolean {
+	if (path.startsWith('/api/live')) return true;
+	if (path === '/api/assignments') return true; // tanári kiadás: ne duplikálódjon
+	if (path.startsWith('/api/classrooms')) return true; // belépés/létrehozás: csak online
+	if (path.startsWith('/api/assignments/')) {
+		if (path.endsWith('/submit')) return false;
+		return true;
+	}
+	return false;
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
 	const method = (init?.method ?? 'GET').toUpperCase();
 	let offline = false;
@@ -212,8 +227,12 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 		offline = false;
 	}
 	if (offline && method !== 'GET') {
-		if (path.startsWith('/api/auth/') || path.endsWith('/start')) {
-			throw new Error('Offline vagy — ez csak online megy.');
+		if (path.startsWith('/api/auth/') || path.endsWith('/start') || isRealtimePath(path)) {
+			throw new Error(
+				path.startsWith('/api/live')
+					? 'Offline vagy — az élő dolgozat csak online megy. Csatlakozz újra a netre!'
+					: 'Offline vagy — ez csak online megy.'
+			);
 		}
 		// Offline írás: sorba áll, visszakapcsolódáskor automatikusan beküldődik.
 		let body: unknown;
@@ -228,10 +247,19 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 		enqueueOutbox(path, method, body);
 		throw new QueuedOffline('Offline mentve — automatikusan beküldjük, ha újra online leszel.');
 	}
-	const res = await fetch(path, {
-		headers: { 'content-type': 'application/json' },
-		...init
-	});
+	if (offline) {
+		// GET offline: ne lógjon a fetch, azonnal szóljunk.
+		throw new Error('Offline vagy — a mentett adatok látszanak, a frisshez csatlakozz újra.');
+	}
+	let res: Response;
+	try {
+		res = await fetch(path, {
+			headers: { 'content-type': 'application/json' },
+			...init
+		});
+	} catch {
+		throw new Error('Nincs kapcsolat — nézd meg a netet, majd próbáld újra.');
+	}
 	const data = (await res.json().catch(() => ({}))) as T & { error?: string };
 	if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Hiba történt.');
 	return data as T;
@@ -420,18 +448,180 @@ export const studyApi = {
 	}) =>
 		req<{ assignment: { id: string } }>(`/api/assignments`, { method: 'POST', body: JSON.stringify(body) }),
 	startSubmission: (assignmentId: string) =>
-		req<{ items: QuizQ[]; submission_id: string; started_at: number; time_limit_mins: number; title: string }>(
+		req<{ items: QuizQ[]; submission_id: string; started_at: number; time_limit_mins: number; min_score: number; title: string }>(
 			`/api/assignments/${encodeURIComponent(assignmentId)}/start`,
 			{ method: 'POST' }
 		),
 	submitAssignment: (assignmentId: string, body: { submission_id: string; answers: Record<string, string> }) =>
-		req<{ score: number; total: number; delayed: boolean; results?: { id: string; correct: boolean; answer: string }[] }>(
+		req<{ score: number; total: number; delayed: boolean; min_score: number; passed: boolean | null; results?: { id: string; correct: boolean; answer: string }[] }>(
 			`/api/assignments/${encodeURIComponent(assignmentId)}/submit`,
 			{ method: 'POST', body: JSON.stringify(body) }
 		),
-	setRole: (role: string) =>
-		req<{ ok: boolean; role: string }>(`/api/me/role`, { method: 'POST', body: JSON.stringify({ role }) })
+	adminUsers: (q = '') =>
+		req<{ users: AdminUser[] }>(`/api/admin/users${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`),
+	adminUser: (id: string) =>
+		req<{ user: AdminUserDetail }>(`/api/admin/users/${encodeURIComponent(id)}`),
+	adminSetPassword: (id: string, password?: string) =>
+		req<{ ok: boolean; temp_password: string }>(`/api/admin/users/${encodeURIComponent(id)}/password`, {
+			method: 'POST',
+			body: JSON.stringify(password ? { password } : {})
+		}),
+	adminSetRole: (id: string, role: string) =>
+		req<{ ok: boolean; role: string }>(`/api/admin/users/${encodeURIComponent(id)}/role`, {
+			method: 'POST',
+			body: JSON.stringify({ role })
+		}),
+	assignmentResults: (id: string) =>
+		req<{ assignment: AssignmentMeta; rows: AssignmentResultRow[] }>(
+			`/api/assignments/${encodeURIComponent(id)}/results`
+		),
+	liveCreate: (body: {
+		classroom_id: string;
+		assessment_id: string;
+		qmode: 'same' | 'different';
+		pacing: 'global' | 'self';
+		per_q_secs: number;
+		total_mins: number;
+		count: number;
+	}) =>
+		req<{ session: { id: string; code: string; assignment_id: string } }>(`/api/live`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
+	liveList: (classroomId: string) =>
+		req<{ sessions: LiveSessionRow[] }>(`/api/live?classroom_id=${encodeURIComponent(classroomId)}`),
+	liveJoin: (code: string) =>
+		req<{ ok: boolean; role: string; status: string }>(`/api/live/${encodeURIComponent(code)}/join`, { method: 'POST' }),
+	liveState: (code: string) => req<LiveState>(`/api/live/${encodeURIComponent(code)}/state`),
+	liveStart: (code: string) => req<{ ok: boolean }>(`/api/live/${encodeURIComponent(code)}/start`, { method: 'POST' }),
+	liveAnswer: (code: string, body: { idx: number; answer: string }) =>
+		req<{ ok: boolean }>(`/api/live/${encodeURIComponent(code)}/answer`, { method: 'POST', body: JSON.stringify(body) }),
+	liveAdvance: (code: string) =>
+		req<{ ok: boolean; status: string; current_idx: number }>(`/api/live/${encodeURIComponent(code)}/advance`, { method: 'POST' }),
+	liveFinish: (code: string) => req<{ ok: boolean }>(`/api/live/${encodeURIComponent(code)}/finish`, { method: 'POST' }),
+	liveDone: (code: string) =>
+		req<{ ok: boolean; score: number; total: number }>(`/api/live/${encodeURIComponent(code)}/done`, { method: 'POST' })
 };
+
+export interface LiveSessionRow {
+	id: string;
+	code: string;
+	title: string;
+	status: 'lobby' | 'live' | 'finished';
+	qmode: 'same' | 'different';
+	pacing: 'global' | 'self';
+	joined: number;
+	created_at: number;
+}
+
+export interface LiveSettings {
+	qmode: 'same' | 'different';
+	pacing: 'global' | 'self';
+	per_q_secs: number;
+	total_mins: number;
+	count: number;
+	total_q: number;
+	current_idx: number;
+	deadline_ts: number;
+	ends_at: number;
+	started_at: number;
+}
+
+export interface LiveParticipant {
+	id: string;
+	name: string;
+	joined_at: number;
+	finished_at: number;
+	score: number;
+	answered: number;
+	live_score: number;
+	total: number;
+}
+
+export interface LiveItem {
+	idx: number;
+	question_text: string;
+	type: string;
+	options: string[];
+	left: string | null;
+}
+
+export interface LiveReviewItem extends LiveItem {
+	correct_answer: string;
+	answer: string;
+	correct: boolean;
+}
+
+export type LiveState =
+	| {
+			role: 'teacher';
+			status: 'lobby' | 'live' | 'finished';
+			assignment_id: string;
+			classroom_id: string | null;
+			title: string;
+			settings: LiveSettings;
+			participants: LiveParticipant[];
+			answered_now: number;
+			sample: (LiveItem & { correct_answer: string }) | null;
+	  }
+	| {
+			role: 'student';
+			status: 'lobby' | 'live' | 'finished';
+			joined: boolean;
+			joined_n?: number;
+			title?: string;
+			classroom_id?: string | null;
+			settings?: LiveSettings;
+			items?: LiveItem[];
+			answers?: Record<number, string>;
+			finished?: boolean;
+			score?: number;
+			total?: number;
+			review?: LiveReviewItem[] | null;
+	  };
+
+export interface AssignmentMeta {
+	id: string;
+	title: string;
+	classroom_id: string;
+	classroom_name: string;
+	due_date: number;
+	max_attempts: number;
+	time_limit_mins: number;
+	is_exam: number;
+	min_score: number;
+	questions: number;
+}
+
+export interface AssignmentResultRow {
+	id: string;
+	name: string;
+	attempts: number;
+	best: number | null;
+	last_submit: number | null;
+	open_since: number | null;
+}
+
+export interface AdminUser {
+	id: string;
+	name: string;
+	email: string;
+	role: string;
+	is_admin: number;
+	xp: number;
+	streak: number;
+	created_at: number;
+	topics: number;
+	classrooms: number;
+	assessments: number;
+}
+
+export interface AdminUserDetail extends AdminUser {
+	enrollments: number;
+	member_classes: number;
+	messages: number;
+	submissions: number;
+}
 
 /** Nagyon kis markdown-lite: címsor, félkövér, lista, idézet, bekezdés. XSS-biztos (escape-el). */
 export function renderMarkdown(src: string): string {

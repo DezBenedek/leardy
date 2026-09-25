@@ -16,6 +16,8 @@
 		score: number;
 		total: number;
 		delayed: boolean;
+		min_score: number;
+		passed: boolean | null;
 		results?: { id: string; correct: boolean; answer: string }[];
 		items: QuizQ[];
 	} | null>(null);
@@ -102,6 +104,17 @@
 			<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Az eredményt a tanár a határidő lejárta után mutatja meg.</p>
 		{:else}
 			<p class="font-display text-[32px] font-extrabold text-ink-900 dark:text-white">{result.score} / {result.total}</p>
+			{#if result.min_score > 0}
+				{#if result.passed}
+					<p class="mx-auto mt-2 w-fit rounded-full bg-emerald-100 px-3.5 py-1 text-[13px] font-extrabold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
+						Teljesítve ✓ (cél: {result.min_score}%)
+					</p>
+				{:else}
+					<p class="mx-auto mt-2 w-fit rounded-full bg-amber-100 px-3.5 py-1 text-[13px] font-extrabold text-amber-700 dark:bg-amber-400/10 dark:text-amber-300">
+						Cél nem elérve (cél: {result.min_score}%)
+					</p>
+				{/if}
+			{/if}
 			<ul class="mt-3 space-y-1.5 text-left">
 				{#each result.items as it, i (it.id)}
 					{@const r = result.results?.find((x) => x.id === it.id)}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import {
 		ArrowLeft,
 		Bell,
@@ -14,7 +15,8 @@
 		Plus,
 		Share2,
 		Trash2,
-		X
+		X,
+		Zap
 	} from '@lucide/svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { get as cacheGet, invalidate, peek } from '$lib/cache';
@@ -27,6 +29,7 @@
 		type AttachmentKind,
 		type Classroom,
 		type LessonRow,
+		type LiveSessionRow,
 		type MessageRow,
 		type MyTopic,
 		type Topic
@@ -46,10 +49,10 @@
 
 	// + menü + drawerek
 	let plusOpen = $state(false);
-	let drawer = $state<'message' | 'share' | 'task' | 'exam' | null>(null);
+	let drawer = $state<'message' | 'share' | 'task' | 'exam' | 'live' | null>(null);
 	let busy = $state(false);
 
-	function openDrawer(kind: 'message' | 'share' | 'task' | 'exam') {
+	function openDrawer(kind: 'message' | 'share' | 'task' | 'exam' | 'live') {
 		plusOpen = false;
 		drawer = kind;
 		if (kind !== 'message') void loadLib();
@@ -127,7 +130,9 @@
 		| 'task-quiz'
 		| 'task-lesson'
 		| 'exam-quiz'
-		| 'exam-deck';
+		| 'exam-deck'
+		| 'live-quiz'
+		| 'live-deck';
 	let picker = $state<{ key: PickerKey; kind: PickerKind; multiple?: boolean } | null>(null);
 
 	async function openPicker(key: PickerKey, kind: PickerKind, multiple = false) {
@@ -167,6 +172,98 @@
 			eDecks = ids.map((id) => ({ id, title: libDecks.find((d) => d.id === id)?.title ?? 'Csomag' }));
 		} else if (key === 'exam-quiz') {
 			eQuizzes = ids.map((id) => ({ id, title: libQuizzes.find((x) => x.id === id)?.title ?? 'Kvíz' }));
+		} else if (key === 'live-deck') {
+			lDecks = ids.map((id) => ({ id, title: libDecks.find((d) => d.id === id)?.title ?? 'Csomag' }));
+		} else if (key === 'live-quiz') {
+			lQuizzes = ids.map((id) => ({ id, title: libQuizzes.find((x) => x.id === id)?.title ?? 'Kvíz' }));
+		}
+	}
+
+	// ---------- Élő dolgozat ----------
+	let lMode = $state<'quiz' | 'deck'>('quiz');
+	let lQuizzes = $state<{ id: string; title: string }[]>([]);
+	let lDecks = $state<{ id: string; title: string }[]>([]);
+	let lQmode = $state<'same' | 'different'>('same');
+	let lPacing = $state<'global' | 'self'>('global');
+	let lPerQ = $state(30);
+	let lTotal = $state(30);
+	let lCount = $state(10);
+	let lMsg = $state<string | null>(null);
+	let lives = $state<LiveSessionRow[]>([]);
+
+	async function loadLive(roomId: string = params.id) {
+		try {
+			const r = await studyApi.liveList(roomId);
+			// Közben továbbnavigáltunk? Ne írjuk felül a másik szoba falát.
+			if (roomId !== params.id) return;
+			lives = r.sessions;
+		} catch {
+			// fal enélkül is megy
+		}
+	}
+
+	async function submitLive() {
+		if (busy) return;
+		lMsg = null;
+		busy = true;
+		try {
+			let assessmentId = '';
+			if (lMode === 'quiz') {
+				if (lQuizzes.length === 0) {
+					lMsg = 'Válassz legalább egy kvízt!';
+					return;
+				}
+				if (lQuizzes.length === 1) {
+					assessmentId = lQuizzes[0].id;
+				} else {
+					const ids = lQuizzes.map((x) => x.id);
+					const merged = await studyApi.mergeAssessments({
+						assessment_ids: ids,
+						title: `${lQuizzes[0].title} +${lQuizzes.length - 1} — élő`,
+						max_attempts: 0,
+						time_limit_mins: 0,
+						shuffle: true,
+						feedback_delayed: false,
+						is_exam: true
+					});
+					assessmentId = merged.assessment.id;
+				}
+			} else {
+				if (lDecks.length === 0) {
+					lMsg = 'Válassz legalább egy csomagot!';
+					return;
+				}
+				const ids = lDecks.map((d) => d.id);
+				const deckTitle = lDecks.length === 1 ? lDecks[0].title : `${lDecks[0].title} +${lDecks.length - 1}`;
+				const built = await studyApi.buildAssessment({
+					topic_id: ids[0],
+					topic_ids: ids,
+					title: `${deckTitle} — élő`,
+					max_attempts: 0,
+					time_limit_mins: 0,
+					shuffle: true,
+					feedback_delayed: false,
+					is_exam: true,
+					count: 30
+				});
+				assessmentId = built.assessment.id;
+			}
+			const r = await studyApi.liveCreate({
+				classroom_id: params.id,
+				assessment_id: assessmentId,
+				qmode: lQmode,
+				pacing: lPacing,
+				per_q_secs: lPerQ,
+				total_mins: lPacing === 'self' ? lTotal : 0,
+				count: lQmode === 'different' ? lCount : 0
+			});
+			drawer = null;
+			invalidate('assignments');
+			await goto(`/tanterem/live/${r.session.code}`);
+		} catch (e) {
+			lMsg = e instanceof Error ? e.message : 'Hiba történt.';
+		} finally {
+			busy = false;
 		}
 	}
 
@@ -419,9 +516,11 @@
 		}
 	}
 
-	async function loadMessages() {
+	async function loadMessages(roomId: string = params.id) {
 		try {
-			messages = (await studyApi.messages(params.id)).messages;
+			const r = await studyApi.messages(roomId);
+			if (roomId !== params.id) return;
+			messages = r.messages;
 		} catch {
 			// üzenetek nélkül is megy az oldal
 		}
@@ -484,27 +583,57 @@
 	const input =
 		'w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-ink-900 outline-none focus:border-brand-500 dark:border-white/15 dark:bg-white/5 dark:text-white';
 
-	onMount(() => {
+	let lastRoomId = $state<string | null>(null);
+
+	async function loadAll(roomId: string) {
+		lastRoomId = roomId;
 		const cached = peek<{ classroom: Classroom; assignments: AssignmentRow[]; members: { name: string }[] }>(
-			`classroom:${params.id}`
+			`classroom:${roomId}`
 		);
 		if (cached) {
 			room = cached.classroom;
 			assigns = cached.assignments;
 			members = cached.members;
+		} else if (params.id === roomId) {
+			room = null;
+			assigns = [];
+			members = [];
+			messages = [];
+			lives = [];
 		}
-		void (async () => {
+		err = null;
+		try {
+			const data = await cacheGet(`classroom:${roomId}`, () => studyApi.classroom(roomId), 30000);
+			// Közben továbbnavigáltunk? Akkor eldobjuk.
+			if (lastRoomId !== roomId || params.id !== roomId) return;
+			room = data.data.classroom;
+			assigns = data.data.assignments;
+			members = data.data.members;
+		} catch (e) {
+			if (!room && lastRoomId === roomId) err = e instanceof Error ? e.message : 'Hiba történt.';
+		}
+		void loadMessages(roomId);
+		void loadLive(roomId);
+	}
+
+	onMount(() => {
+		const liveTimer = setInterval(() => {
 			try {
-				const data = await cacheGet(`classroom:${params.id}`, () => studyApi.classroom(params.id), 30000);
-				room = data.data.classroom;
-				assigns = data.data.assignments;
-				members = data.data.members;
-				void loadMessages();
-			} catch (e) {
-				if (!room) err = e instanceof Error ? e.message : 'Hiba történt.';
+				if (!document.hidden && auth.user) void loadLive();
+			} catch {
+				// csendben
 			}
-		})();
-		void loadMessages();
+		}, 15000);
+		return () => clearInterval(liveTimer);
+	});
+
+	// Odamenéskor / osztályváltáskor friss adat — az onMount önmagában kevés,
+	// mert a SvelteKit újrafelhasználhatja a komponenst. Ez fut mountkor is,
+	// ezért az onMount már nem tölt külön (nincs dupla fetch).
+	$effect(() => {
+		const roomId = params.id;
+		void auth.user;
+		if (roomId) void loadAll(roomId);
 	});
 </script>
 
@@ -562,6 +691,16 @@
 							<span class="block truncate text-[12px] text-stone-500 dark:text-stone-400">Kvízből vagy kártyából</span>
 						</span>
 					</button>
+					<button onclick={() => openDrawer('live')} class="flex w-full items-center gap-3 border-t border-stone-100 px-4 py-3 text-left transition hover:bg-stone-50 dark:border-white/5 dark:hover:bg-white/5">
+						<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-400/10 dark:text-violet-300"><Zap size={19} /></span>
+						<span class="min-w-0 flex-1">
+							<span class="flex items-center gap-1.5 text-[14px] font-bold text-ink-900 dark:text-white">
+								Élő dolgozat
+								<span class="rounded-full bg-red-600 px-1.5 py-px text-[10px] font-extrabold text-white">ÉLŐ</span>
+							</span>
+							<span class="block truncate text-[12px] text-stone-500 dark:text-stone-400">A falon jelenik meg, kód nélkül</span>
+						</span>
+					</button>
 				</div>
 			{/if}
 		</div>
@@ -581,6 +720,32 @@
 	</section>
 
 	<!-- FAL: üzenetek + feladatok + dolgozatok egyben -->
+	{#if lives.length > 0}
+		<section class="anim-pop mt-3 overflow-hidden rounded-2xl border-2 border-red-500 bg-white dark:border-red-500/60 dark:bg-stone-900" aria-label="Élő most">
+			<div class="flex items-center gap-2 bg-red-600 px-4 py-2">
+				<span class="relative flex size-2.5">
+					<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
+					<span class="relative inline-flex size-2.5 rounded-full bg-white"></span>
+				</span>
+				<p class="text-[13px] font-extrabold tracking-[0.14em] text-white uppercase">Élő most</p>
+			</div>
+			<ul class="divide-y divide-stone-100 dark:divide-white/5">
+				{#each lives as lv (lv.id)}
+					<li>
+						<a href="/tanterem/live/{lv.code}" class="flex items-center gap-3 px-4 py-3 transition hover:bg-red-50/50 active:scale-[0.995] dark:hover:bg-white/5">
+							<span class="min-w-0 flex-1">
+								<span class="block truncate text-[15px] font-bold text-ink-900 dark:text-white">{lv.title}</span>
+								<span class="block text-[13px] text-stone-500 tabular-nums dark:text-stone-400">
+									{lv.status === 'lobby' ? 'várakozik — kattints és bent vagy' : 'megy — kattints és folytatod'} · {lv.joined} bent
+								</span>
+							</span>
+							<span class="shrink-0 rounded-full bg-red-600 px-4 py-1.5 text-[13px] font-bold text-white">{lv.status === 'lobby' ? 'Belépek' : 'Folytatom'}</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 	<div class="mt-5 flex items-end justify-between gap-2">
 		<h2 class="text-left text-[18px] font-extrabold tracking-tight text-ink-900 dark:text-white">Fal</h2>
 		<span class="shrink-0 text-[13px] font-medium text-stone-500 tabular-nums dark:text-stone-400">{wall.length} bejegyzés</span>
@@ -677,12 +842,20 @@
 							</a>
 						</div>
 						{#if canPost}
-							<button
-								onclick={() => void revoke(a.id)}
-								class="mt-1.5 ml-[52px] rounded-full px-3 py-1.5 text-[13px] font-semibold text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-400/10"
-							>
-								Visszavonás
-							</button>
+							<div class="mt-1.5 ml-[52px] flex flex-wrap gap-1">
+								<a
+									href="/tanterem/dolgozat/{a.id}/eredmenyek"
+									class="rounded-full bg-stone-100 px-3 py-1.5 text-[13px] font-bold text-ink-700 transition hover:bg-stone-200 active:scale-95 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
+								>
+									Eredmények · élőben
+								</a>
+								<button
+									onclick={() => void revoke(a.id)}
+									class="rounded-full px-3 py-1.5 text-[13px] font-semibold text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-400/10"
+								>
+									Visszavonás
+								</button>
+							</div>
 						{/if}
 					</li>
 				{/if}
@@ -1067,6 +1240,150 @@
 	</div>
 </Drawer>
 
+<!-- ÉLŐ DOLGOZAT drawer -->
+<Drawer open={drawer === 'live'} label="Élő dolgozat" wide onClose={() => (drawer = null)}>
+	<div class="px-6 pt-1 pb-6 sm:px-7 sm:pb-7">
+		<h2 class="font-display flex items-center gap-2 text-[24px] font-bold tracking-tight text-ink-900 dark:text-white">
+			Élő dolgozat
+			<span class="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-extrabold text-white">ÉLŐ</span>
+		</h2>
+		<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Az osztály a falon látja, te indítasz és léptetsz — kód nélkül.</p>
+
+		<section class="mt-4 rounded-2xl bg-stone-100 p-3.5 dark:bg-white/5" aria-label="Forrás">
+			<p class="text-[12px] font-extrabold tracking-wide text-stone-400 uppercase dark:text-stone-500">1 · Miből</p>
+			<div class="mt-2 grid grid-cols-2 gap-1.5" role="tablist" aria-label="Forrás">
+				{#each [{ id: 'quiz', label: 'Kvízből' }, { id: 'deck', label: 'Kártyából' }] as m (m.id)}
+					<button
+						role="tab"
+						aria-selected={lMode === m.id}
+						onclick={() => (lMode = m.id as typeof lMode)}
+						class={['rounded-xl py-2.5 text-[14px] font-bold transition active:scale-95', lMode === m.id ? 'bg-ink-900 text-white shadow-sm dark:bg-white dark:text-ink-900' : 'bg-white text-ink-600 dark:bg-white/10 dark:text-stone-300']}
+					>
+						{m.label}
+					</button>
+				{/each}
+			</div>
+			{#if lMode === 'quiz'}
+				<button
+					onclick={() => void openPicker('live-quiz', 'quiz', true)}
+					class="mt-2 flex w-full items-center gap-2.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-left transition hover:border-brand-500 active:scale-[0.99] dark:border-white/15 dark:bg-white/5"
+				>
+					<ClipboardList size={18} class="shrink-0 text-brand-600 dark:text-white" />
+					<span class="min-w-0 flex-1 truncate text-[14px] font-bold text-ink-900 dark:text-white">
+						{lQuizzes.length === 0 ? 'Válassz kvízeket… (több is mehet)' : lQuizzes.length === 1 ? lQuizzes[0].title : `${lQuizzes.length} kvíz kiválasztva`}
+					</span>
+					<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
+				</button>
+				{#if lQuizzes.length > 1}
+					<div class="mt-1.5 flex flex-wrap gap-1.5">
+						{#each lQuizzes as qz (qz.id)}
+							<button
+								onclick={() => (lQuizzes = lQuizzes.filter((x) => x.id !== qz.id))}
+								title="Eltávolítás"
+								class="inline-flex max-w-full items-center gap-1 rounded-full bg-ink-900 py-1 pr-2 pl-3 text-[12px] font-bold text-white dark:bg-white dark:text-ink-900"
+							>
+								<span class="truncate">{qz.title}</span> ✕
+							</button>
+						{/each}
+					</div>
+				{/if}
+			{:else}
+				<button
+					onclick={() => void openPicker('live-deck', 'deck', true)}
+					class="mt-2 flex w-full items-center gap-2.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-left transition hover:border-brand-500 active:scale-[0.99] dark:border-white/15 dark:bg-white/5"
+				>
+					<Layers size={18} class="shrink-0 text-emerald-600 dark:text-emerald-300" />
+					<span class="min-w-0 flex-1 truncate text-[14px] font-bold text-ink-900 dark:text-white">
+						{lDecks.length === 0 ? 'Válassz csomagokat… (több is mehet)' : lDecks.length === 1 ? lDecks[0].title : `${lDecks.length} csomag kiválasztva`}
+					</span>
+					<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
+				</button>
+				{#if lDecks.length > 1}
+					<div class="mt-1.5 flex flex-wrap gap-1.5">
+						{#each lDecks as deck (deck.id)}
+							<button
+								onclick={() => (lDecks = lDecks.filter((x) => x.id !== deck.id))}
+								title="Eltávolítás"
+								class="inline-flex max-w-full items-center gap-1 rounded-full bg-ink-900 py-1 pr-2 pl-3 text-[12px] font-bold text-white dark:bg-white dark:text-ink-900"
+							>
+								<span class="truncate">{deck.title}</span> ✕
+							</button>
+						{/each}
+					</div>
+				{/if}
+			{/if}
+		</section>
+
+		<section class="mt-2.5 rounded-2xl bg-stone-100 p-3.5 dark:bg-white/5" aria-label="Kérdések">
+			<p class="text-[12px] font-extrabold tracking-wide text-stone-400 uppercase dark:text-stone-500">2 · Kérdések</p>
+			<div class="mt-2 grid grid-cols-2 gap-1.5" role="tablist" aria-label="Kérdésmód">
+				{#each [{ id: 'same', label: 'Mindenki ugyanazt' }, { id: 'different', label: 'Mindenki mást' }] as m (m.id)}
+					<button
+						role="tab"
+						aria-selected={lQmode === m.id}
+						onclick={() => (lQmode = m.id as typeof lQmode)}
+						class={['rounded-xl px-2 py-2.5 text-[13px] font-bold transition active:scale-95', lQmode === m.id ? 'bg-ink-900 text-white shadow-sm dark:bg-white dark:text-ink-900' : 'bg-white text-ink-600 dark:bg-white/10 dark:text-stone-300']}
+					>
+						{m.label}
+					</button>
+				{/each}
+			</div>
+			{#if lQmode === 'different'}
+				<div class="mt-2 flex items-center gap-2 rounded-xl bg-white px-3 py-2 dark:bg-white/10">
+					<span class="flex-1 text-[13px] font-bold text-ink-900 dark:text-white">Kérdésszám / fő</span>
+					<input type="number" min="3" max="50" bind:value={lCount} aria-label="Kérdésszám fejenként" class="w-16 rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-center font-extrabold tabular-nums dark:border-white/15 dark:bg-white/5 dark:text-white" />
+				</div>
+			{/if}
+		</section>
+
+		<section class="mt-2.5 rounded-2xl bg-stone-100 p-3.5 dark:bg-white/5" aria-label="Tempó">
+			<p class="text-[12px] font-extrabold tracking-wide text-stone-400 uppercase dark:text-stone-500">3 · Tempó</p>
+			<div class="mt-2 grid grid-cols-2 gap-1.5" role="tablist" aria-label="Tempó">
+				<button
+					role="tab"
+					aria-selected={lPacing === 'global'}
+					onclick={() => (lPacing = 'global')}
+					class={['rounded-xl px-2 py-2.5 text-left transition active:scale-95', lPacing === 'global' ? 'bg-ink-900 text-white shadow-sm dark:bg-white dark:text-ink-900' : 'bg-white dark:bg-white/10']}
+				>
+					<span class="block text-[13px] font-bold">Tanár léptet</span>
+					<span class="block text-[11px] font-medium opacity-70">Kérdésenként idő, te nyomsz Továbbot</span>
+				</button>
+				<button
+					role="tab"
+					aria-selected={lPacing === 'self'}
+					onclick={() => (lPacing = 'self')}
+					class={['rounded-xl px-2 py-2.5 text-left transition active:scale-95', lPacing === 'self' ? 'bg-ink-900 text-white shadow-sm dark:bg-white dark:text-ink-900' : 'bg-white dark:bg-white/10']}
+				>
+					<span class="block text-[13px] font-bold">Saját tempó</span>
+					<span class="block text-[11px] font-medium opacity-70">Összidő, mindenki magának halad</span>
+				</button>
+			</div>
+			{#if lPacing === 'global'}
+				<div class="mt-2 flex items-center gap-2 rounded-xl bg-white px-3 py-2 dark:bg-white/10">
+					<span class="flex-1 text-[13px] font-bold text-ink-900 dark:text-white">Idő / kérdés (mp)</span>
+					<input type="number" min="5" max="300" step="5" bind:value={lPerQ} aria-label="Másodperc kérdésenként" class="w-16 rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-center font-extrabold tabular-nums dark:border-white/15 dark:bg-white/5 dark:text-white" />
+				</div>
+			{:else}
+				<div class="mt-2 flex items-center gap-2 rounded-xl bg-white px-3 py-2 dark:bg-white/10">
+					<span class="flex-1 text-[13px] font-bold text-ink-900 dark:text-white">Összidő (perc)</span>
+					<input type="number" min="1" max="180" bind:value={lTotal} aria-label="Összidő percben" class="w-16 rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-center font-extrabold tabular-nums dark:border-white/15 dark:bg-white/5 dark:text-white" />
+				</div>
+			{/if}
+		</section>
+
+		{#if lMsg}
+			<p class="mt-2.5 rounded-xl bg-red-50 px-3.5 py-2.5 text-center text-[13px] font-bold text-red-700 dark:bg-red-400/10 dark:text-red-300">{lMsg}</p>
+		{/if}
+		<button
+			onclick={() => void submitLive()}
+			disabled={busy}
+			class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-red-600 py-3.5 text-[15px] font-bold text-white transition hover:brightness-95 active:scale-[0.99] disabled:opacity-60"
+		>
+			<Zap size={18} /> {busy ? 'Készül…' : 'Élő indítása → váróterem'}
+		</button>
+	</div>
+</Drawer>
+
 <!-- Tartalomválasztó: minden osztály-megosztás innen választ (témakör -> lecke leolvasással) -->
 {#if picker}
 	{@const pickerTitle =
@@ -1087,7 +1404,7 @@
 		decks={libDecks}
 		quizzes={libQuizzes}
 		multiple={picker.multiple}
-		selected={picker.key === 'exam-deck' ? eDecks.map((d) => d.id) : picker.key === 'exam-quiz' ? eQuizzes.map((x) => x.id) : []}
+		selected={picker.key === 'exam-deck' ? eDecks.map((d) => d.id) : picker.key === 'exam-quiz' ? eQuizzes.map((x) => x.id) : picker.key === 'live-deck' ? lDecks.map((d) => d.id) : picker.key === 'live-quiz' ? lQuizzes.map((x) => x.id) : []}
 		loadLessons={fetchLessons}
 		onSelect={onPick}
 		onMulti={onPickMulti}

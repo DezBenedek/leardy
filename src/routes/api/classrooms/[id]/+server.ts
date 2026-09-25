@@ -29,7 +29,7 @@ export const GET: RequestHandler = async (event) => {
 				(SELECT COUNT(*) FROM submissions sm WHERE sm.assignment_id = a.id AND sm.student_id = ? AND sm.submitted_at > 0) AS submitted,
 				(SELECT MAX(sm.score) FROM submissions sm WHERE sm.assignment_id = a.id AND sm.student_id = ? AND sm.submitted_at > 0) AS best
 			 FROM assignments a JOIN assessments s ON s.id = a.assessment_id
-			 WHERE a.classroom_id = ? ORDER BY a.start_date DESC, a.due_date`
+			 WHERE a.classroom_id = ? AND NOT EXISTS (SELECT 1 FROM live_sessions l WHERE l.assignment_id = a.id) ORDER BY a.start_date DESC, a.due_date`
 		)
 		.bind(user.id, user.id, user.id, id)
 		.all();

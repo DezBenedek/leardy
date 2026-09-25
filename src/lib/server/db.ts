@@ -1,5 +1,8 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { RequestEvent } from '@sveltejs/kit';
+import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+
+export const SUPERADMIN_EMAIL = 'benedek@dezso.hu';
 
 export interface DbUser {
 	id: string;
@@ -11,6 +14,7 @@ export interface DbUser {
 	role?: string;
 	xp?: number;
 	streak?: number;
+	is_admin?: number;
 }
 
 export interface PublicUser {
@@ -20,6 +24,7 @@ export interface PublicUser {
 	role: string;
 	xp: number;
 	streak: number;
+	is_admin: number;
 }
 
 export const SESSION_COOKIE = 'leardy_session';
@@ -52,7 +57,8 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 				role TEXT NOT NULL DEFAULT 'student',
 				xp INTEGER NOT NULL DEFAULT 0,
 				streak INTEGER NOT NULL DEFAULT 0,
-				last_study_date TEXT NOT NULL DEFAULT ''
+				last_study_date TEXT NOT NULL DEFAULT '',
+				is_admin INTEGER NOT NULL DEFAULT 0
 			)`
 		),
 		db.prepare(
@@ -79,13 +85,23 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 		`ALTER TABLE assignments ADD COLUMN feedback_delayed INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE assignments ADD COLUMN is_exam INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE assignments ADD COLUMN min_score INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE flashcards ADD COLUMN example TEXT`
+		`ALTER TABLE flashcards ADD COLUMN example TEXT`,
+		`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`
 	]) {
 		try {
 			await db.prepare(ddl).run();
 		} catch {
 			// oszlop már létezik
 		}
+	}
+	// Superadmin-jelölés (idempotens).
+	try {
+		await db
+			.prepare(`UPDATE users SET is_admin = 1 WHERE lower(email) = lower(?)`)
+			.bind(SUPERADMIN_EMAIL)
+			.run();
+	} catch {
+		// users tábla még nem létezik ebben a sorrendben — a batch létrehozza
 	}
 	await db.batch([
 		db.prepare(
@@ -213,6 +229,45 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 				title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '',
 				link_url TEXT, ref_type TEXT, ref_id TEXT, created_at INTEGER NOT NULL
 			)`
+		),
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS live_sessions (
+				id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE,
+				assignment_id TEXT NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+				classroom_id TEXT REFERENCES classrooms(id) ON DELETE CASCADE,
+				teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				status TEXT NOT NULL DEFAULT 'lobby', qmode TEXT NOT NULL DEFAULT 'same',
+				pacing TEXT NOT NULL DEFAULT 'global', per_q_secs INTEGER NOT NULL DEFAULT 30,
+				total_mins INTEGER NOT NULL DEFAULT 0, count INTEGER NOT NULL DEFAULT 0,
+				total_q INTEGER NOT NULL DEFAULT 0, current_idx INTEGER NOT NULL DEFAULT 0,
+				deadline_ts INTEGER NOT NULL DEFAULT 0, ends_at INTEGER NOT NULL DEFAULT 0,
+				started_at INTEGER NOT NULL DEFAULT 0, finished_at INTEGER NOT NULL DEFAULT 0,
+				created_at INTEGER NOT NULL
+			)`
+		),
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS live_participants (
+				session_id TEXT NOT NULL REFERENCES live_sessions(id) ON DELETE CASCADE,
+				user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				name TEXT NOT NULL, joined_at INTEGER NOT NULL,
+				finished_at INTEGER NOT NULL DEFAULT 0, score INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (session_id, user_id)
+			)`
+		),
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS live_items (
+				id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES live_sessions(id) ON DELETE CASCADE,
+				user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				idx INTEGER NOT NULL, question_text TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'choice',
+				options_json TEXT NOT NULL DEFAULT '[]', correct_answer TEXT NOT NULL DEFAULT '', left_text TEXT
+			)`
+		),
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS live_answers (
+				item_id TEXT PRIMARY KEY REFERENCES live_items(id) ON DELETE CASCADE,
+				session_id TEXT NOT NULL, user_id TEXT NOT NULL, idx INTEGER NOT NULL,
+				answer TEXT NOT NULL DEFAULT '', correct INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL
+			)`
 		)
 	]);
 	await db.batch([
@@ -225,7 +280,11 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_assign_class ON assignments(classroom_id)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_subm_assign ON submissions(assignment_id, student_id)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_exam_user_topic ON exam_attempts(user_id, topic_id, created_at)`),
-		db.prepare(`CREATE INDEX IF NOT EXISTS idx_messages_class ON messages(classroom_id, created_at)`)
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_messages_class ON messages(classroom_id, created_at)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_live_code ON live_sessions(code)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_live_part ON live_participants(session_id)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_live_items ON live_items(session_id, user_id)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_live_answers ON live_answers(session_id, user_id)`)
 	]);
 }
 
@@ -239,12 +298,56 @@ export function randomToken(): string {
 	return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function hashPassword(password: string, salt: string): Promise<string> {
-	const digest = await crypto.subtle.digest(
-		'SHA-256',
-		new TextEncoder().encode(`${salt}::${password}`)
-	);
-	return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+/** Komoly jelszó-hash scrypt-tel. Formátum: scrypt$N$r$p$saltHex$keyHex.
+ *  A régi SHA-256 hash-ek nem ellenőrizhetők vele — ez a hard cutover. */
+const SCRYPT_N = 16384;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_KEYLEN = 64;
+
+function scryptKey(password: string, salt: Buffer, keylen: number, N: number, r: number, p: number): Promise<Buffer> {
+	return new Promise((resolve, reject) => {
+		scryptCb(password, salt, keylen, { N, r, p }, (err, key) => {
+			if (err) reject(err);
+			else resolve(key as Buffer);
+		});
+	});
+}
+
+export async function hashPasswordScrypt(password: string): Promise<string> {
+	const salt = randomBytes(16);
+	const key = await scryptKey(password, salt, SCRYPT_KEYLEN, SCRYPT_N, SCRYPT_R, SCRYPT_P);
+	return ['scrypt', SCRYPT_N, SCRYPT_R, SCRYPT_P, salt.toString('hex'), key.toString('hex')].join('$');
+}
+
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+	try {
+		const parts = String(stored ?? '').split('$');
+		if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
+		const N = Number(parts[1]);
+		const r = Number(parts[2]);
+		const p = Number(parts[3]);
+		if (![N, r, p].every((n) => Number.isInteger(n) && n > 0 && n < 1_000_000)) return false;
+		const salt = Buffer.from(parts[4], 'hex');
+		const expected = Buffer.from(parts[5], 'hex');
+		if (salt.length !== 16 || expected.length === 0) return false;
+		const key = await scryptKey(password, salt, expected.length, N, r, p);
+		return key.length === expected.length && timingSafeEqual(key, expected);
+	} catch {
+		return false;
+	}
+}
+
+/** Olvasható ideiglenes jelszó generálása (pl. admin adja ki). */
+export function makeTempPassword(): string {
+	const abc = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+	const bytes = randomBytes(12);
+	let out = '';
+	for (let i = 0; i < 12; i++) {
+		out += abc[bytes[i] % abc.length];
+		if (i === 3 || i === 7) out += '-';
+	}
+	return out;
 }
 
 export function publicUser(u: DbUser): PublicUser {
@@ -254,7 +357,8 @@ export function publicUser(u: DbUser): PublicUser {
 		email: u.email,
 		role: (u as Partial<PublicUser>).role ?? 'student',
 		xp: (u as Partial<PublicUser>).xp ?? 0,
-		streak: (u as Partial<PublicUser>).streak ?? 0
+		streak: (u as Partial<PublicUser>).streak ?? 0,
+		is_admin: (u as Partial<PublicUser>).is_admin ?? 0
 	};
 }
 
@@ -298,7 +402,8 @@ export async function getSessionUser(
 			`SELECT u.id, u.name, u.email,
 				COALESCE(u.role, 'student') AS role,
 				COALESCE(u.xp, 0) AS xp,
-				COALESCE(u.streak, 0) AS streak
+				COALESCE(u.streak, 0) AS streak,
+				COALESCE(u.is_admin, 0) AS is_admin
 			 FROM sessions s
 			 JOIN users u ON u.id = s.user_id
 			 WHERE s.token = ? AND s.expires_at > ?`
@@ -314,6 +419,15 @@ export async function requireUser(
 	db: D1Database
 ): Promise<PublicUser | null> {
 	return getSessionUser(event, db);
+}
+
+/** Bejelentkezett superadmin, vagy null. Csak az admin-végpontok használják. */
+export async function requireAdmin(
+	event: RequestEvent,
+	db: D1Database
+): Promise<PublicUser | null> {
+	const u = await getSessionUser(event, db);
+	return u && (u.is_admin ?? 0) === 1 ? u : null;
 }
 
 // ---------- SRS (2 gombos Leitner) ----------

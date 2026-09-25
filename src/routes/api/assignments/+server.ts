@@ -18,7 +18,8 @@ export const GET: RequestHandler = async (event) => {
 			 JOIN assessments s ON s.id = a.assessment_id
 			 JOIN classrooms c ON c.id = a.classroom_id
 			 LEFT JOIN classroom_members m ON m.classroom_id = c.id AND m.user_id = ?
-			 WHERE c.teacher_id = ? OR m.user_id = ?
+			 WHERE (c.teacher_id = ? OR m.user_id = ?)
+			 AND NOT EXISTS (SELECT 1 FROM live_sessions l WHERE l.assignment_id = a.id)
 			 ORDER BY a.due_date`
 		)
 		.bind(user.id, user.id, user.id, user.id, user.id)

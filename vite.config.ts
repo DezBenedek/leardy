@@ -48,7 +48,10 @@ export default defineConfig({
 			},
 			workbox: {
 				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2}'],
-				navigateFallbackDenylist: [/^\/api\//]
+				// Az API soha nem mehet service-worker-cache-be: az élő dolgozat
+				// 2,5 mp-es pollingja és a pontozás mindig hálózatról jön.
+				navigateFallbackDenylist: [/^\/api\//, /^\/tanterem\/live\//],
+				cleanupOutdatedCaches: true
 			},
 			devOptions: {
 				enabled: false

@@ -1,5 +1,9 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { createSession, ensureAuthSchema, getDb, hashPassword, publicUser, type DbUser } from '$lib/server/db';
+import { createSession, ensureAuthSchema, getDb, publicUser, verifyPassword, type DbUser } from '$lib/server/db';
+
+// Egységes hibaüzenet mindkét esetre (nincs fiók / hibás jelszó / régi hash):
+// nem áruljuk el, létezik-e az e-mail cím.
+const BAD_LOGIN = 'Hibás e-mail cím vagy jelszó.';
 
 export const POST: RequestHandler = async (event) => {
 	const db = getDb(event);
@@ -21,16 +25,16 @@ export const POST: RequestHandler = async (event) => {
 	const found = await db
 		.prepare(
 			`SELECT id, name, email, pass_hash, salt,
-				COALESCE(role, 'student') AS role, COALESCE(xp, 0) AS xp, COALESCE(streak, 0) AS streak
+				COALESCE(role, 'student') AS role, COALESCE(xp, 0) AS xp, COALESCE(streak, 0) AS streak,
+				COALESCE(is_admin, 0) AS is_admin
 			 FROM users WHERE email = ?`
 		)
 		.bind(email)
 		.first<DbUser>();
-	if (!found) return json({ error: 'Nincs fiók ezzel az e-mail címmel.' }, { status: 401 });
+	if (!found) return json({ error: BAD_LOGIN }, { status: 401 });
 
-	const hash = await hashPassword(password, found.salt);
-	if (hash !== found.pass_hash)
-		return json({ error: 'Hibás jelszó. Próbáld újra!' }, { status: 401 });
+	const ok = await verifyPassword(password, found.pass_hash);
+	if (!ok) return json({ error: BAD_LOGIN }, { status: 401 });
 
 	await createSession(event, db, found.id);
 	return json({ user: publicUser(found) });

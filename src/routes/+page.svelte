@@ -13,16 +13,21 @@
 	let assigns = $state<AssignmentRow[]>([]);
 	let err = $state<string | null>(null);
 
+	let loadSeq = 0;
+
 	async function load() {
 		if (!auth.user) return;
+		const my = ++loadSeq;
 		try {
 			const [s, a] = await Promise.all([
 				cacheGet('stats:30', () => studyApi.stats(30), 30000),
 				cacheGet('assignments', () => studyApi.assignments(), 30000)
 			]);
+			if (my !== loadSeq) return;
 			stats = s.data;
 			assigns = a.data.assignments;
 		} catch (e) {
+			if (my !== loadSeq) return;
 			if (!stats) err = e instanceof Error ? e.message : 'Hiba történt.';
 		}
 	}
@@ -30,9 +35,9 @@
 	onMount(() => {
 		stats = peek<Stats>('stats:30') ?? peek<Stats>('stats') ?? null;
 		assigns = peek<{ assignments: AssignmentRow[] }>('assignments')?.assignments ?? [];
-		void load();
 	});
 
+	// Egyetlen frissítési pont (mountkor is lefut) — nincs dupla fetch.
 	$effect(() => {
 		void auth.user;
 		void load();
@@ -104,6 +109,19 @@
 {:else}
 	{#if err && !stats && !isTeacher}
 		<p role="alert" class="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">{err}</p>
+	{/if}
+
+	{#if (user?.is_admin ?? 0) === 1}
+		<a
+			href="/admin"
+			class="anim-rise mt-3 flex items-center gap-3 rounded-[20px] bg-ink-900 p-4 transition hover:opacity-90 active:scale-[0.995] dark:bg-white"
+		>
+			<span class="min-w-0 flex-1">
+				<span class="font-display block text-[18px] font-extrabold text-white dark:text-ink-900">Admin</span>
+				<span class="block text-[13px] text-white/70 dark:text-ink-900/70">Fiókok, jelszavak, szerepek</span>
+			</span>
+			<span class="shrink-0 rounded-full bg-white/15 px-3 py-1 text-[12px] font-extrabold tracking-wide text-white uppercase dark:bg-ink-900/10 dark:text-ink-900">Superadmin</span>
+		</a>
 	{/if}
 
 	{#if isTeacher}

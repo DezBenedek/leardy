@@ -66,14 +66,14 @@ export interface Cached<T> {
 }
 
 /**
- * Ha van TTL-en belüli mentés, azt adjuk; ha lejárt, háttérben frissítünk.
- * @param revalidate lejárt mentésnél is azonnal visszaadjuk a régit, és frissítünk mellé.
+ * Odamenéskor azonnal mutatjuk a mentettet (peek), majd MINDIG megpróbáljuk a
+ * frisset — és meg is várjuk. Így nincs beragadt régi adat: ha van net, a friss
+ * felülírja; ha nincs / hiba van, a régit adjuk vissza fresh:false-tal.
  */
 export async function get<T>(
 	key: string,
 	fetcher: () => Promise<T>,
-	ttlMs = 30000,
-	revalidate = true
+	ttlMs = 30000
 ): Promise<Cached<T>> {
 	loadDisk();
 	const now = Date.now();
@@ -91,24 +91,9 @@ export async function get<T>(
 		}
 		throw new Error('Offline vagy — a mentett adatokhoz csatlakozz újra, vagy nyisd meg online egyszer az oldalt.');
 	}
-	if (hit && revalidate) {
-		// Régi adat azonnal + csendes frissítés (a hívó újrahívhatja később).
-		void fetcher()
-			.then((data) => {
-				const e: Entry = { at: Date.now(), data };
-				mem.set(key, e);
-				disk[key] = e;
-				persist();
-			})
-			.catch(() => {
-				// csendes: marad a régi
-			});
-		mem.set(key, hit);
-		return { data: hit.data as T, fresh: true };
-	}
 	try {
 		const data = await fetcher();
-		const e: Entry = { at: now, data };
+		const e: Entry = { at: Date.now(), data };
 		mem.set(key, e);
 		disk[key] = e;
 		persist();

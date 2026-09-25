@@ -23,20 +23,25 @@
 
 	// Tanári kiadó a Kvízek oldalon van; itt csak az osztály-létrehozás állapota kell.
 
+	let loadSeq = 0;
+
 	async function load() {
 		if (!auth.user) return;
+		const my = ++loadSeq;
 		err = null;
 		try {
 			const [r, a] = await Promise.all([
 				cacheGet('classrooms', () => studyApi.classrooms(), 30000),
 				cacheGet('assignments', () => studyApi.assignments(), 30000)
 			]);
+			if (my !== loadSeq) return;
 			rooms = r.data.classrooms;
 			assigns = a.data.assignments;
 		} catch (e) {
+			if (my !== loadSeq) return;
 			if (!loadedOnce) err = e instanceof Error ? e.message : 'Hiba történt.';
 		} finally {
-			loadedOnce = true;
+			if (my === loadSeq) loadedOnce = true;
 		}
 	}
 
@@ -44,9 +49,10 @@
 		rooms = peek<{ classrooms: Classroom[] }>('classrooms')?.classrooms ?? [];
 		assigns = peek<{ assignments: AssignmentRow[] }>('assignments')?.assignments ?? [];
 		if (rooms.length > 0 || assigns.length > 0) loadedOnce = true;
-		void load();
 	});
 
+	// Odamenéskor + be/kijelentkezéskor tölt — az onMount csak a mentettet
+	// mutatja azonnal, a frissítést ez az egy pont végzi (nincs dupla fetch).
 	$effect(() => {
 		void auth.user;
 		void load();
