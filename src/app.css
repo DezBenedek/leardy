@@ -1,0 +1,278 @@
+@import 'tailwindcss';
+@import './lib/ui/tokens.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+	--font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-display: 'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+	/* Márkakék */
+	--color-brand-50: #eef0ff;
+	--color-brand-100: #dfe3ff;
+	--color-brand-500: #4255ff;
+	--color-brand-600: #3649e0;
+	--color-brand-700: #2b3bb5;
+
+	/* Tintaszürke szöveg */
+	--color-ink-900: #282e3e;
+	--color-ink-600: #586380;
+	--color-ink-400: #939bb4;
+
+	/* Papír háttér */
+	--color-paper: #ffffff;
+}
+
+html {
+	/* Oldalváltáskor a SvelteKit azonnal a tetejére ugrik.
+	   A smooth itt animálná a lap tetejére görgetést, ezért lassúnak érződne. */
+	scroll-behavior: auto;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+	display: none;
+	width: 0;
+	height: 0;
+}
+
+/* Minden belso gorgetheto sav (Drawer, Sheet, Sidebar, modal) se mutasson savot,
+   de a gorg​​etes es az erinteses / kerekes mukodes megmarad. */
+* {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+	display: none;
+	width: 0;
+	height: 0;
+}
+
+/* Jovobeli hasznalatra: <div class="no-scrollbar overflow-y-auto"> */
+.no-scrollbar {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+
+body {
+	font-family: var(--font-sans);
+	background: var(--color-paper);
+	color: var(--color-ink-900);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+
+.dark body {
+	background: #0c0a09;
+	color: #fafaf9;
+}
+
+::selection {
+	background: var(--color-brand-100);
+}
+
+.dark ::selection {
+	background: rgba(66, 85, 255, 0.45);
+}
+
+/* ---------- Mikro-animációk ---------- */
+
+@keyframes leardy-pop {
+	0% {
+		opacity: 0;
+		transform: scale(0.985);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes leardy-shake {
+	0%,
+	100% {
+		transform: translateX(0);
+	}
+	25% {
+		transform: translateX(-5px);
+	}
+	50% {
+		transform: translateX(5px);
+	}
+	75% {
+		transform: translateX(-3px);
+	}
+}
+
+@keyframes leardy-fade {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes toast-in {
+	from {
+		opacity: 0;
+		transform: translateY(-14px) scale(0.98);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+@keyframes auto-fill {
+	from {
+		width: 0%;
+	}
+	to {
+		width: 100%;
+	}
+}
+
+@keyframes leardy-load-slide {
+	from {
+		transform: translateX(-110%);
+	}
+	to {
+		transform: translateX(320%);
+	}
+}
+
+/* Belépő listák/kártyák: csak áttűnés, semmi csúszás
+   (késleltetés --d-vel lépcsőzhető: style="--d:60ms") */
+.anim-rise {
+	animation: leardy-fade 0.25s ease-out both;
+	animation-delay: var(--d, 0ms);
+}
+
+/* Visszajelzések, overlay-panelek: nagyon finom pop */
+.anim-pop {
+	animation: leardy-pop 0.18s ease-out both;
+}
+
+/* Rossz válasz */
+.anim-shake {
+	animation: leardy-shake 0.32s ease both;
+}
+
+/* Overlay-háttér */
+.anim-fade {
+	animation: leardy-fade 0.2s ease both;
+}
+
+/* Felülről beúszó értesítések.
+   backwards kitöltés: a végén nem írja felül az inline transformot,
+   így a stackben hátrébb csúszó kártyák átmenete sima marad. */
+.anim-toast {
+	animation: toast-in 0.28s cubic-bezier(0.32, 0.72, 0, 1) backwards;
+}
+
+/* Sonner stack kártya: csúszás + halványulás átmenetei */
+.toast-card {
+	transform-origin: top center;
+	transition:
+		transform 0.4s cubic-bezier(0.32, 0.72, 0, 1),
+		opacity 0.22s ease;
+}
+
+/* Automata-tovább csík (időtartam inline style-ból jön: jó válasznál
+   rövid, rossznál hosszú, az időzítővel szinkronban) */
+.anim-auto-fill {
+	animation: auto-fill 3s linear both;
+}
+
+/* App-indítás töltősávja (vékony csúszó jelző) */
+.anim-load-slide {
+	animation: leardy-load-slide 1.1s ease-in-out infinite;
+}
+
+/* ---------- Megjelenési beállítások ---------- */
+
+/* Betűméret: egységes alapméret, nincs hozzá beállítás. */
+body {
+	font-size: 16px;
+}
+
+/* Betűtípus: alapból a telefon (rendszer) betűje. */
+html[data-lefontfam='system'] {
+	--font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--font-display: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+html[data-lefontfam='modern'] {
+	--font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-display: 'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+html[data-lefontfam='book'] {
+	--font-sans: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+	--font-display: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+}
+
+/* Mozgás csökkentése: kézi kapcsoló az OS prefers-reduced-motion mellé.
+   A JS-vezérelt mozgásokat (Drawer, Sheet, oldal-áttűnés) a shouldAnimate()
+   állítja le, ez a szabály a CSS-es animációkat és átmeneteket fogja meg. */
+html.reduce-motion,
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+	animation: none !important;
+	transition: none !important;
+	scroll-behavior: auto !important;
+}
+
+/* Kompakt lista: láthatóan sűrűbb listák és kisebb térközök. */
+html.compact main .grid {
+	gap: 0.375rem;
+}
+
+html.compact main .p-4,
+html.compact main .p-3\.5 {
+	padding: 0.75rem;
+}
+
+html.compact main .px-4,
+html.compact main .px-3\.5 {
+	padding-left: 0.75rem;
+	padding-right: 0.75rem;
+}
+
+html.compact main .py-3,
+html.compact main .py-2\.5 {
+	padding-top: 0.5rem;
+	padding-bottom: 0.5rem;
+}
+
+html.compact main .mt-3 {
+	margin-top: 0.5rem;
+}
+
+html.compact main .mt-4 {
+	margin-top: 0.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.anim-rise,
+	.anim-pop,
+	.anim-shake,
+	.anim-fade,
+	.anim-toast,
+	.anim-auto-fill,
+	.anim-load-slide {
+		animation: none;
+	}
+	.toast-card {
+		transition: none;
+	}
+}

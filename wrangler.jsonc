@@ -1,0 +1,40 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "leardy-fop",
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"compatibility_date": "2025-06-01",
+	"compatibility_flags": ["nodejs_compat"],
+	// Egyedi domainek (pl. leardy.dezso.hu) a Cloudflare dashboardon,
+	// a worker Routes füle alatt vannak hozzárendelve, ezért itt
+	// nincs hardkódolt routes lista: a worker bármely hozzárendelt
+	// domainről kiszolgál.
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".svelte-kit/cloudflare"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "leardy-fop-db",
+			"database_id": "b252e911-7316-4da2-94b9-04ff251744b9",
+			"migrations_dir": "migrations"
+		}
+	],
+	// Amazon SES levelkuldes az elfelejtett jelszohoz.
+	// A felado fix: leardy@dezso.hu (SES-ben igazolt identitas).
+	// A ket kulcs secret: wrangler secret put AWS_ACCESS_KEY_ID,
+	// wrangler secret put AWS_SECRET_ACCESS_KEY.
+	"vars": {
+		"AWS_REGION": "eu-central-1",
+		"SES_FROM_EMAIL": "leardy@dezso.hu"
+	},
+	"r2_buckets": [
+		{
+			"binding": "UPLOADS",
+			"bucket_name": "leardy-uploads"
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
+}
