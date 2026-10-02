@@ -30,6 +30,7 @@
 	import {
 		canNotify,
 		getNotifPermission,
+		requestNotifPermission,
 		type NotifPermission
 	} from '$lib/notifications';
 	import { toast } from '$lib/toast.svelte';
@@ -196,6 +197,23 @@
 			notifPerm = getNotifPermission();
 		} catch {
 			notifPerm = 'unsupported';
+		}
+	}
+
+	let notifBusy = $state(false);
+
+	async function enableNotif() {
+		if (notifBusy) return;
+		notifBusy = true;
+		try {
+			notifPerm = await requestNotifPermission();
+			if (notifPerm === 'granted') {
+				toast.success('Értesítések bekapcsolva', 'Most már szól a napi jelzés és a határidőfigyelő.');
+			} else if (notifPerm === 'denied') {
+				toast.error('Le van tiltva', 'A böngésző beállításaiban engedélyezd az értesítéseket.');
+			}
+		} finally {
+			notifBusy = false;
 		}
 	}
 
@@ -516,6 +534,30 @@
 			</div>
 		{:else if sheet === 'notif'}
 			<ul class="mt-1 divide-y divide-stone-100 dark:divide-white/5">
+				{#if notifPerm !== 'granted'}
+					<li class="flex items-center gap-3 py-3">
+						<div class="min-w-0 flex-1">
+							<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Böngészőengedély</p>
+							<p class="text-[13px] text-ink-400 dark:text-stone-500">
+								{#if notifPerm === 'denied'}
+									Le van tiltva. A böngésző beállításaiban engedélyezd.
+								{:else if notifPerm === 'unsupported'}
+									Ez a böngésző nem támogatja az értesítéseket.
+								{:else}
+									Enélkül a napi jelzés és a figyelők néma maradnak.
+								{/if}
+							</p>
+						</div>
+						<button
+							type="button"
+							onclick={enableNotif}
+							disabled={notifBusy || notifPerm === 'denied' || notifPerm === 'unsupported'}
+							class="shrink-0 rounded-full bg-brand-500 px-3.5 py-2 text-[13px] font-bold text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
+						>
+							{notifBusy ? '…' : 'Engedélyezem'}
+						</button>
+					</li>
+				{/if}
 				<li class="flex items-center gap-3 py-3">
 					<div class="min-w-0 flex-1">
 						<p class="flex items-center gap-1.5 text-[15px] font-semibold text-ink-900 dark:text-white">

@@ -40,7 +40,13 @@ export function canNotify(): boolean {
 async function showViaServiceWorker(title: string, body: string, url: string): Promise<boolean> {
 	try {
 		if (!('serviceWorker' in navigator)) return false;
-		const reg = await navigator.serviceWorker.ready;
+		// Devben nincs service worker: a ready igeret sosem oldodna fel,
+		// ezert idokorlattal varunk, kulonben az ertesites orokre beragadna.
+		const reg = await Promise.race([
+			navigator.serviceWorker.ready,
+			new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+		]);
+		if (!reg) return false;
 		const anyReg = reg as unknown as {
 			showNotification?: (t: string, o: object) => Promise<void>;
 		};
@@ -120,7 +126,10 @@ function setSeen(key: string, value: string): void {
 async function checkDailyReminder(): Promise<void> {
 	const s = loadSettings();
 	if (!s.reminder || !canNotify()) return;
-	if (nowHM() !== s.reminderTime) return;
+	// Pontos percrehegyezes helyett "lejart, de ma meg nem szolt" logika:
+	// a tick keshet, a lap lehet hatterben, ebredereskor potolni kell.
+	// A HH:MM nullazott alakban szovegesen osszehasonlithato.
+	if (nowHM() < s.reminderTime) return;
 	const today = todayKey();
 	if (getSeen(REMINDER_LAST_KEY) === `${today}@${s.reminderTime}`) return;
 	const ok = await showLocalNotification(

@@ -249,9 +249,12 @@ async function encryptAes128Gcm(
 	const nonceFinal = await hkdf(salt, ikm, nonceInfoFull, 12);
 
 	const rs = 4096;
+	// RFC 8291 4.3 aes128gcm: a rekord nyilt szovege a tartalom + 0x02 elvalaszto
+	// a VEGEN (nem az elejen). Forditott sorrendben a bongeszo nem tudja
+	// dekodolni, es a push uzenet meg sem jelenik.
 	const record = new Uint8Array(1 + payload.length);
-	record[0] = 2;
-	record.set(payload, 1);
+	record.set(payload, 0);
+	record[payload.length] = 2;
 	if (record.length > rs - 16 - 1) throw new Error('payload tul nagy');
 	const aesKey = await crypto.subtle.importKey('raw', cekFinal.slice().buffer as ArrayBuffer, { name: 'AES-GCM' }, false, ['encrypt']);
 	const ct = new Uint8Array(
@@ -295,11 +298,11 @@ export async function sendPushToSubscription(
 			headers: {
 				'content-type': 'application/octet-stream',
 				'content-encoding': 'aes128gcm',
-				authorization: `vapid t=${jwt}, k=${publicKey}`,
-				urgency: 'high',
-				ttl: '86400'
+				Authorization: `vapid t=${jwt}, k=${publicKey}`,
+				Urgency: 'high',
+				TTL: '86400'
 			},
-			body: body.slice().buffer as ArrayBuffer
+			body: body as unknown as BodyInit
 		});
 		if (res.status === 404 || res.status === 410) {
 			await deletePushEndpoint(db, sub.endpoint);

@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
 import { ensureClassContentSchema } from '$lib/server/classroom';
-import { notifyUser } from '$lib/server/push';
+import { fireNotify, notifyUser } from '$lib/server/push';
 
 /* Beadandó értékelése: csak a saját tanár. Body: { userId, grade?, feedback? }.
  * grade: 1-5 érdemjegy vagy null (értékelés törlése). feedback: max 2000 karakter. */
@@ -75,13 +75,14 @@ export const PATCH: RequestHandler = async (event) => {
 			.bind(targetId)
 			.first<{ id: string }>();
 		if (target) {
-			await notifyUser(db, {
+			// Tuzelj es felejtsd: a push hiba vagy lassulas nem foghatja meg a valaszt.
+			fireNotify(event, notifyUser(db, {
 				userId: targetId,
 				title: grade !== null ? `Jegy: ${grade} (${assignment.title || 'Beadandó'})` : `Visszajelzés (${assignment.title || 'Beadandó'})`,
 				body: feedback !== '' ? feedback.slice(0, 120) : 'A tanárod értékelte a beadandódat.',
 				url: `/tanterem/${classroomId}`,
 				tag: `grade:${aid}:${targetId}`
-			}).catch(() => {});
+			}));
 		}
 	}
 	return json({ ok: true, grade, feedback });

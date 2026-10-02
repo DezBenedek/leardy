@@ -26,6 +26,24 @@ export interface ChangeEntry {
 
 export const CHANGES: ChangeEntry[] = [
 	{
+		version: '0.0.2',
+		title: 'Javított értesítések',
+		items: [
+			{
+				title: 'Megérkeznek a push üzenetek',
+				desc: 'Javított titkosítással az üzenetek, feladatok és jegyek zárt appnál is megjönnek.'
+			},
+			{
+				title: 'Böngészőengedély egy gombbal',
+				desc: 'A Beállítások / Értesítések alatt kérhető az engedély, enélkül a jelzések néma maradnak.'
+			},
+			{
+				title: 'Pontosabb napi jelzés',
+				desc: 'Az emlékeztető már nem csak a pontos percben szól, késés után is pótolja az aznapi jelzést.'
+			}
+		]
+	},
+	{
 		version: '0.0.1-beta',
 		title: 'Megjelent az első beta',
 		items: [
