@@ -1,5 +1,5 @@
-/* Központi értesítés-store (sonner-szerű): felülről beúszó, hangulat-színezett toastok.
-   Használat: toast.success('Mentve'); toast.error('Sikertelen belépés', 'Hibás e-mail vagy jelszó'); */
+/* Központi értesítés-store: egyszerre egy toast, felülről beúszó,
+   hangulat-színezett. Használat: toast.success('Mentve'); toast.error('Sikertelen belépés', 'Próbáld újra'); */
 
 export type ToastTone = 'success' | 'error' | 'info' | 'warning';
 
@@ -11,7 +11,6 @@ export interface ToastItem {
 	leaving?: boolean;
 }
 
-const MAX_STACK = 3;
 const DEFAULT_MS = 4500;
 // Ennyi ido alatt halvanyul el a kartya, csak utana toroljuk a listabol.
 const LEAVE_MS = 220;
@@ -22,7 +21,8 @@ class ToastStore {
 
 	show(tone: ToastTone, title: string, message?: string, ms = DEFAULT_MS): number {
 		const id = this.seq++;
-		this.items = [...this.items.slice(-(MAX_STACK - 1)), { id, tone, title, message }];
+		// Egyszerre csak egy: az új toast lecseréli az előzőt.
+		this.items = [{ id, tone, title, message }];
 		if (ms > 0) setTimeout(() => this.dismiss(id), ms);
 		return id;
 	}

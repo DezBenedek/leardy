@@ -8,13 +8,13 @@
 	import { onMount } from 'svelte';
 	import { pwaInfo } from 'virtual:pwa-info';
 	import { auth } from '$lib/auth.svelte';
-	import { authUI } from '$lib/auth-ui.svelte';
 	import AuthDrawer from '$lib/components/AuthDrawer.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
+	import GoogleLoginButton from '$lib/components/GoogleLoginButton.svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Toaster from '$lib/components/Toaster.svelte';
-	import Button from '$lib/ui/Button.svelte';
+	import { toast } from '$lib/toast.svelte';
 	import WhatsNew from '$lib/components/WhatsNew.svelte';
 	import { startNotificationEngine } from '$lib/notifications';
 	import { loadSettings } from '$lib/settings';
@@ -108,6 +108,36 @@
 		auth.seed(data.user ?? null);
 	});
 
+	// Google OAuth hibák visszajelzése a callback átirányítás után (?auth_error=...).
+	// onMount + window.location: nem reaktív, ezért egyszer fut, nincs végtelen ciklus,
+	// és nem kell a router inicializálására várni.
+	onMount(() => {
+		if (!browser) return;
+		let err: string | null = null;
+		try {
+			err = new URL(window.location.href).searchParams.get('auth_error');
+		} catch {
+			return;
+		}
+		if (!err) return;
+		if (err === 'domain') {
+			toast.error('Csak iskolai fiók', 'Csak @szentangela.hu végű Google fiókkal lehet belépni.');
+		} else if (err === 'config') {
+			toast.error('Belépés nem elérhető', 'Hiányzik a Google OAuth beállítás. Szólj a rendszergazdának.');
+		} else if (err === 'db') {
+			toast.error('Adatbázis nem elérhető', 'Helyi devben használd a wrangler dev parancsot.');
+		} else {
+			toast.error('Sikertelen belépés', 'Próbáld újra Google fiókkal.');
+		}
+		try {
+			const url = new URL(window.location.href);
+			url.searchParams.delete('auth_error');
+			window.history.replaceState({}, '', url.toString());
+		} catch {
+			// nem kritikus
+		}
+	});
+
 	// Minden oldalváltás sima áttűnés, az első megnyílás is.
 	// A main kulcsolva van az útvonalra, így kliensnavigációnál is
 	// újra lefut az in:fade (kulcs nélkül csak az első mountkor futna).
@@ -122,7 +152,7 @@
 </svelte:head>
 
 {#if !user}
-	<!-- Auth-gate: be nem lépve az app nem használható -->
+	<!-- Auth-gate: be nem lépve az app nem használható, csak Google belépés -->
 	<div class="mx-auto grid min-h-dvh w-full max-w-md place-items-center px-6">
 		<div class="w-full text-center">
 			<div class="flex justify-center">
@@ -131,12 +161,8 @@
 			<h1 class="font-display mt-6 text-[28px] leading-tight font-extrabold tracking-tight text-ink-900 dark:text-white">
 				Tanulj okosan a Leardyvel
 			</h1>
-			<p class="mt-2 text-[15px] leading-relaxed text-stone-500 dark:text-stone-400">
-				Leckék, kvízek és szókártyák. A haladásod minden eszközön megmarad.
-			</p>
-			<div class="mt-6 grid gap-2">
-				<Button size="lg" block onclick={() => authUI.show('login')}>Bejelentkezés</Button>
-				<Button size="lg" block variant="outline" onclick={() => authUI.show('register')}>Regisztráció</Button>
+			<div class="mt-6">
+				<GoogleLoginButton />
 			</div>
 		</div>
 	</div>

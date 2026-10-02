@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
 import { ensureClassContentSchema, type MessageRefType } from '$lib/server/classroom';
-import { notifyClassroom } from '$lib/server/push';
+import { fireNotify, notifyClassroom } from '$lib/server/push';
 
 const REF_TYPES: MessageRefType[] = ['', 'subject', 'lesson', 'quiz', 'deck', 'topic'];
 const MAX_REFS = 10;
@@ -97,13 +97,13 @@ export const POST: RequestHandler = async (event) => {
 				.bind(msgId, r.refType, r.refId, r.refTitle, i)
 		)
 	]);
-	void notifyClassroom(db, {
+	fireNotify(event, notifyClassroom(db, {
 		classroomId: id,
 		excludeUserId: user.id,
 		title: 'Új tantermi üzenet',
 		body: title,
 		url: `/tanterem/${id}`,
 		tag: `msg:${msgId}`
-	});
+	}));
 	return json({ ok: true, id: msgId }, { status: 201 });
 };

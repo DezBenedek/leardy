@@ -171,19 +171,15 @@ body {
 	animation: leardy-fade 0.2s ease both;
 }
 
-/* Felülről beúszó értesítések.
-   backwards kitöltés: a végén nem írja felül az inline transformot,
-   így a stackben hátrébb csúszó kártyák átmenete sima marad. */
+/* Felülről beúszó értesítés. */
 .anim-toast {
 	animation: toast-in 0.28s cubic-bezier(0.32, 0.72, 0, 1) backwards;
 }
 
-/* Sonner stack kártya: csúszás + halványulás átmenetei */
+/* Értesítéskártya: megjelenés + halványulás átmenete */
 .toast-card {
 	transform-origin: top center;
-	transition:
-		transform 0.4s cubic-bezier(0.32, 0.72, 0, 1),
-		opacity 0.22s ease;
+	transition: opacity 0.22s ease;
 }
 
 /* Automata-tovább csík (időtartam inline style-ból jön: jó válasznál

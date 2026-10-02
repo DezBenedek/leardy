@@ -4,14 +4,10 @@
 		BellOff,
 		ChevronRight,
 		Database,
-		Eye,
-		EyeOff,
 		HardDrive,
 		Info,
-		KeyRound,
 		Layers,
 		LogOut,
-		Mail,
 		MessageCircle,
 		Moon,
 		Palette,
@@ -25,10 +21,10 @@
 	import Drawer from '$lib/components/Drawer.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import FontFamilyPicker from '$lib/components/FontFamilyPicker.svelte';
+	import GoogleLoginButton from '$lib/components/GoogleLoginButton.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 	import WhatsNew from '$lib/components/WhatsNew.svelte';
 	import { auth } from '$lib/auth.svelte';
-	import { authUI } from '$lib/auth-ui.svelte';
 	import { loadSettings, saveSettings } from '$lib/settings';
 	import { applyDisplaySettings } from '$lib/display';
 	import {
@@ -46,7 +42,7 @@
 	let { data }: { data: PageData } = $props();
 
 	type Sheet = null | 'account' | 'notif' | 'theme' | 'cards' | 'storage' | 'about';
-	type AccountEdit = null | 'name' | 'email' | 'password';
+	type AccountEdit = null | 'name';
 
 	// Szerveradat a forras az elso paintkor, igy nincs profil-villanas.
 	let user = $derived(auth.ready ? auth.user : (data.user ?? null));
@@ -56,27 +52,16 @@
 	let whatsNewOpen = $state(false);
 
 	let nameDraft = $state('');
-	let emailDraft = $state('');
-	let currentPassword = $state('');
-	let newPassword = $state('');
-	let confirmPassword = $state('');
-	let showCurrent = $state(false);
-	let showNew = $state(false);
 	let busyName = $state(false);
-	let busyEmail = $state(false);
-	let busyPass = $state(false);
 
 	$effect(() => {
 		if (sheet === 'account' && user) {
 			nameDraft = user.name;
-			emailDraft = user.email;
 		}
 	});
 
 	const accountEditTitles: Record<Exclude<AccountEdit, null>, string> = {
-		name: 'Név módosítása',
-		email: 'E-mail cím módosítása',
-		password: 'Jelszó módosítása'
+		name: 'Név módosítása'
 	};
 
 	const inputCls =
@@ -99,48 +84,8 @@
 		}
 	}
 
-	async function saveEmail(e: SubmitEvent) {
-		e.preventDefault();
-		if (busyEmail) return;
-		busyEmail = true;
-		const res = await auth.updateEmail(emailDraft);
-		busyEmail = false;
-		if (res.ok) {
-			toast.success('E-mail cím frissítve', 'Sikeresen módosítottad az e-mail címed.');
-			accountEdit = null;
-		} else {
-			toast.error('Nem sikerült menteni', res.error);
-		}
-	}
-
-	async function savePassword(e: SubmitEvent) {
-		e.preventDefault();
-		if (busyPass) return;
-		if (newPassword !== confirmPassword) {
-			toast.error('Nem egyezik', 'Az új jelszó és a megerősítés tér el.');
-			return;
-		}
-		busyPass = true;
-		const res = await auth.changePassword(currentPassword, newPassword);
-		busyPass = false;
-		if (res.ok) {
-			toast.success('Jelszó frissítve', 'A többi eszközön kiléptettünk.');
-			currentPassword = '';
-			newPassword = '';
-			confirmPassword = '';
-			accountEdit = null;
-		} else {
-			toast.error('Nem sikerült menteni', res.error);
-		}
-	}
-
 	function closeAccountEdit() {
 		accountEdit = null;
-		currentPassword = '';
-		newPassword = '';
-		confirmPassword = '';
-		showCurrent = false;
-		showNew = false;
 	}
 
 	const sheetTitles: Record<Exclude<Sheet, null>, string> = {
@@ -278,7 +223,7 @@
 				if (res.ok) {
 					pushSt = 'on';
 					refreshNotifPerm();
-					toast.success('Push bekapcsolva', 'Zárt appnál is értesítünk a tantermi dolgokról.');
+					toast.success('Push bekapcsolva', 'Zárt appnál is szólunk.');
 				} else {
 					if (pushSt !== 'denied') pushSt = await pushState().catch(() => pushSt);
 					toast.error('Nem sikerült', res.error);
@@ -290,9 +235,9 @@
 	}
 
 	function pushLabel(): string {
-		if (pushSt === 'on') return 'Bekapcsolva ezen az eszközön';
-		if (pushSt === 'denied') return 'Letiltva a böngészőben';
-		if (pushSt === 'unsupported') return 'Ez a böngésző nem támogatja';
+		if (pushSt === 'on') return 'Bekapcsolva';
+		if (pushSt === 'denied') return 'Tiltva a böngészőben';
+		if (pushSt === 'unsupported') return 'Nem támogatott';
 		return 'Kikapcsolva';
 	}
 
@@ -359,12 +304,12 @@
 	);
 	let notifSummary = $derived(
 		!canNotifySafe()
-			? 'Engedélyezd az értesítéseket'
+			? 'Böngészőengedély kell'
 			: notifOn === 5
-				? 'Mind bekapcsolva'
+				? 'Mind él'
 				: notifOn === 0
-					? 'Kikapcsolva'
-					: `${notifOn}/5 bekapcsolva`
+					? 'Mind ki'
+					: `${notifOn}/5 él`
 	);
 	function canNotifySafe(): boolean {
 		try {
@@ -532,37 +477,6 @@
 							</span>
 							<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
 						</button>
-						<button
-							type="button"
-							onclick={() => {
-								emailDraft = user?.email ?? '';
-								accountEdit = 'email';
-							}}
-							class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:hover:bg-white/5 dark:active:bg-white/10"
-						>
-							<Mail size={18} class="shrink-0 text-stone-400 dark:text-stone-500" />
-							<span class="min-w-0 flex-1">
-								<span class="block text-[15px] font-semibold text-ink-900 dark:text-white">E-mail cím módosítása</span>
-								<span class="block truncate text-[13px] text-ink-400 dark:text-stone-500">{user.email}</span>
-							</span>
-							<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
-						</button>
-						<button
-							type="button"
-							onclick={() => {
-								currentPassword = '';
-								newPassword = '';
-								confirmPassword = '';
-								accountEdit = 'password';
-							}}
-							class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:hover:bg-white/5 dark:active:bg-white/10"
-						>
-							<KeyRound size={18} class="shrink-0 text-stone-400 dark:text-stone-500" />
-							<span class="min-w-0 flex-1">
-								<span class="block text-[15px] font-semibold text-ink-900 dark:text-white">Jelszó módosítása</span>
-							</span>
-							<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" />
-						</button>
 					</div>
 					<button
 						onclick={exportAccountData}
@@ -595,24 +509,9 @@
 					<p class="text-sm leading-relaxed text-stone-500 dark:text-stone-400">
 						A tanterem és a haladásod mentése fiókhoz kötött.
 					</p>
-					<button
-						onclick={() => {
-							sheet = null;
-							authUI.show('login');
-						}}
-						class="mt-4 w-full rounded-full bg-brand-500 px-4 py-2.5 text-[15px] font-bold text-white transition hover:bg-brand-600 active:scale-[0.99]"
-					>
-						Bejelentkezés
-					</button>
-					<button
-						onclick={() => {
-							sheet = null;
-							authUI.show('register');
-						}}
-						class="mt-2 w-full rounded-full border border-stone-200 bg-white px-4 py-2.5 text-[15px] font-bold text-ink-900 transition hover:bg-stone-50 active:scale-[0.99] dark:border-white/10 dark:bg-transparent dark:text-white dark:hover:bg-white/5"
-					>
-						Regisztráció
-					</button>
+					<div class="mt-4">
+						<GoogleLoginButton />
+					</div>
 				{/if}
 			</div>
 		{:else if sheet === 'notif'}
@@ -620,10 +519,10 @@
 				<li class="flex items-center gap-3 py-3">
 					<div class="min-w-0 flex-1">
 						<p class="flex items-center gap-1.5 text-[15px] font-semibold text-ink-900 dark:text-white">
-							<Smartphone size={15} /> Push ezen az eszközön
+							<Smartphone size={15} /> Push értesítés
 						</p>
 						<p class="text-[13px] text-ink-400 dark:text-stone-500">
-							{pushLabel()}. Zárt appnál is jelez a tantermi üzenetről, feladatról és jegyről.
+							{pushLabel()}. Üzenetről, feladatról és jegyről zárt appnál is szól.
 						</p>
 					</div>
 					{#if pushSt === 'on'}
@@ -648,49 +547,49 @@
 				</li>
 				<li class="flex items-center gap-2.5 py-3">
 					<div class="min-w-0 flex-1">
-						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Napi emlékeztető</p>
-						<p class="text-[13px] text-ink-400 dark:text-stone-500">Minden nap a beállított időpontban</p>
+						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Napi jelzés</p>
+						<p class="text-[13px] text-ink-400 dark:text-stone-500">Egyszer szól naponta, a választott időben</p>
 					</div>
 					<input
 						type="time"
 						value={settings.reminderTime}
 						onchange={onReminderTime}
 						disabled={!settings.reminder}
-						aria-label="Emlékeztető időpontja"
+						aria-label="Napi időpont"
 						class="w-[118px] shrink-0 rounded-xl border border-stone-200 bg-white px-3 py-2 text-center text-[15px] font-semibold text-ink-900 tabular-nums outline-none transition [color-scheme:light] focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-white dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
 					/>
-					<Toggle bind:checked={settings.reminder} label="Napi emlékeztető" />
+					<Toggle bind:checked={settings.reminder} label="Napi jelzés" />
 				</li>
 				<li class="flex items-center gap-3 py-3">
 					<div class="min-w-0 flex-1">
-						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Határidő-emlékeztető</p>
-						<p class="text-[13px] text-ink-400 dark:text-stone-500">24 órával a lejárat előtt jelez</p>
+						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Határidőfigyelő</p>
+						<p class="text-[13px] text-ink-400 dark:text-stone-500">Jelez 24 órával lejárat előtt</p>
 					</div>
-					<Toggle bind:checked={settings.dueSoon} label="Határidő-emlékeztető" />
+					<Toggle bind:checked={settings.dueSoon} label="Határidőfigyelő" />
 				</li>
 				<li class="flex items-center gap-3 py-3">
-					<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Új tantermi üzenet</p>
-					<Toggle bind:checked={settings.pushClassMessage} label="Új tantermi üzenet" />
+					<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Bejövő üzenetek</p>
+					<Toggle bind:checked={settings.pushClassMessage} label="Bejövő üzenetek" />
 				</li>
 				<li class="flex items-center gap-3 py-3">
-					<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Új tantermi feladat</p>
-					<Toggle bind:checked={settings.pushClassTask} label="Új tantermi feladat" />
+					<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Kiosztott feladatok</p>
+					<Toggle bind:checked={settings.pushClassTask} label="Kiosztott feladatok" />
 				</li>
 				<li class="flex items-center gap-3 py-3">
-					<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Új funkciók</p>
-					<Toggle bind:checked={settings.pushFeatures} label="Új funkciók" />
+					<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Újdonságok</p>
+					<Toggle bind:checked={settings.pushFeatures} label="Újdonságok" />
 				</li>
 				<li class="py-3">
 					<div class="flex items-center gap-3">
 						<div class="min-w-0 flex-1">
 							<p class="flex items-center gap-1.5 text-[15px] font-semibold text-ink-900 dark:text-white">
-								<BellOff size={15} /> Némított osztályok
+								<BellOff size={15} /> Némítottak
 							</p>
 							<p class="text-[13px] text-ink-400 dark:text-stone-500">
 								{#if settings.mutedClassrooms.length === 0}
-									Nincs némítva egy osztály sem.
+									Most minden osztály jelezhet.
 								{:else}
-									{settings.mutedClassrooms.length} osztály némítva. Az osztály oldalán, a cím melletti csengővel oldhatod fel.
+									{settings.mutedClassrooms.length} némítva. Feloldás az osztály oldalán, a csengővel.
 								{/if}
 							</p>
 						</div>
@@ -914,7 +813,7 @@
 		{/if}
 </Drawer>
 
-<!-- Uj drawer: nev es jelszo modositas -->
+<!-- Új drawer: név módosítása -->
 <Drawer
 	open={accountEdit !== null}
 	label={accountEdit ? accountEditTitles[accountEdit] : ''}
@@ -937,89 +836,6 @@
 			</div>
 			<button type="submit" disabled={busyName} class={primaryCls}>
 				{busyName ? 'Mentés…' : 'Név mentése'}
-			</button>
-		</form>
-	{:else if accountEdit === 'email'}
-		<form onsubmit={saveEmail} class="mt-3 space-y-3.5" novalidate>
-			<div>
-				<label for="account-email" class="mb-1.5 block text-[13px] font-semibold text-ink-900 dark:text-white">E-mail cím</label>
-				<input
-					id="account-email"
-					type="email"
-					autocomplete="email"
-					placeholder="nev@pelda.hu"
-					bind:value={emailDraft}
-					disabled={busyEmail}
-					class={inputCls}
-				/>
-				<p class="mt-1.5 text-[13px] leading-relaxed text-stone-500 dark:text-stone-400">
-					Erre a címre kapsz jelszó-emlékeztetőt is.
-				</p>
-			</div>
-			<button type="submit" disabled={busyEmail} class={primaryCls}>
-				{busyEmail ? 'Mentés…' : 'E-mail cím mentése'}
-			</button>
-		</form>
-	{:else if accountEdit === 'password'}
-		<form onsubmit={savePassword} class="mt-3 space-y-3.5" novalidate>
-			<div>
-				<label for="account-current" class="mb-1.5 block text-[13px] font-semibold text-ink-900 dark:text-white">Jelenlegi jelszó</label>
-				<div class="relative">
-					<input
-						id="account-current"
-						type={showCurrent ? 'text' : 'password'}
-						autocomplete="current-password"
-						placeholder="••••••••"
-						bind:value={currentPassword}
-						disabled={busyPass}
-						class={inputCls + ' pr-11'}
-					/>
-					<button
-						type="button"
-						onclick={() => (showCurrent = !showCurrent)}
-						aria-label={showCurrent ? 'Jelszó elrejtése' : 'Jelszó mutatása'}
-						class="absolute top-1/2 right-2 -translate-y-1/2 rounded-lg p-1.5 text-stone-400 transition hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 dark:text-stone-500 dark:hover:text-white"
-					>
-						{#if showCurrent}<EyeOff size={19} />{:else}<Eye size={19} />{/if}
-					</button>
-				</div>
-			</div>
-			<div>
-				<label for="account-new" class="mb-1.5 block text-[13px] font-semibold text-ink-900 dark:text-white">Új jelszó</label>
-				<div class="relative">
-					<input
-						id="account-new"
-						type={showNew ? 'text' : 'password'}
-						autocomplete="new-password"
-						placeholder="Min. 8 karakter"
-						bind:value={newPassword}
-						disabled={busyPass}
-						class={inputCls + ' pr-11'}
-					/>
-					<button
-						type="button"
-						onclick={() => (showNew = !showNew)}
-						aria-label={showNew ? 'Jelszó elrejtése' : 'Jelszó mutatása'}
-						class="absolute top-1/2 right-2 -translate-y-1/2 rounded-lg p-1.5 text-stone-400 transition hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 dark:text-stone-500 dark:hover:text-white"
-					>
-						{#if showNew}<EyeOff size={19} />{:else}<Eye size={19} />{/if}
-					</button>
-				</div>
-			</div>
-			<div>
-				<label for="account-confirm" class="mb-1.5 block text-[13px] font-semibold text-ink-900 dark:text-white">Új jelszó újra</label>
-				<input
-					id="account-confirm"
-					type={showNew ? 'text' : 'password'}
-					autocomplete="new-password"
-					placeholder="Ismételd meg"
-					bind:value={confirmPassword}
-					disabled={busyPass}
-					class={inputCls}
-				/>
-			</div>
-			<button type="submit" disabled={busyPass} class={primaryCls}>
-				{busyPass ? 'Mentés…' : 'Jelszó cseréje'}
 			</button>
 		</form>
 	{/if}

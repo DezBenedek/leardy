@@ -29,7 +29,8 @@ interface PushPayload {
 }
 
 self.addEventListener('install', (event) => {
-	const urls = self.__WB_MANIFEST.map((e) => e.url);
+	// Devben nincs beágyazott manifest, csak éles buildben.
+	const urls = (self.__WB_MANIFEST ?? []).map((e) => e.url);
 	event.waitUntil(
 		caches
 			.open(CACHE)

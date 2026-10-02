@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
 import { ensureClassContentSchema } from '$lib/server/classroom';
-import { notifyClassroom } from '$lib/server/push';
+import { fireNotify, notifyClassroom } from '$lib/server/push';
 
 /* Feladat kiosztása: kvíz leckékből. Csak a saját tanár.
    Body: { title?, lesson_ids: string[], question_count, target_pct, shuffle, due_date? }
@@ -83,13 +83,13 @@ export const POST: RequestHandler = async (event) => {
 			JSON.stringify(lessons), questionCount, targetPct, shuffle, dueDate, Date.now()
 		)
 		.run();
-	void notifyClassroom(db, {
+	fireNotify(event, notifyClassroom(db, {
 		classroomId: id,
 		excludeUserId: user.id,
 		title: 'Új tantermi feladat',
 		body: title || 'Új kvízfeladat érkezett.',
 		url: `/tanterem/${id}`,
 		tag: `task:${taskId}`
-	});
+	}));
 	return json({ ok: true, id: taskId }, { status: 201 });
 };

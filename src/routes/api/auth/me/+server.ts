@@ -32,38 +32,25 @@ export const PATCH: RequestHandler = async (event) => {
 		return json({ error: 'Hibás kérés.' }, { status: 400 });
 	}
 
+	// E-mail a Google fiókból jön, nem módosítható.
+	if (body.email !== undefined)
+		return json(
+			{ error: 'Az e-mail cím a Google fiókodból jön, nem módosítható.' },
+			{ status: 403 }
+		);
+
 	const hasName = body.name !== undefined;
-	const hasEmail = body.email !== undefined;
-	if (!hasName && !hasEmail) return json({ error: 'Hibás kérés.' }, { status: 400 });
+	if (!hasName) return json({ error: 'Hibás kérés.' }, { status: 400 });
 
-	const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
-	if (hasName) {
-		const name = String(body.name ?? '').trim().replace(/\s+/g, ' ');
-		if (name.length < 2) return json({ error: 'Add meg a neved.' }, { status: 400 });
-		if (name.length > 80) return json({ error: 'A név legfeljebb 80 karakter lehet.' }, { status: 400 });
-		await db.prepare('UPDATE users SET name = ? WHERE id = ?').bind(name, sessionUser.id).run();
-	}
-
-	if (hasEmail) {
-		const email = String(body.email ?? '').trim().toLowerCase();
-		if (!EMAIL_RE.test(email)) return json({ error: 'Ez nem valós e-mail cím.' }, { status: 400 });
-		const exists = await db
-			.prepare('SELECT id FROM users WHERE email = ? AND id != ?')
-			.bind(email, sessionUser.id)
-			.first<{ id: string }>();
-		if (exists)
-			return json({ error: 'Ezzel az e-mail címmel már regisztráltak.' }, { status: 409 });
-		try {
-			await db.prepare('UPDATE users SET email = ? WHERE id = ?').bind(email, sessionUser.id).run();
-		} catch {
-			return json({ error: 'Ezzel az e-mail címmel már regisztráltak.' }, { status: 409 });
-		}
-	}
+	const name = String(body.name ?? '').trim().replace(/\s+/g, ' ');
+	if (name.length < 2) return json({ error: 'Add meg a neved.' }, { status: 400 });
+	if (name.length > 80) return json({ error: 'A név legfeljebb 80 karakter lehet.' }, { status: 400 });
+	await db.prepare('UPDATE users SET name = ? WHERE id = ?').bind(name, sessionUser.id).run();
 
 	const updated = await db
 		.prepare(
 			`SELECT id, name, email,
+				COALESCE(school_id, '') AS school_id,
 				COALESCE(role, 'student') AS role, COALESCE(xp, 0) AS xp, COALESCE(streak, 0) AS streak,
 				COALESCE(is_admin, 0) AS is_admin
 			 FROM users WHERE id = ?`

@@ -79,8 +79,6 @@
 		if (upper !== joinCode) joinCode = upper;
 	});
 
-	let becoming = $state(false);
-
 	function roomMeta(room: Room): string {
 		const parts: string[] = [];
 		if (room.subject) parts.push(room.subject);
@@ -160,19 +158,6 @@
 		}
 	}
 
-	async function becomeTeacher() {
-		if (becoming) return;
-		becoming = true;
-		const res = await auth.becomeTeacher();
-		becoming = false;
-		if (res.ok) {
-			teacherMode = true;
-			toast.success('Tanár lettél', 'Most már létrehozhatsz osztályt.');
-		} else {
-			toast.error('Nem sikerült', res.error);
-		}
-	}
-
 	const tile =
 		'grid size-11 shrink-0 place-items-center rounded-xl bg-stone-100 text-ink-600 dark:bg-white/10 dark:text-white';
 </script>
@@ -246,20 +231,6 @@
 			description="Hozd létre az elsőt a + gombbal, majd oszd meg a kódot a diákokkal."
 		/>
 	</div>
-{/if}
-
-{#if !teacherMode}
-	<Card>
-		<h2 class="text-[16px] font-extrabold text-ink-900 dark:text-white">Tanár vagy?</h2>
-		<p class="mt-1 text-sm leading-relaxed text-stone-500 dark:text-stone-400">
-			Válts tanári szerepkörre, és hozz létre saját osztályt.
-		</p>
-		<div class="mt-3">
-			<Button variant="outline" busy={becoming} onclick={becomeTeacher}>
-				{becoming ? 'Átváltás…' : 'Tanár leszek'}
-			</Button>
-		</div>
-	</Card>
 {/if}
 
 <Drawer open={sheet === 'choice'} label="Választás" title="Mit szeretnél?" onClose={closeSheet}>

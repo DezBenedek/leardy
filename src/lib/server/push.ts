@@ -311,6 +311,21 @@ export async function sendPushToSubscription(
 	}
 }
 
+/* Tuzelj es felejtsd, de Cloudflare-en a valasz mogott is eletben marad:
+ * ha van ctx.waitUntil, arra bizzuk, kulonben lebegtetjuk. */
+export function fireNotify(event: { platform?: unknown }, task: Promise<unknown>): void {
+	try {
+		const ctx = (event.platform as { ctx?: { waitUntil?: unknown } } | null | undefined)?.ctx;
+		if (ctx && typeof ctx.waitUntil === 'function') {
+			(ctx.waitUntil as (p: Promise<unknown>) => void).call(ctx, task);
+			return;
+		}
+	} catch {
+		// nincs platform: lebegtetjuk
+	}
+	void task.catch(() => {});
+}
+
 /* Egy felhasznalo osszes eszkozere kuldes (pl. ertekeles ertesito). */
 export async function notifyUser(
 	db: D1Database,

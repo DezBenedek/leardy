@@ -6,6 +6,8 @@ export interface DbUser {
 	id: string;
 	name: string;
 	email: string;
+	school_id?: string;
+	google_sub?: string | null;
 	pass_hash: string;
 	salt: string;
 	created_at: number;
@@ -19,6 +21,7 @@ export interface PublicUser {
 	id: string;
 	name: string;
 	email: string;
+	school_id: string;
 	role: string;
 	xp: number;
 	streak: number;
@@ -48,8 +51,10 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 				id TEXT PRIMARY KEY,
 				name TEXT NOT NULL,
 				email TEXT NOT NULL UNIQUE,
-				pass_hash TEXT NOT NULL,
-				salt TEXT NOT NULL,
+				school_id TEXT NOT NULL DEFAULT '',
+				google_sub TEXT,
+				pass_hash TEXT NOT NULL DEFAULT 'google-oauth',
+				salt TEXT NOT NULL DEFAULT '',
 				created_at INTEGER NOT NULL,
 				role TEXT NOT NULL DEFAULT 'student',
 				xp INTEGER NOT NULL DEFAULT 0,
@@ -75,13 +80,20 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 		`ALTER TABLE users ADD COLUMN xp INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE users ADD COLUMN streak INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE users ADD COLUMN last_study_date TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`
+		`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN google_sub TEXT`,
+		`ALTER TABLE users ADD COLUMN school_id TEXT NOT NULL DEFAULT ''`
 	]) {
 		try {
 			await db.prepare(ddl).run();
 		} catch {
 			// oszlop már létezik
 		}
+	}
+	try {
+		await db.prepare(`CREATE INDEX IF NOT EXISTS idx_users_school ON users(school_id)`).run();
+	} catch {
+		// régi séma: index később, migrációból
 	}
 }
 
@@ -135,6 +147,7 @@ export function publicUser(u: DbUser): PublicUser {
 		id: u.id,
 		name: u.name,
 		email: u.email,
+		school_id: u.school_id ?? '',
 		role: (u as Partial<PublicUser>).role ?? 'student',
 		xp: (u as Partial<PublicUser>).xp ?? 0,
 		streak: (u as Partial<PublicUser>).streak ?? 0,
@@ -180,6 +193,7 @@ export async function getSessionUser(
 	const row = await db
 		.prepare(
 			`SELECT u.id, u.name, u.email,
+				COALESCE(u.school_id, '') AS school_id,
 				COALESCE(u.role, 'student') AS role,
 				COALESCE(u.xp, 0) AS xp,
 				COALESCE(u.streak, 0) AS streak,

@@ -188,9 +188,17 @@
 	let knownPct = $derived(total > 0 ? Math.round((knownCount / total) * 100) : 0);
 
 	function goBack() {
-		// Hierarchia szerint vissza a könyvtárba: a history.back() az
-		// adatlap és a szerkesztő között pattogna oda-vissza.
-		void goto('/kartyak');
+		// A felfedezésből nyitott csomagnál a felfedezésre, máshonnan
+		// nyitottnál a könyvtárba. Közvetlen goto, mert a history.back()
+		// az adatlap és a szerkesztő között pattogna oda-vissza.
+		let back = '/kartyak';
+		try {
+			const saved = sessionStorage.getItem('kartyak-detail-back');
+			if (saved === '/kartyak/felfedezes' || saved === '/kartyak') back = saved;
+		} catch {
+			// tiltott storage: marad a könyvtár
+		}
+		void goto(back);
 	}
 
 	function goEdit() {

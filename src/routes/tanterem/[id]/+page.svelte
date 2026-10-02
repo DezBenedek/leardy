@@ -1480,7 +1480,11 @@ import {
 	{:else}
 		{#each feed as item (item.kind + ':' + (item.kind === 'message' ? item.msg.id : item.kind === 'task' ? item.task.id : item.assignment.id))}
 			{#if item.kind === 'assignment'}
-				<Card onclick={() => (detailAssignment = item.assignment)} ariaLabel={item.assignment.title || 'Beadandó részletei'}>
+				<Card
+					href={data.own ? `/tanterem/${room.id}/beadando/${item.assignment.id}` : undefined}
+					onclick={data.own ? undefined : () => (detailAssignment = item.assignment)}
+					ariaLabel={item.assignment.title || 'Beadandó részletei'}
+				>
 					<div class="flex min-w-0 items-start gap-3 overflow-hidden">
 						<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-300">
 							<FileText size={20} />
@@ -1526,7 +1530,11 @@ import {
 				</Card>
 			{:else if item.kind === 'task'}
 				{@const lessons = parseTaskLessons(item.task)}
-				<Card onclick={() => (detailTask = item.task)} ariaLabel={item.task.title || 'Feladat részletei'}>
+				<Card
+					href={data.own ? `/tanterem/${room.id}/feladat/${item.task.id}` : undefined}
+					onclick={data.own ? undefined : () => (detailTask = item.task)}
+					ariaLabel={item.task.title || 'Feladat részletei'}
+				>
 					<div class="flex min-w-0 items-start gap-3 overflow-hidden">
 						<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
 							<ClipboardList size={20} />

@@ -1,12 +1,13 @@
-export type AuthMode = 'login' | 'register' | 'forgot';
+export type AuthMode = 'login';
 
-/** Az auth-drawer globális kapcsolója, bárhonnan nyitható. */
+/** Az auth-drawer globális kapcsolója, bárhonnan nyitható.
+ *  Csak Google belépés van, ezért nincs több mód. */
 class AuthUIStore {
 	open = $state(false);
 	mode = $state<AuthMode>('login');
 
-	show(mode: AuthMode = 'login') {
-		this.mode = mode;
+	show(_mode: AuthMode = 'login') {
+		this.mode = 'login';
 		this.open = true;
 	}
 

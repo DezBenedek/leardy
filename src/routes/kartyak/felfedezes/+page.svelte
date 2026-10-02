@@ -154,6 +154,15 @@
 		else void goto('/kartyak');
 	}
 
+	/* A részletező vissza-nyila ide tér vissza, ha innen nyitották meg. */
+	function markFromDiscovery() {
+		try {
+			sessionStorage.setItem('kartyak-detail-back', '/kartyak/felfedezes');
+		} catch {
+			// tiltott storage
+		}
+	}
+
 	$effect(() => {
 		subjectsQ.load('subjects', fetchSubjectsRaw, SUBJECTS_TTL, SUBJECTS_STALE);
 		void fetchSavedIds();
@@ -238,6 +247,7 @@
 					</span>
 					<a
 						href="/kartyak/{encodeURIComponent(pkg.quizId)}"
+						onclick={markFromDiscovery}
 						class="min-w-0 flex-1 text-left"
 						aria-label="Megnyitás: {pkg.title}"
 					>
@@ -269,7 +279,15 @@
 							<Plus size={18} />
 						</button>
 					{/if}
-					<ChevronRight size={17} class="hidden shrink-0 text-stone-300 sm:block dark:text-stone-600" aria-hidden="true" />
+					<a
+						href="/kartyak/{encodeURIComponent(pkg.quizId)}"
+						onclick={markFromDiscovery}
+						aria-label="Megnyitás: {pkg.title}"
+						title="Megnyitás"
+						class="grid size-9 shrink-0 place-items-center rounded-full text-stone-300 transition hover:bg-stone-100 hover:text-brand-500 active:scale-95 dark:text-stone-600 dark:hover:bg-white/10 dark:hover:text-brand-300"
+					>
+						<ChevronRight size={19} aria-hidden="true" />
+					</a>
 				</div>
 			{/each}
 		</div>

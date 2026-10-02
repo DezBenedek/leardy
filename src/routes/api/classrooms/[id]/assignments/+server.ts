@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
 import { ensureClassContentSchema } from '$lib/server/classroom';
-import { notifyClassroom } from '$lib/server/push';
+import { fireNotify, notifyClassroom } from '$lib/server/push';
 
 /* Beadando letrehozasa: csak a sajat tanar.
    Body: { title, description?, due_date?, require_text?, min_chars?,
@@ -72,13 +72,13 @@ export const POST: RequestHandler = async (event) => {
 			requireFiles, 0, requireAudio, Date.now()
 		)
 		.run();
-	void notifyClassroom(db, {
+	fireNotify(event, notifyClassroom(db, {
 		classroomId: id,
 		excludeUserId: user.id,
 		title: 'Új beadandó',
 		body: title,
 		url: `/tanterem/${id}`,
 		tag: `assign:${aid}`
-	});
+	}));
 	return json({ ok: true, id: aid }, { status: 201 });
 };

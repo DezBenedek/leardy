@@ -218,6 +218,15 @@
 		}
 	});
 
+	/* A részletező vissza-nyila ide tér vissza, ha innen nyitották meg. */
+	function markFromLibrary() {
+		try {
+			sessionStorage.setItem('kartyak-detail-back', '/kartyak');
+		} catch {
+			// tiltott storage
+		}
+	}
+
 	async function saveDeck() {
 		if (!dTitle.trim()) {
 			toast.warning('Hiányzik a cím', 'Add meg a csomag címét!');
@@ -241,6 +250,7 @@
 			toast.success('Csomag létrehozva!', 'Vedd fel a kártyákat a szerkesztőben.');
 			deckOpen = false;
 			libraryQ.touch();
+			markFromLibrary();
 			void goto(`/kartyak/${encodeURIComponent(`deck:${j.id}`)}`);
 		} catch (e) {
 			toast.error('Nem sikerült létrehozni', e instanceof Error ? e.message : 'Hiba történt.');
@@ -346,6 +356,7 @@
 				{#each visible as pkg (pkg.quizId)}
 					<a
 						href="/kartyak/{encodeURIComponent(pkg.quizId)}"
+						onclick={markFromLibrary}
 						class="group flex items-center gap-3 overflow-hidden rounded-2xl border border-stone-200 bg-white px-3.5 py-2.5 transition hover:border-brand-300 hover:shadow-sm active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 dark:border-white/10 dark:bg-stone-900 dark:hover:border-white/20"
 					>
 						<span class="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/20 dark:text-brand-300" aria-hidden="true">
