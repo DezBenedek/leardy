@@ -2,12 +2,14 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
-	import { ArrowLeft, BookOpen, GraduationCap, Layers, Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import { ArrowLeft, ArrowLeftRight, BookOpen, GraduationCap, Layers, Pencil, Plus, Trash2 } from '@lucide/svelte';
 	import FlipCards from '$lib/components/FlipCards.svelte';
 	import QuizModal from '$lib/components/QuizModal.svelte';
 	import SmartLearn from '$lib/components/SmartLearn.svelte';
 	import WriteTest from '$lib/components/WriteTest.svelte';
 	import type { Package, QuizQuestion } from '$lib/curriculum';
+	import { deckCardKindLabel, isStudyDeck } from '$lib/curriculum';
+	import { markDeckOpened } from '$lib/deck-history';
 	import { Query, markLessonDone } from '$lib/query.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
@@ -31,7 +33,6 @@
 
 	const id = $derived(page.params.id ?? '');
 	const detailQ = new Query<Detail>();
-	let detailOffline = $state(false);
 
 	/* Gyorstár-ablakok: friss = nincs hálózat, öreg = mutatható + csendben frissül. */
 	const PKG_TTL = 10 * 60_000;
@@ -45,6 +46,8 @@
 	$effect(() => {
 		detailQ.load(id ? `package:${id}` : null, fetchDetail, PKG_TTL, PKG_STALE);
 		void fetchSavedIds();
+		// A könyvtár "Legutóbb megnyitott" rendezése ebből dolgozik.
+		if (id) markDeckOpened(id);
 	});
 
 	async function fetchSavedIds() {
@@ -83,7 +86,6 @@
 		try {
 			const res = await fetch(`/api/packages?id=${encodeURIComponent(id)}`);
 			if (!res.ok) throw new Error(`http ${res.status}`);
-			detailOffline = false;
 			return res.json();
 		} catch (e) {
 			// Hálózat nélkül a könyvtár-gyorstárból szolgálunk (csak mentett csomag).
@@ -93,7 +95,6 @@
 					const pkgs = raw ? ((JSON.parse(raw).packages ?? []) as Package[]) : [];
 					const found = pkgs.find((p) => p.quizId === id);
 					if (found) {
-						detailOffline = true;
 						return { package: found, progress: {} };
 					}
 				} catch {
@@ -116,6 +117,38 @@
 
 	let practiceOpen = $state(false);
 	let practiceMode = $state<'cards' | 'write' | 'learn'>('cards');
+	let cardsSwapped = $state(false);
+	/** Megfordított kártya-előlap megjegyzése csomagonként. */
+	const SWAP_KEY = 'leardy-cards-swapped';
+
+	function loadSwapped(key: string): boolean {
+		try {
+			if (typeof localStorage === 'undefined' || !key) return false;
+			const raw = localStorage.getItem(SWAP_KEY);
+			if (!raw) return false;
+			const map = JSON.parse(raw) as Record<string, boolean>;
+			return map[key] === true;
+		} catch {
+			return false;
+		}
+	}
+
+	function saveSwapped(key: string, value: boolean) {
+		try {
+			if (typeof localStorage === 'undefined' || !key) return;
+			const raw = localStorage.getItem(SWAP_KEY);
+			const map = raw ? ((JSON.parse(raw) ?? {}) as Record<string, boolean>) : {};
+			map[key] = value;
+			localStorage.setItem(SWAP_KEY, JSON.stringify(map));
+		} catch {
+			// tiltott storage
+		}
+	}
+
+	function toggleSwap() {
+		cardsSwapped = !cardsSwapped;
+		saveSwapped(id, cardsSwapped);
+	}
 	let session = $state(0);
 	let pendingMarks = $state<{ key: string; known: boolean }[]>([]);
 	/** A csatolt lecke bekezdései a csoportosításhoz. */
@@ -186,6 +219,8 @@
 	let total = $derived(pkg?.questions.length ?? 0);
 	let knownCount = $derived(pkg?.questions.filter((q) => levelOf(q) === 'known').length ?? 0);
 	let knownPct = $derived(total > 0 ? Math.round((knownCount / total) * 100) : 0);
+	/** Tanulókártya: egyelőre csak a kártyás gyakorlás érhető el. */
+	let studyOnly = $derived(isStudyDeck(pkg?.cardKind));
 
 	function goBack() {
 		// A felfedezésből nyitott csomagnál a felfedezésre, máshonnan
@@ -223,6 +258,8 @@
 	function openPractice(mode: 'cards' | 'write' | 'learn') {
 		pendingMarks = [];
 		practiceMode = mode;
+		// Kártya módban a megjegyzett csereállapottal indul, legközelebb is úgy marad.
+		if (mode === 'cards') cardsSwapped = loadSwapped(id);
 		session += 1;
 		practiceOpen = true;
 	}
@@ -301,13 +338,8 @@
 				{pkg.title}
 			</h1>
 			<p class="truncate text-[13px] font-medium text-stone-500 dark:text-stone-400">
-				{pkg.subjectTitle}{#if pkg.levelTitle} · {pkg.levelTitle}{/if}{#if pkg.materialTitle} · {pkg.materialTitle}{/if} · {total} kártya
+				{deckCardKindLabel(pkg.cardKind)}{#if pkg.subjectTitle} · {pkg.subjectTitle}{/if}{#if pkg.levelTitle} · {pkg.levelTitle}{/if}{#if pkg.materialTitle} · {pkg.materialTitle}{/if} · {total} kártya
 			</p>
-			{#if detailOffline}
-				<p class="mt-0.5 inline-block rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-extrabold text-amber-600 uppercase dark:text-amber-300">
-					Offline nézet
-				</p>
-			{/if}
 		</div>
 		{#if pkg.mine}
 			<IconButton ariaLabel="Csomag szerkesztése" size={44} onclick={goEdit}>
@@ -359,17 +391,26 @@
 				></div>
 			</div>
 			<div class="mt-4">
-				<div class="grid grid-cols-3 gap-2">
-					<Button variant="outline" size="lg" onclick={() => openPractice('cards')}>
-						<Layers size={18} /> Kártya
+				{#if studyOnly}
+					<Button block size="lg" onclick={() => openPractice('cards')}>
+						<Layers size={18} /> Kártyás gyakorlás
 					</Button>
-					<Button variant="outline" size="lg" onclick={() => openPractice('write')}>
-						Teszt
-					</Button>
-					<Button size="lg" onclick={() => openPractice('learn')}>
-						<GraduationCap size={18} /> Tanulás
-					</Button>
-				</div>
+					<p class="mt-2 text-center text-[12px] font-medium text-stone-500 dark:text-stone-400">
+						Tanulókártya: csak jobbra-balra gyakorlás.
+					</p>
+				{:else}
+					<div class="grid grid-cols-3 gap-2">
+						<Button variant="outline" size="lg" onclick={() => openPractice('cards')}>
+							<Layers size={18} /> Kártya
+						</Button>
+						<Button variant="outline" size="lg" onclick={() => openPractice('write')}>
+							Teszt
+						</Button>
+						<Button size="lg" onclick={() => openPractice('learn')}>
+							<GraduationCap size={18} /> Tanulás
+						</Button>
+					</div>
+				{/if}
 			</div>
 			{#if pkg.lessonId}
 				<div class="mt-2.5 text-center">
@@ -446,6 +487,25 @@
 {/if}
 
 <QuizModal open={practiceOpen} label={pkg?.title ?? 'Gyakorlás'} title={pkg?.title} onClose={() => (practiceOpen = false)}>
+	{#snippet headerActions()}
+		{#if practiceMode === 'cards'}
+			<button
+				type="button"
+				onclick={toggleSwap}
+				aria-label="Előlap és hátlap cseréje"
+				title="Előlap és hátlap cseréje"
+				aria-pressed={cardsSwapped}
+				class={[
+					'grid size-9 shrink-0 place-items-center rounded-full transition active:scale-95',
+					cardsSwapped
+						? 'bg-brand-500 text-white hover:bg-brand-600 dark:bg-brand-500 dark:hover:bg-brand-400'
+						: 'bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-ink-900 dark:bg-white/10 dark:text-stone-300 dark:hover:bg-white/15 dark:hover:text-white'
+				]}
+			>
+				<ArrowLeftRight size={18} />
+			</button>
+		{/if}
+	{/snippet}
 	{#if pkg && practiceOpen}
 		{#key session}
 			<div class="pt-1">
@@ -464,6 +524,7 @@
 				{:else}
 					<FlipCards
 						questions={pkg.questions}
+						swapped={cardsSwapped}
 						onCard={(idQ, known) => (pendingMarks = [...pendingMarks, { key: idQ, known }])}
 						onDone={(score, totalQ) => void finishPractice(score, totalQ)}
 					/>

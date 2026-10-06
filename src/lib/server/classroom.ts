@@ -318,11 +318,22 @@ export async function ensureSecuritySchema(db: D1Database): Promise<void> {
 		),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_reset_tokens_user ON password_reset_tokens(user_id, expires_at)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_reset_tokens_email ON password_reset_tokens(email, created_at)`),
-		db.prepare(`CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id)`)
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id)`),
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS notification_prefs (
+				user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+				messages INTEGER NOT NULL DEFAULT 1,
+				tasks INTEGER NOT NULL DEFAULT 1,
+				grades INTEGER NOT NULL DEFAULT 1,
+				muted_json TEXT NOT NULL DEFAULT '[]',
+				updated_at INTEGER NOT NULL
+			)`
+		)
 	]);
 	for (const ddl of [
 		`ALTER TABLE password_reset_tokens ADD COLUMN code TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE password_reset_tokens ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`
+		`ALTER TABLE password_reset_tokens ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE notification_prefs ADD COLUMN grades INTEGER NOT NULL DEFAULT 1`
 	]) {
 		try {
 			await db.prepare(ddl).run();

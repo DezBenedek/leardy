@@ -2,26 +2,38 @@
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import {
+		ArrowDownAZ,
 		BookOpenText,
 		Check,
 		ChevronDown,
 		ChevronRight,
 		Compass,
+		History,
 		Landmark,
 		Languages,
 		Layers,
 		Leaf,
 		Plus,
-		Shapes
+		Shapes,
+		SlidersHorizontal,
+		Trash2
 	} from '@lucide/svelte';
-	import ScopePickers from '$lib/components/ScopePickers.svelte';
-	import type { LevelNode, Package, Subject } from '$lib/curriculum';
+	interface LibSortOption {
+		id: string;
+		title: string;
+		desc: string;
+		icon: typeof History;
+	}
+	import type { DeckCardKind, LevelNode, Package, Subject } from '$lib/curriculum';
+	import { DECK_CARD_KINDS, deckCardKindLabel } from '$lib/curriculum';
+	import { loadDeckOpened, normHu } from '$lib/deck-history';
 	import { Query, getOrFetch } from '$lib/query.svelte';
 	import { loadScope, saveScope } from '$lib/scope';
 	import { toast } from '$lib/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
+	import SearchInput from '$lib/ui/SearchInput.svelte';
 	import Skeleton from '$lib/ui/Skeleton.svelte';
 	import Sheet from '$lib/ui/Sheet.svelte';
 
@@ -62,7 +74,6 @@
 	let loading = $derived(libraryQ.loading);
 	/** Az új csomag űrlapján a szint-címke a választott tantárgytól függ. */
 	let dLevelLabel = $derived(subjects.find((s) => s.id === dSubject)?.levelLabel || 'Szint');
-	let offline = $state(false);
 
 	/** A lenyílókban csak olyan tantárgy/szint szerepel, amihez van könyvtári csomag. */
 	let libSubjects = $derived(subjects.filter((s) => library.some((p) => p.subjectId === s.id)));
@@ -72,9 +83,84 @@
 		)
 	);
 
+	/* Keresés + eredet-szűrő + rendezés. A rendezést megjegyezzük. */
+	const LIB_SORT_KEY = 'leardy-kartyak-libsort';
+
+	function loadLibSort(): string {
+		if (typeof localStorage === 'undefined') return 'recent';
+		const v = localStorage.getItem(LIB_SORT_KEY);
+		return v === 'name' || v === 'cards' ? v : 'recent';
+	}
+
+	let query = $state('');
+	let origin: 'all' | 'mine' | 'saved' = $state('all');
+	let sortId = $state(loadLibSort());
+	let filterOpen = $state(false);
+	let addOpen = $state(false);
+	/** Fókuszban a kereső: a sor gombjai összehúzódnak, a mező szélesre nyílik. */
+	let searchFocus = $state(false);
+	let fPicker = $state<'subject' | 'level' | 'sort' | null>(null);
+
+	const libSortOptions: LibSortOption[] = [
+		{ id: 'recent', title: 'Legutóbb megnyitott', desc: 'A frissen megnyitott elöl', icon: History },
+		{ id: 'name', title: 'Név szerint', desc: 'A-tól Z-ig', icon: ArrowDownAZ },
+		{ id: 'cards', title: 'Kártyaszám szerint', desc: 'A legtöbb kártya elöl', icon: Layers }
+	];
+
+	let filterSubjectTitle = $derived(
+		subjectId ? (libSubjects.find((s) => s.id === subjectId)?.title ?? 'Összes') : 'Összes'
+	);
+	let filterLevelLabel = $derived(subjects.find((s) => s.id === subjectId)?.levelLabel || 'Szint');
+	let filterLevelTitle = $derived(
+		levelId ? (libLevels.find((l) => l.id === levelId)?.title ?? 'Mindegyik') : 'Mindegyik'
+	);
+	let filterSortTitle = $derived(libSortOptions.find((o) => o.id === sortId)?.title ?? 'Rendezés');
+
+	/** Aktív szűrők száma a szűrőgomb jelvényéhez. */
+	let activeFilterCount = $derived(
+		(subjectId ? 1 : 0) + (levelId ? 1 : 0) + (origin !== 'all' ? 1 : 0) + (sortId !== 'recent' ? 1 : 0)
+	);
+
+	/** Csomagszám tantárgyanként és szintenként a szűrő-drawer felirataihoz. */
+	let libCountBySubject = $derived.by(() => {
+		const m = new Map<string, number>();
+		for (const p of library) {
+			if (!p.subjectId) continue;
+			m.set(p.subjectId, (m.get(p.subjectId) ?? 0) + 1);
+		}
+		return m;
+	});
+	let libCountByLevel = $derived.by(() => {
+		const m = new Map<string, number>();
+		for (const p of library) {
+			if (!p.levelId) continue;
+			m.set(p.levelId, (m.get(p.levelId) ?? 0) + 1);
+		}
+		return m;
+	});
+
+	function resetFilters() {
+		subjectId = '';
+		levelId = '';
+		origin = 'all';
+		sortId = 'recent';
+	}
+
+	function pkgHaystack(p: Package): string {
+		return normHu(
+			[p.title, p.subjectTitle, p.levelTitle, p.attachedLessonTitle, p.lessonTitle, p.materialTitle]
+				.filter(Boolean)
+				.join(' ')
+		);
+	}
+
 	/** Szűrés a könyvtárra; a besorolatlan saját csomag mindig látszik, hogy el ne vesszen. */
-	let visible = $derived(
+	let filtered = $derived(
 		library.filter((p) => {
+			if (origin === 'mine' && !p.mine) return false;
+			if (origin === 'saved' && p.mine) return false;
+			const q = normHu(query.trim());
+			if (q && !pkgHaystack(p).includes(q)) return false;
 			if (p.mine && !p.subjectId) return true;
 			if (subjectId && p.subjectId !== subjectId) return false;
 			if (levelId && p.levelId !== levelId) return false;
@@ -82,15 +168,35 @@
 		})
 	);
 
+	let visible = $derived.by(() => {
+		const list = [...filtered];
+		if (sortId === 'name') {
+			list.sort((a, b) => a.title.localeCompare(b.title, 'hu'));
+		} else if (sortId === 'cards') {
+			list.sort((a, b) => b.questionCount - a.questionCount || a.title.localeCompare(b.title, 'hu'));
+		} else {
+			const opened = loadDeckOpened();
+			list.sort((a, b) => {
+				const ta = opened[a.quizId] ?? 0;
+				const tb = opened[b.quizId] ?? 0;
+				if (ta !== tb) return tb - ta;
+				return a.title.localeCompare(b.title, 'hu');
+			});
+		}
+		return list;
+	});
+
 	/** Leírás sor: ami szűrőként ki van választva (tantárgy/szint), az nem
 	   ismétlődik minden sorban; a csatolt lecke sem, ha a cím már tartalmazza. */
 	function describe(p: Package): string {
-		if (!p.subjectId) return `Besorolatlan saját csomag · ${p.questionCount} kártya`;
+		const kindLabel = deckCardKindLabel(p.cardKind);
+		if (!p.subjectId) return `Besorolatlan saját csomag · ${kindLabel} · ${p.questionCount} kártya`;
 		const parts: string[] = [];
 		if (p.subjectTitle && !(subjectId && p.subjectId === subjectId)) parts.push(p.subjectTitle);
 		if (p.levelTitle && !(levelId && p.levelId === levelId)) parts.push(p.levelTitle);
 		if (p.attachedLessonTitle && !p.title.startsWith(p.attachedLessonTitle))
 			parts.push(p.attachedLessonTitle);
+		parts.push(kindLabel);
 		parts.push(`${p.questionCount} kártya`);
 		return parts.join(' · ');
 	}
@@ -101,6 +207,7 @@
 	let dTitle = $state('');
 	let dSubject = $state('');
 	let dLevel = $state('');
+	let dCardKind = $state<DeckCardKind>('word');
 	let dLevels = $state<LevelNode[]>([]);
 	let dBusy = $state(false);
 	let lastDeckSubject = $state('');
@@ -152,7 +259,6 @@
 			} catch {
 				// tiltott storage
 			}
-			offline = false;
 			return pkgs;
 		} catch {
 			try {
@@ -163,14 +269,12 @@
 					// időn belül; lejárt adat nem rajzolódik ki csendben.
 					const at = typeof parsed.at === 'number' ? parsed.at : 0;
 					if (Date.now() - at <= LIB_CACHE_MS && Array.isArray(parsed.packages)) {
-						offline = true;
 						return parsed.packages as Package[];
 					}
 				}
 			} catch {
 				// sérült gyorstár
 			}
-			offline = false;
 			return [];
 		}
 	}
@@ -192,6 +296,7 @@
 		dSubject = subjectId;
 		lastDeckSubject = subjectId;
 		dLevel = '';
+		dCardKind = 'word';
 		dBusy = false;
 		picker = null;
 		void fetchDeckLevels(subjectId);
@@ -241,6 +346,7 @@
 				body: JSON.stringify({
 					title: dTitle.trim(),
 					kind: 'cards',
+					cardKind: dCardKind,
 					subjectId: dSubject || undefined,
 					levelId: dLevel || undefined
 				})
@@ -305,6 +411,13 @@
 	$effect(() => {
 		saveScope('kartyak', { subject: subjectId, level: levelId });
 	});
+	$effect(() => {
+		try {
+			localStorage.setItem(LIB_SORT_KEY, sortId);
+		} catch {
+			// tiltott storage
+		}
+	});
 </script>
 
 <svelte:head>
@@ -312,24 +425,55 @@
 	<meta name="description" content="Saját kártyakönyvtár gyakorláshoz." />
 </svelte:head>
 
-<div class="flex items-stretch gap-2">
-	<ScopePickers subjects={libSubjects} levels={libLevels} bind:subjectId bind:levelId subjectAllLabel="Összes" />
-	<div class="grid shrink-0 place-items-center">
-		<IconButton ariaLabel="Felfedezés: hivatalos kártyacsomagok" size={46} onclick={() => void goto('/kartyak/felfedezes')}>
-			<Compass size={22} />
-		</IconButton>
+<div class="flex items-stretch {searchFocus ? 'gap-0' : 'gap-2'}">
+	<SearchInput
+		bind:value={query}
+		placeholder="Keresés cím alapján…"
+		ariaLabel="Keresés a könyvtárban"
+		onfocus={() => (searchFocus = true)}
+		onblur={() => (searchFocus = false)}
+	/>
+	<div
+		class="relative shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none"
+		style:width={searchFocus ? '0px' : '46px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<div class="grid h-full w-[46px] place-items-center">
+			<IconButton
+				ariaLabel="Szűrők és rendezés"
+				size={46}
+				disabled={searchFocus}
+				onclick={() => (filterOpen = true)}
+			>
+				<SlidersHorizontal size={22} />
+			</IconButton>
+		</div>
+		{#if activeFilterCount > 0}
+			<span
+				class="absolute -top-0.5 -right-0.5 grid size-5 place-items-center rounded-full bg-brand-500 text-[10px] font-extrabold text-white"
+				aria-hidden="true"
+			>
+				{activeFilterCount}
+			</span>
+		{/if}
 	</div>
-	<div class="grid shrink-0 place-items-center">
-		<IconButton ariaLabel="Új kártyacsomag" size={46} onclick={openDeckSheet}>
-			<Plus size={22} />
-		</IconButton>
+	<div
+		class="shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none"
+		style:width={searchFocus ? '0px' : '46px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<div class="grid h-full w-[46px] place-items-center">
+			<IconButton
+				ariaLabel="Hozzáadás: felfedezés vagy létrehozás"
+				size={46}
+				disabled={searchFocus}
+				onclick={() => (addOpen = true)}
+			>
+				<Plus size={22} />
+			</IconButton>
+		</div>
 	</div>
 </div>
-	{#if offline}
-		<p class="mt-2 inline-block rounded-full bg-amber-400/20 px-2.5 py-1 text-[11px] font-extrabold text-amber-600 uppercase dark:text-amber-300">
-			Offline nézet
-		</p>
-	{/if}
 
 	<div class="mt-4">
 		{#if loading}
@@ -346,12 +490,20 @@
 				{/each}
 				<span class="sr-only">Betöltés…</span>
 			</div>
-		{:else if visible.length === 0}
+		{:else if library.length === 0}
 			<EmptyState
 				title="Üres a könyvtár"
-				description="Hozd létre az első saját kártyacsomagodat a + gombbal, vagy kattints a felfedezés gombra."
+				description="A + gombbal létrehozhatsz saját csomagot, vagy válogathatsz a felfedezésben."
+			/>
+		{:else if visible.length === 0}
+			<EmptyState
+				title="Nincs találat"
+				description="Próbálj másik keresést, vagy állíts a szűrőkön."
 			/>
 		{:else}
+			<p class="mb-2 text-[12px] font-bold text-stone-400 tabular-nums dark:text-stone-500">
+				{visible.length} csomag
+			</p>
 			<div class="grid gap-2">
 				{#each visible as pkg (pkg.quizId)}
 					<a
@@ -377,6 +529,246 @@
 		{/if}
 	</div>
 
+<Sheet open={addOpen} label="Hozzáadás" title="Hozzáadás" onClose={() => (addOpen = false)}>
+	<ul class="mt-2 space-y-0.5">
+		<li>
+			<button
+				type="button"
+				onclick={() => {
+					addOpen = false;
+					void goto('/kartyak/felfedezes');
+				}}
+				class={[optRowBtn, 'hover:bg-stone-100 dark:hover:bg-white/5']}
+			>
+				<span class={optTile(false)}><Compass size={18} aria-hidden="true" /></span>
+				<span class="min-w-0 flex-1">
+					<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">Felfedezés</span>
+					<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">Hivatalos csomagok böngészése</span>
+				</span>
+				<ChevronRight size={17} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
+			</button>
+		</li>
+		<li>
+			<button
+				type="button"
+				onclick={() => {
+					addOpen = false;
+					openDeckSheet();
+				}}
+				class={[optRowBtn, 'hover:bg-stone-100 dark:hover:bg-white/5']}
+			>
+				<span class={optTile(false)}><Plus size={18} aria-hidden="true" /></span>
+				<span class="min-w-0 flex-1">
+					<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">Létrehozás</span>
+					<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">Új saját kártyacsomag</span>
+				</span>
+				<ChevronRight size={17} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
+			</button>
+		</li>
+	</ul>
+</Sheet>
+
+<Sheet open={filterOpen} label="Szűrők és rendezés" onClose={() => (filterOpen = false)}>
+	<div class="mt-1 flex items-center gap-2">
+		<h2 class="font-display min-w-0 flex-1 text-[20px] leading-snug font-extrabold tracking-tight text-ink-900 dark:text-white">
+			Szűrők
+		</h2>
+		{#if activeFilterCount > 0}
+			<IconButton ariaLabel="Szűrők törlése" tone="danger" size={40} onclick={resetFilters}>
+				<Trash2 size={18} />
+			</IconButton>
+		{/if}
+	</div>
+	<div class="mt-2 grid gap-2">
+		<button type="button" onclick={() => (fPicker = 'subject')} aria-haspopup="dialog" class={pickRowBtn}>
+			<span class="min-w-0 flex-1">
+				<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Tantárgy</span>
+				<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
+					{filterSubjectTitle}
+				</span>
+			</span>
+			<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
+		</button>
+		<button type="button" onclick={() => (fPicker = 'level')} aria-haspopup="dialog" class={pickRowBtn}>
+			<span class="min-w-0 flex-1">
+				<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">{filterLevelLabel}</span>
+				<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
+					{filterLevelTitle}
+				</span>
+			</span>
+			<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
+		</button>
+		<button type="button" onclick={() => (fPicker = 'sort')} aria-haspopup="dialog" class={pickRowBtn}>
+			<span class="min-w-0 flex-1">
+				<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Rendezés</span>
+				<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
+					{filterSortTitle}
+				</span>
+			</span>
+			<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
+		</button>
+	</div>
+
+	<p class="mt-4 text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Forrás</p>
+	<div
+		role="group"
+		aria-label="Forrás szűrő"
+		class="mt-1 grid grid-cols-3 gap-1 rounded-2xl bg-stone-100 p-1 dark:bg-white/10"
+	>
+		{#each [{ id: 'all', label: 'Mind' }, { id: 'mine', label: 'Saját' }, { id: 'saved', label: 'Mentett' }] as o (o.id)}
+			{@const selected = origin === o.id}
+			<button
+				type="button"
+				aria-pressed={selected}
+				onclick={() => (origin = o.id as typeof origin)}
+				class={[
+					'rounded-xl px-2 py-2 text-[13px] leading-none transition active:scale-[0.97]',
+					selected
+						? 'bg-white font-extrabold text-ink-900 shadow-sm dark:bg-stone-800 dark:text-white dark:shadow-black/40'
+						: 'font-semibold text-stone-500 hover:text-ink-900 dark:text-stone-400 dark:hover:text-white'
+				]}
+			>
+				{o.label}
+			</button>
+		{/each}
+	</div>
+
+</Sheet>
+
+<Sheet open={fPicker === 'subject'} label="Tantárgy választása" title="Tantárgy" onClose={() => (fPicker = null)}>
+	<ul class="-mx-1 mt-2 space-y-0.5">
+		<li>
+			<button
+				type="button"
+				aria-pressed={subjectId === ''}
+				onclick={() => {
+					subjectId = '';
+					fPicker = null;
+				}}
+				class={[optRowBtn, subjectId === '' ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
+			>
+				<span class={optTile(subjectId === '')}><Shapes size={18} aria-hidden="true" /></span>
+				<span class="min-w-0 flex-1">
+					<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">Összes</span>
+					<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">Minden tantárgy</span>
+				</span>
+				{#if subjectId === ''}
+					<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
+				{/if}
+			</button>
+		</li>
+		{#each libSubjects as s (s.id)}
+			{@const SIcon = subjectIcons[s.icon] ?? Shapes}
+			{@const selected = s.id === subjectId}
+			<li>
+				<button
+					type="button"
+					aria-pressed={selected}
+					onclick={() => {
+						subjectId = selected ? '' : s.id;
+						fPicker = null;
+					}}
+					class={[optRowBtn, selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
+				>
+					<span class={optTile(selected)}><SIcon size={18} aria-hidden="true" /></span>
+					<span class="min-w-0 flex-1">
+						<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{s.title}</span>
+						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">
+							{libCountBySubject.get(s.id) ?? 0} csomag
+						</span>
+					</span>
+					{#if selected}
+						<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
+					{/if}
+				</button>
+			</li>
+		{/each}
+	</ul>
+</Sheet>
+
+<Sheet open={fPicker === 'level'} label="{filterLevelLabel} választása" title={filterLevelLabel} onClose={() => (fPicker = null)}>
+	<ul class="-mx-1 mt-2 space-y-0.5">
+		<li>
+			<button
+				type="button"
+				aria-pressed={levelId === ''}
+				onclick={() => {
+					levelId = '';
+					fPicker = null;
+				}}
+				class={[optRowBtn, levelId === '' ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
+			>
+				<span class={optTile(levelId === '')}><Layers size={18} aria-hidden="true" /></span>
+				<span class="min-w-0 flex-1">
+					<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">Mindegyik</span>
+					<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">A teljes választék</span>
+				</span>
+				{#if levelId === ''}
+					<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
+				{/if}
+			</button>
+		</li>
+		{#each libLevels as l (l.id)}
+			{@const selected = l.id === levelId}
+			<li>
+				<button
+					type="button"
+					aria-pressed={selected}
+					onclick={() => {
+						levelId = selected ? '' : l.id;
+						fPicker = null;
+					}}
+					class={[optRowBtn, selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
+				>
+					<span class={[optTile(selected), 'text-[15px] font-extrabold'].join(' ')}>
+						{l.title.trim().charAt(0).toUpperCase()}
+					</span>
+					<span class="min-w-0 flex-1">
+						<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{l.title}</span>
+						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">
+							{libCountByLevel.get(l.id) ?? 0} csomag
+						</span>
+					</span>
+					{#if selected}
+						<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
+					{/if}
+				</button>
+			</li>
+		{/each}
+	</ul>
+</Sheet>
+
+<Sheet open={fPicker === 'sort'} label="Rendezés választása" title="Rendezés" onClose={() => (fPicker = null)}>
+	<ul class="-mx-1 mt-2 space-y-0.5">
+		{#each libSortOptions as o (o.id)}
+			{@const Icon = o.icon}
+			{@const selected = o.id === sortId}
+			<li>
+				<button
+					type="button"
+					aria-pressed={selected}
+					onclick={() => {
+						sortId = o.id;
+						fPicker = null;
+					}}
+					class={[optRowBtn, selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
+				>
+					<span class={optTile(selected)}>
+						<Icon size={18} aria-hidden="true" />
+					</span>
+					<span class="min-w-0 flex-1">
+						<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{o.title}</span>
+						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">{o.desc}</span>
+					</span>
+					{#if selected}
+						<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
+					{/if}
+				</button>
+			</li>
+		{/each}
+	</ul>
+</Sheet>
+
 <Sheet open={deckOpen} label="Új kártyacsomag" title="Új kártyacsomag" onClose={() => (deckOpen = false)}>
 	<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Alapértelmezetten csak te látod.</p>
 	<label class="mt-4 block text-[13px] font-semibold text-ink-900 dark:text-white" for="deck-title">
@@ -388,6 +780,30 @@
 			class="mt-1.5 {cardInput} w-full"
 		/>
 	</label>
+	<p class="mt-4 text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Típus</p>
+	<div
+		role="group"
+		aria-label="Csomag típusa"
+		class="mt-1 grid grid-cols-2 gap-1 rounded-2xl bg-stone-100 p-1 dark:bg-white/10"
+	>
+		{#each DECK_CARD_KINDS as o (o.id)}
+			{@const selected = dCardKind === o.id}
+			<button
+				type="button"
+				aria-pressed={selected}
+				onclick={() => (dCardKind = o.id)}
+				class={[
+					'rounded-xl px-2 py-2 text-left leading-none transition active:scale-[0.97]',
+					selected
+						? 'bg-white shadow-sm dark:bg-stone-800 dark:shadow-black/40'
+						: 'hover:bg-white/60 dark:hover:bg-white/5'
+				]}
+			>
+				<span class="block text-[13px] font-extrabold text-ink-900 dark:text-white">{o.title}</span>
+				<span class="mt-1 block text-[11px] font-medium text-stone-500 dark:text-stone-400">{o.desc}</span>
+			</button>
+		{/each}
+	</div>
 	<div class="mt-3 grid gap-2">
 		<button type="button" onclick={() => (picker = 'subject')} class={pickRowBtn}>
 			<span class="min-w-0 flex-1">

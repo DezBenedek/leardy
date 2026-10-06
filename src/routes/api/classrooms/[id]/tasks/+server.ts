@@ -89,7 +89,8 @@ export const POST: RequestHandler = async (event) => {
 		title: 'Új tantermi feladat',
 		body: title || 'Új kvízfeladat érkezett.',
 		url: `/tanterem/${id}`,
-		tag: `task:${taskId}`
+		tag: `task:${taskId}`,
+		kind: 'task'
 	}));
 	return json({ ok: true, id: taskId }, { status: 201 });
 };

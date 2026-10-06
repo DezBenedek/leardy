@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { browser } from '$app/environment';
-	import { Lightbulb, RotateCcw, Shuffle } from '@lucide/svelte';
+	import { Check, Lightbulb, RotateCcw, Shuffle, X } from '@lucide/svelte';
 	import type { QuizQuestion } from '$lib/curriculum';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 
 	/* Quizlet-stílusú pakli: minden kérdés külön kártya.
-	   Koppintás = fordítás, húzás jobbra = tudom, balra = még tanulom.
+	   Koppintás = fordítás, húzás jobbra = Tudom, balra = Nem tudom.
 	   Nyilakkal is megy (←/→/szóköz). */
 
 	interface Props {
@@ -16,9 +16,11 @@
 		onDone?: (score: number, total: number) => void;
 		/** Minden lapozáskor lefut (kártya-azonosító, tudta-e), a kártyánkénti szinthez. */
 		onCard?: (id: string, known: boolean) => void;
+		/** Megfordított pakli: elöl a válasz, hátul a kérdés. */
+		swapped?: boolean;
 	}
 
-	let { questions, onDone, onCard }: Props = $props();
+	let { questions, onDone, onCard, swapped = false }: Props = $props();
 
 	const SWIPE_AT = 110;
 
@@ -46,6 +48,9 @@
 	let vertical = false;
 	let moved = false;
 	let exitTimer: ReturnType<typeof setTimeout> | undefined;
+	/** Kártyaváltás pillanatában igaz: az új lap átmenet nélkül jelenik meg,
+	   nem csúszik vissza és nem fordul meg zavaróan. */
+	let suppressAnim = $state(false);
 
 	let finished = $derived(cards.length > 0 && idx >= cards.length);
 	let current = $derived(cards[Math.min(idx, cards.length - 1)]);
@@ -67,6 +72,23 @@
 		return a;
 	}
 
+	/** Új lap azonnali megjelenítése átmenet nélkül. */
+	function showInstant() {
+		suppressAnim = true;
+		dragX = 0;
+		exitDir = 0;
+		dragging = false;
+		if (browser) {
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => {
+					suppressAnim = false;
+				});
+			});
+		} else {
+			suppressAnim = false;
+		}
+	}
+
 	function deal(reshuffle: boolean) {
 		clearTimeout(exitTimer);
 		cards = reshuffle ? shuffle(pool) : [...pool];
@@ -74,9 +96,7 @@
 		revealed = false;
 		known = 0;
 		notified = false;
-		dragX = 0;
-		exitDir = 0;
-		dragging = false;
+		showInstant();
 	}
 
 	// Új kérdéssor → új osztás. Untrack kell: a deal belső állapotokat
@@ -84,6 +104,14 @@
 	$effect(() => {
 		void questions.length;
 		untrack(() => deal(false));
+	});
+
+	// Csere kapcsolásakor mindig az új előlap látszódjon.
+	$effect(() => {
+		void swapped;
+		untrack(() => {
+			revealed = false;
+		});
 	});
 
 	$effect(() => {
@@ -110,8 +138,9 @@
 		exitTimer = setTimeout(() => {
 			idx += 1;
 			revealed = false;
-			dragX = 0;
-			exitDir = 0;
+			// A következő lap már ne az előző helyéről csússzon vissza,
+			// és ne játssza vissza a fordítást: azonnal, átmenet nélkül áll be.
+			showInstant();
 		}, 260);
 	}
 
@@ -185,14 +214,46 @@
 	});
 
 	let dragStyle = $derived(
-		exitDir !== 0
-			? `transform: translateX(${dragX}px) rotate(${dragX / 18}deg); opacity: 0; transition: transform 0.26s ease-in, opacity 0.26s;`
-			: dragging
-				? `transform: translateX(${dragX}px) rotate(${dragX / 22}deg); transition: none;`
-				: `transform: translateX(0px) rotate(0deg); transition: transform 0.25s cubic-bezier(0.32,0.72,0,1);`
+		suppressAnim
+			? `transform: none; opacity: 1; transition: none;`
+			: exitDir !== 0
+				? `transform: translateX(${dragX}px) rotate(${dragX / 18}deg); opacity: 0; transition: transform 0.26s ease-in, opacity 0.26s;`
+				: dragging
+					? `transform: translateX(${dragX}px) rotate(${dragX / 22}deg); transition: none;`
+					: `transform: translateX(0px) rotate(0deg); transition: transform 0.25s cubic-bezier(0.32,0.72,0,1);`
 	);
 
 	let hintOpacity = $derived(Math.min(Math.abs(dragX) / 80, 1));
+	/** Húzás iránya: jobbra = Tudom (zöld), balra = Nem tudom (piros). */
+	let swipeDir = $derived(dragging && Math.abs(dragX) > 20 ? (dragX > 0 ? 'right' : 'left') : null);
+
+	/** Automatikus betűméret: rövid szöveg nagyra nő, hosszú kicsire zsugorodik,
+	   a felesleg túlcsordulás helyett levágódik (line-clamp + overflow-hidden). */
+	function fitSize(text: string | undefined, base: number): number {
+		const len = (text ?? '').trim().length;
+		if (len <= 8) return base + 14;
+		if (len <= 20) return base + 10;
+		if (len <= 40) return base + 6;
+		if (len <= 80) return base + 2;
+		if (len <= 160) return base;
+		if (len <= 300) return base - 2;
+		return base - 4;
+	}
+
+	let qSize = $derived(current ? fitSize(current.question_text, 20) : 20);
+	let aSize = $derived(current ? fitSize(current.correct_answer, 21) : 21);
+	/** Megfordított pakli: elöl a válasz, hátul a kérdés. */
+	let frontLabel = $derived(swapped ? 'Válasz' : 'Kérdés');
+	let backLabel = $derived(swapped ? 'Kérdés' : 'Válasz');
+	let frontText = $derived(current ? (swapped ? current.correct_answer : current.question_text) : '');
+	let backText = $derived(current ? (swapped ? current.question_text : current.correct_answer) : '');
+	let frontSize = $derived(swapped ? aSize : qSize);
+	let backSize = $derived(swapped ? qSize : aSize);
+	let flipCls = $derived(
+		suppressAnim
+			? 'relative h-full transition-none [transform-style:preserve-3d]'
+			: 'relative h-full transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none [transform-style:preserve-3d]'
+	);
 </script>
 
 {#if cards.length === 0}
@@ -252,7 +313,7 @@
 			<div
 				role="button"
 				tabindex="0"
-				aria-label="Kártya: {current.question_text}. Koppintás a fordításhoz, húzás jobbra ha tudod, balra ha nem."
+				aria-label="Kártya: {frontText}. Koppintás a fordításhoz, húzás jobbra ha tudod, balra ha nem tudod."
 				onpointerdown={onDown}
 				onpointermove={onMove}
 				onpointerup={onUp}
@@ -262,52 +323,97 @@
 			>
 				<div
 					class={[
-						'relative h-full transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
-						'[transform-style:preserve-3d]',
+						flipCls,
 						revealed ? '[transform:rotateY(180deg)]' : ''
 					]}
 				>
 					<div
-						class="absolute inset-0 flex flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] border border-stone-200 bg-white p-6 text-center shadow-lg shadow-stone-900/5 [backface-visibility:hidden] dark:border-white/10 dark:bg-stone-900 dark:shadow-black/30"
+						class={[
+							'absolute inset-0 flex flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] border bg-white p-6 text-center shadow-lg shadow-stone-900/5 [backface-visibility:hidden] dark:bg-stone-900 dark:shadow-black/30',
+							swipeDir === 'right'
+								? 'border-emerald-500 ring-4 ring-emerald-500/40 dark:border-emerald-400'
+								: swipeDir === 'left'
+									? 'border-red-500 ring-4 ring-red-500/40 dark:border-red-400'
+									: 'border-stone-200 dark:border-white/10'
+						]}
 					>
-						<span
-							aria-hidden="true"
-							class="pointer-events-none absolute top-1/2 -left-2 -translate-y-1/2 -rotate-90 rounded-full bg-red-500 px-3 py-1 text-[11px] font-extrabold tracking-wider text-white uppercase transition-opacity"
-							style="opacity: {dragging && dragX < -20 ? hintOpacity : 0}"
-						>
-							Tanulom
-						</span>
-						<span
-							aria-hidden="true"
-							class="pointer-events-none absolute top-1/2 -right-2 -translate-y-1/2 rotate-90 rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-extrabold tracking-wider text-white uppercase transition-opacity"
-							style="opacity: {dragging && dragX > 20 ? hintOpacity : 0}"
-						>
-							Tudom
-						</span>
 						<p class="text-[11px] font-bold tracking-widest text-stone-400 uppercase dark:text-stone-500">
-							Kérdés
+							{frontLabel}
 						</p>
-						<p class="line-clamp-6 text-[19px] leading-snug font-extrabold text-balance text-ink-900 sm:text-[21px] dark:text-white">
-							{current.question_text}
+						<p
+							class="line-clamp-6 leading-snug font-extrabold text-balance text-ink-900 dark:text-white"
+							style="font-size: {frontSize}px"
+						>
+							{frontText}
 						</p>
 						<p class="mt-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-stone-400 dark:text-stone-500">
 							<Lightbulb size={15} aria-hidden="true" /> Koppints a felfedéshez
 						</p>
+						{#if swipeDir}
+							<div
+								aria-hidden="true"
+								class={[
+									'pointer-events-none absolute inset-0 flex items-center justify-center',
+									swipeDir === 'right' ? 'bg-emerald-500' : 'bg-red-500'
+								]}
+								style="opacity: {hintOpacity}"
+							>
+								<span
+									class="inline-flex items-center gap-2 rounded-2xl bg-white/20 px-5 py-2.5 text-[26px] font-extrabold tracking-tight text-white"
+								>
+									{#if swipeDir === 'right'}
+										<Check size={26} strokeWidth={3.5} aria-hidden="true" /> Tudom
+									{:else}
+										<X size={26} strokeWidth={3.5} aria-hidden="true" /> Nem tudom
+									{/if}
+								</span>
+							</div>
+						{/if}
 					</div>
 					<div
-						class="absolute inset-0 flex flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] bg-brand-600 p-6 text-center shadow-lg shadow-brand-600/25 [backface-visibility:hidden] [transform:rotateY(180deg)] dark:bg-brand-500"
+						class={[
+							'absolute inset-0 flex flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] bg-brand-600 p-6 text-center shadow-lg shadow-brand-600/25 [backface-visibility:hidden] [transform:rotateY(180deg)] dark:bg-brand-500',
+							swipeDir === 'right'
+								? 'ring-4 ring-emerald-300'
+								: swipeDir === 'left'
+									? 'ring-4 ring-red-300'
+									: ''
+						]}
 					>
-						<p class="text-[11px] font-bold tracking-widest text-white/60 uppercase">Válasz</p>
-						<p class="line-clamp-6 text-[20px] leading-snug font-extrabold text-balance text-white sm:text-[22px]">
-							{current.correct_answer}
+						<p class="text-[11px] font-bold tracking-widest text-white/60 uppercase">{backLabel}</p>
+						<p
+							class="line-clamp-6 leading-snug font-extrabold text-balance text-white"
+							style="font-size: {backSize}px"
+						>
+							{backText}
 						</p>
+						{#if swipeDir}
+							<div
+								aria-hidden="true"
+								class={[
+									'pointer-events-none absolute inset-0 flex items-center justify-center',
+									swipeDir === 'right' ? 'bg-emerald-500' : 'bg-red-500'
+								]}
+								style="opacity: {hintOpacity}"
+							>
+								<span
+									class="inline-flex items-center gap-2 rounded-2xl bg-white/20 px-5 py-2.5 text-[26px] font-extrabold tracking-tight text-white"
+								>
+									{#if swipeDir === 'right'}
+										<Check size={26} strokeWidth={3.5} aria-hidden="true" /> Tudom
+									{:else}
+										<X size={26} strokeWidth={3.5} aria-hidden="true" /> Nem tudom
+									{/if}
+								</span>
+							</div>
+						{/if}
 					</div>
 				</div>
 			</div>
 		</div>
 
 		<p class="mt-3 text-center text-[12px] font-medium text-stone-400 dark:text-stone-500">
-			Húzd jobbra, ha tudod · balra, ha még tanulod
+			Húzd jobbra, ha tudod · balra, ha nem tudod
 		</p>
 			</div>
 		</div>

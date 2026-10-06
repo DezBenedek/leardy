@@ -2,6 +2,7 @@
 	import {
 		Bell,
 		BellOff,
+		BellRing,
 		ChevronRight,
 		Database,
 		HardDrive,
@@ -12,6 +13,7 @@
 		Moon,
 		Palette,
 		Pencil,
+		Send,
 		Smartphone,
 		Sparkles,
 		Sun,
@@ -201,6 +203,36 @@
 	}
 
 	let notifBusy = $state(false);
+	let testBusy = $state(false);
+	let classroomNames = $state<Record<string, string>>({});
+	let mutedLoading = $state(false);
+
+	function mutedName(id: string): string {
+		return classroomNames[id] ?? 'Névtelen osztály';
+	}
+
+	async function loadMutedNames() {
+		if (mutedLoading) return;
+		if (settings.mutedClassrooms.length === 0) return;
+		mutedLoading = true;
+		try {
+			const res = await fetch('/api/classrooms', { credentials: 'same-origin' });
+			if (!res.ok) return;
+			const j = (await res.json()) as {
+				teaching?: { id: string; name: string }[];
+				joined?: { id: string; name: string }[];
+			};
+			const map: Record<string, string> = {};
+			for (const r of [...(j.teaching ?? []), ...(j.joined ?? [])]) {
+				if (r?.id) map[r.id] = r.name || 'Névtelen osztály';
+			}
+			classroomNames = map;
+		} catch {
+			// név nélkül is feloldható
+		} finally {
+			mutedLoading = false;
+		}
+	}
 
 	async function enableNotif() {
 		if (notifBusy) return;
@@ -208,9 +240,15 @@
 		try {
 			notifPerm = await requestNotifPermission();
 			if (notifPerm === 'granted') {
-				toast.success('Értesítések bekapcsolva', 'Most már szól a napi jelzés és a határidőfigyelő.');
+				toast.success('Értesítések engedélyezve', 'Most kapcsold be a push-t is, hogy zárt appnál is szóljon.');
+				pushState()
+					.then((s) => {
+						pushSt = s;
+						pushKnown = true;
+					})
+					.catch(() => {});
 			} else if (notifPerm === 'denied') {
-				toast.error('Le van tiltva', 'A böngésző beállításaiban engedélyezd az értesítéseket.');
+				toast.error('Le van tiltva', 'A böngésző beállításaiban kapcsold vissza az értesítéseket.');
 			}
 		} finally {
 			notifBusy = false;
@@ -220,7 +258,16 @@
 	$effect(() => {
 		if (sheet === 'notif') {
 			refreshNotifPerm();
-			pushState().then((s) => (pushSt = s)).catch(() => (pushSt = 'off'));
+			pushState()
+				.then((s) => {
+					pushSt = s;
+					pushKnown = true;
+				})
+				.catch(() => {
+					pushSt = 'off';
+					pushKnown = true;
+				});
+			loadMutedNames().catch(() => {});
 		}
 	});
 
@@ -240,10 +287,12 @@
 				const res = await subscribePush();
 				if (res.ok) {
 					pushSt = 'on';
+					pushKnown = true;
 					refreshNotifPerm();
-					toast.success('Push bekapcsolva', 'Zárt appnál is szólunk.');
+					toast.success('Push bekapcsolva', 'Üzenet, feladat és jegy zárt appnál is megérkezik.');
 				} else {
 					if (pushSt !== 'denied') pushSt = await pushState().catch(() => pushSt);
+					pushKnown = true;
 					toast.error('Nem sikerült', res.error);
 				}
 			}
@@ -252,12 +301,23 @@
 		}
 	}
 
-	function pushLabel(): string {
-		if (pushSt === 'on') return 'Bekapcsolva';
-		if (pushSt === 'denied') return 'Tiltva a böngészőben';
-		if (pushSt === 'unsupported') return 'Nem támogatott';
-		return 'Kikapcsolva';
+	async function sendTestPush() {
+		if (testBusy) return;
+		testBusy = true;
+		try {
+			const res = await fetch('/api/push/test', { method: 'POST', credentials: 'same-origin' });
+			const j = (await res.json().catch(() => ({}))) as { error?: string };
+			if (res.ok) {
+				toast.success('Teszt elküldve', 'Zárd be az appot: pár másodpercen belül meg kell érkeznie.');
+			} else {
+				toast.error('Nem sikerült', j.error ?? 'Próbáld újra!');
+			}
+		} finally {
+			testBusy = false;
+		}
 	}
+
+
 
 	async function exportAccountData() {
 		if (exportBusy) return;
@@ -316,18 +376,26 @@
 	});
 
 	let notifOn = $derived(
-		[settings.reminder, settings.pushClassMessage, settings.pushClassTask, settings.pushFeatures, settings.dueSoon].filter(
-			Boolean
-		).length
+		[
+			settings.reminder,
+			settings.pushClassMessage,
+			settings.pushClassTask,
+			settings.pushGrades,
+			settings.pushFeatures,
+			settings.dueSoon
+		].filter(Boolean).length
 	);
+	let pushKnown = $state(false);
 	let notifSummary = $derived(
 		!canNotifySafe()
-			? 'Böngészőengedély kell'
-			: notifOn === 5
-				? 'Mind él'
-				: notifOn === 0
-					? 'Mind ki'
-					: `${notifOn}/5 él`
+			? 'Először engedélyezd a böngészőben'
+			: !pushKnown
+				? `${notifOn}/6 bekapcsolva`
+				: pushSt === 'on'
+					? `${notifOn}/6 bekapcsolva, push él`
+					: notifOn === 0
+						? 'Minden jelzés ki'
+						: `${notifOn}/6 bekapcsolva, push ki`
 	);
 	function canNotifySafe(): boolean {
 		try {
@@ -533,136 +601,170 @@
 				{/if}
 			</div>
 		{:else if sheet === 'notif'}
-			<ul class="mt-1 divide-y divide-stone-100 dark:divide-white/5">
-				{#if notifPerm !== 'granted'}
-					<li class="flex items-center gap-3 py-3">
-						<div class="min-w-0 flex-1">
-							<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Böngészőengedély</p>
-							<p class="text-[13px] text-ink-400 dark:text-stone-500">
-								{#if notifPerm === 'denied'}
-									Le van tiltva. A böngésző beállításaiban engedélyezd.
-								{:else if notifPerm === 'unsupported'}
-									Ez a böngésző nem támogatja az értesítéseket.
-								{:else}
-									Enélkül a napi jelzés és a figyelők néma maradnak.
-								{/if}
-							</p>
-						</div>
-						<button
-							type="button"
-							onclick={enableNotif}
-							disabled={notifBusy || notifPerm === 'denied' || notifPerm === 'unsupported'}
-							class="shrink-0 rounded-full bg-brand-500 px-3.5 py-2 text-[13px] font-bold text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
-						>
-							{notifBusy ? '…' : 'Engedélyezem'}
-						</button>
-					</li>
-				{/if}
-				<li class="flex items-center gap-3 py-3">
-					<div class="min-w-0 flex-1">
-						<p class="flex items-center gap-1.5 text-[15px] font-semibold text-ink-900 dark:text-white">
-							<Smartphone size={15} /> Push értesítés
-						</p>
-						<p class="text-[13px] text-ink-400 dark:text-stone-500">
-							{pushLabel()}. Üzenetről, feladatról és jegyről zárt appnál is szól.
-						</p>
-					</div>
-					{#if pushSt === 'on'}
-						<button
-							type="button"
-							onclick={togglePush}
-							disabled={pushBusy}
-							class="shrink-0 rounded-full border border-stone-200 px-3.5 py-2 text-[13px] font-bold text-ink-600 transition hover:bg-stone-50 active:scale-95 disabled:opacity-60 dark:border-white/15 dark:text-stone-300 dark:hover:bg-white/10"
-						>
-							{pushBusy ? '…' : 'Kikapcsolom'}
-						</button>
-					{:else}
-						<button
-							type="button"
-							onclick={togglePush}
-							disabled={pushBusy || pushSt === 'unsupported' || pushSt === 'denied'}
-							class="shrink-0 rounded-full bg-brand-500 px-3.5 py-2 text-[13px] font-bold text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
-						>
-							{pushBusy ? '…' : 'Bekapcsolom'}
-						</button>
-					{/if}
-				</li>
-				<li class="flex items-center gap-2.5 py-3">
-					<div class="min-w-0 flex-1">
-						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Napi jelzés</p>
-						<p class="text-[13px] text-ink-400 dark:text-stone-500">Egyszer szól naponta, a választott időben</p>
-					</div>
-					<input
-						type="time"
-						value={settings.reminderTime}
-						onchange={onReminderTime}
-						disabled={!settings.reminder}
-						aria-label="Napi időpont"
-						class="w-[118px] shrink-0 rounded-xl border border-stone-200 bg-white px-3 py-2 text-center text-[15px] font-semibold text-ink-900 tabular-nums outline-none transition [color-scheme:light] focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-white dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-					/>
-					<Toggle bind:checked={settings.reminder} label="Napi jelzés" />
-				</li>
-				<li class="flex items-center gap-3 py-3">
-					<div class="min-w-0 flex-1">
-						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Határidőfigyelő</p>
-						<p class="text-[13px] text-ink-400 dark:text-stone-500">Jelez 24 órával lejárat előtt</p>
-					</div>
-					<Toggle bind:checked={settings.dueSoon} label="Határidőfigyelő" />
-				</li>
-				<li class="flex items-center gap-3 py-3">
-					<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Bejövő üzenetek</p>
-					<Toggle bind:checked={settings.pushClassMessage} label="Bejövő üzenetek" />
-				</li>
-				<li class="flex items-center gap-3 py-3">
-					<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Kiosztott feladatok</p>
-					<Toggle bind:checked={settings.pushClassTask} label="Kiosztott feladatok" />
-				</li>
-				<li class="flex items-center gap-3 py-3">
-					<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Újdonságok</p>
-					<Toggle bind:checked={settings.pushFeatures} label="Újdonságok" />
-				</li>
-				<li class="py-3">
-					<div class="flex items-center gap-3">
-						<div class="min-w-0 flex-1">
-							<p class="flex items-center gap-1.5 text-[15px] font-semibold text-ink-900 dark:text-white">
-								<BellOff size={15} /> Némítottak
-							</p>
-							<p class="text-[13px] text-ink-400 dark:text-stone-500">
-								{#if settings.mutedClassrooms.length === 0}
-									Most minden osztály jelezhet.
-								{:else}
-									{settings.mutedClassrooms.length} némítva. Feloldás az osztály oldalán, a csengővel.
-								{/if}
-							</p>
-						</div>
-						{#if settings.mutedClassrooms.length > 0}
-							<button
-								type="button"
-								onclick={unmuteAll}
-								class="shrink-0 rounded-full border border-stone-200 px-3.5 py-2 text-[13px] font-bold text-ink-600 dark:border-white/15 dark:text-stone-300"
-							>
-								Mind feloldom
-							</button>
-						{/if}
-					</div>
-					{#if settings.mutedClassrooms.length > 0}
-						<ul class="mt-2 grid gap-1.5">
-							{#each settings.mutedClassrooms as id (id)}
-								<li class="flex items-center gap-2 rounded-xl bg-stone-100 px-3 py-2 dark:bg-white/5">
-									<span class="min-w-0 flex-1 truncate font-mono text-[12px] text-stone-500 dark:text-stone-400">{id}</span>
+			<div class="mt-1">
+				<div class="rounded-2xl border border-stone-200 bg-stone-50 p-4 dark:border-white/10 dark:bg-white/5">
+					{#if notifPerm !== 'granted'}
+						<div class="flex items-start gap-3">
+							<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+								<Bell size={20} />
+							</span>
+							<div class="min-w-0 flex-1">
+								<p class="text-[15px] font-bold text-ink-900 dark:text-white">
+									{#if notifPerm === 'denied'}
+										Az értesítések le vannak tiltva
+									{:else if notifPerm === 'unsupported'}
+										Nem támogatott ezen az eszközön
+									{:else}
+										Értesítések engedélyezése
+									{/if}
+								</p>
+								{#if notifPerm !== 'denied' && notifPerm !== 'unsupported'}
 									<button
 										type="button"
-										onclick={() => unmuteClassroom(id)}
-										class="shrink-0 text-[13px] font-bold text-brand-600 dark:text-brand-400"
+										onclick={enableNotif}
+										disabled={notifBusy}
+										class="mt-2.5 rounded-full bg-brand-500 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
 									>
-										Feloldom
+										{notifBusy ? '…' : 'Értesítések engedélyezése'}
 									</button>
-								</li>
-							{/each}
-						</ul>
+								{/if}
+							</div>
+						</div>
+					{:else if pushSt === 'on'}
+						<div class="flex items-start gap-3">
+							<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+								<BellRing size={20} />
+							</span>
+							<div class="min-w-0 flex-1">
+								<p class="text-[15px] font-bold text-ink-900 dark:text-white">Push bekapcsolva</p>
+								<div class="mt-2.5 flex flex-wrap gap-2">
+									<button
+										type="button"
+										onclick={sendTestPush}
+										disabled={testBusy}
+										class="inline-flex items-center gap-1.5 rounded-full bg-brand-500 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
+									>
+										<Send size={14} />
+										{testBusy ? 'Küldés…' : 'Teszt küldése'}
+									</button>
+									<button
+										type="button"
+										onclick={togglePush}
+										disabled={pushBusy}
+										class="rounded-full border border-stone-200 bg-white px-4 py-2 text-[13px] font-bold text-ink-600 transition hover:bg-stone-100 active:scale-95 disabled:opacity-60 dark:border-white/15 dark:bg-transparent dark:text-stone-300 dark:hover:bg-white/10"
+									>
+										{pushBusy ? '…' : 'Push kikapcsolása'}
+									</button>
+								</div>
+							</div>
+						</div>
+					{:else if pushSt === 'denied'}
+						<div class="flex items-start gap-3">
+							<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300">
+								<BellOff size={20} />
+							</span>
+							<div class="min-w-0 flex-1">
+								<p class="text-[15px] font-bold text-ink-900 dark:text-white">Le van tiltva a böngészőben</p>
+							</div>
+						</div>
+					{:else if pushSt === 'unsupported'}
+						<div class="flex items-start gap-3">
+							<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-stone-200 text-stone-500 dark:bg-white/10 dark:text-stone-400">
+								<Smartphone size={20} />
+							</span>
+							<div class="min-w-0 flex-1">
+								<p class="text-[15px] font-bold text-ink-900 dark:text-white">Nem támogatott ezen az eszközön</p>
+							</div>
+						</div>
+					{:else}
+						<div class="flex items-start gap-3">
+							<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-stone-200 text-stone-500 dark:bg-white/10 dark:text-stone-400">
+								<Bell size={20} />
+							</span>
+							<div class="min-w-0 flex-1">
+								<p class="text-[15px] font-bold text-ink-900 dark:text-white">Push kikapcsolva</p>
+								<button
+									type="button"
+									onclick={togglePush}
+									disabled={pushBusy}
+									class="mt-2.5 rounded-full bg-brand-500 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
+								>
+									{pushBusy ? '…' : 'Push bekapcsolása'}
+								</button>
+							</div>
+						</div>
 					{/if}
-				</li>
-			</ul>
+				</div>
+
+				<p class="mt-5 text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">Tantermi értesítések</p>
+				<ul class="divide-y divide-stone-100 dark:divide-white/5">
+					<li class="flex items-center gap-3 py-3">
+						<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Tantermi üzenetek</p>
+						<Toggle bind:checked={settings.pushClassMessage} label="Tantermi üzenetek" />
+					</li>
+					<li class="flex items-center gap-3 py-3">
+						<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Feladatok és beadandók</p>
+						<Toggle bind:checked={settings.pushClassTask} label="Feladatok és beadandók" />
+					</li>
+					<li class="flex items-center gap-3 py-3">
+						<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Jegyek és visszajelzések</p>
+						<Toggle bind:checked={settings.pushGrades} label="Jegyek és visszajelzések" />
+					</li>
+				</ul>
+
+				<p class="mt-5 text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">Emlékeztetők</p>
+				<ul class="divide-y divide-stone-100 dark:divide-white/5">
+					<li class="flex items-center gap-2.5 py-3">
+						<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Napi emlékeztető</p>
+						<input
+							type="time"
+							value={settings.reminderTime}
+							onchange={onReminderTime}
+							disabled={!settings.reminder}
+							aria-label="Napi időpont"
+							class="w-[118px] shrink-0 rounded-xl border border-stone-200 bg-white px-3 py-2 text-center text-[15px] font-semibold text-ink-900 tabular-nums outline-none transition [color-scheme:light] focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-white dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+						/>
+						<Toggle bind:checked={settings.reminder} label="Napi emlékeztető" />
+					</li>
+					<li class="flex items-center gap-3 py-3">
+						<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Határidőfigyelő</p>
+						<Toggle bind:checked={settings.dueSoon} label="Határidőfigyelő" />
+					</li>
+					<li class="flex items-center gap-3 py-3">
+						<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Újdonságok</p>
+						<Toggle bind:checked={settings.pushFeatures} label="Újdonságok" />
+					</li>
+				</ul>
+
+				{#if settings.mutedClassrooms.length > 0}
+					<p class="mt-5 text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">Némított osztályok</p>
+					<div class="mt-2 flex items-center justify-end">
+						<button
+							type="button"
+							onclick={unmuteAll}
+							class="shrink-0 rounded-full border border-stone-200 px-3.5 py-2 text-[13px] font-bold text-ink-600 dark:border-white/15 dark:text-stone-300"
+						>
+							Mind feloldom
+						</button>
+					</div>
+					<ul class="mt-2 grid gap-1.5">
+						{#each settings.mutedClassrooms as id (id)}
+							<li class="flex items-center gap-2 rounded-xl bg-stone-100 px-3 py-2 dark:bg-white/5">
+								<span class="min-w-0 flex-1 truncate text-[13px] font-semibold text-stone-600 dark:text-stone-300">
+									{mutedLoading && !classroomNames[id] ? 'Betöltés…' : mutedName(id)}
+								</span>
+								<button
+									type="button"
+									onclick={() => unmuteClassroom(id)}
+									class="shrink-0 text-[13px] font-bold text-brand-600 dark:text-brand-400"
+								>
+									Feloldom
+								</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
 		{:else if sheet === 'theme'}
 			<p class="mt-3 text-[13px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">Téma</p>
 			<div

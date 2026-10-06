@@ -113,9 +113,11 @@
 	function reqSummary(): string {
 		const parts: string[] = [];
 		if (assignment.require_text) parts.push('Szöveg');
-		if (assignment.require_images) parts.push(`Kép (max. ${assignment.max_images})`);
+		if (assignment.require_images)
+			parts.push(assignment.max_images > 0 ? `Kép (max. ${assignment.max_images})` : 'Kép');
 		if ((assignment.require_audio ?? 0) === 1) parts.push('Hang');
-		if (assignment.require_files) parts.push(`Fájl (max. ${assignment.max_files})`);
+		if (assignment.require_files)
+			parts.push(assignment.max_files > 0 ? `Fájl (max. ${assignment.max_files})` : 'Fájl');
 		return parts.length > 0 ? parts.join(' · ') : 'Szabad beküldés';
 	}
 

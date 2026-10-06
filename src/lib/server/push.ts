@@ -52,10 +52,11 @@ async function hkdf(salt: Uint8Array, ikm: Uint8Array, info: Uint8Array, len: nu
 }
 
 function derToRaw(sig: Uint8Array): Uint8Array {
-	// ES256 alairas normalizalasa r || s (64 byte) alakra.
-	// A WebCrypto elmeletileg DER-t ad, de egyes futtatokornyezetek
-	// (pl. Node) nyers osszefuzest adnak vissza: azt is elfogadjuk.
-	if (sig.length >= 63 && sig.length <= 66 && sig[0] !== 0x30) {
+	// A WebCrypto ECDSA aláírása DER kódolású (70-72 bájt), ezt alakítjuk
+	// 64 bájtos r||s alakra a VAPID JWT-hez. Egyes futtatókörnyezetek nyers
+	// r||s-t adnak: a 64 bájtos aláírást soha nem DER-ként olvassuk, mert
+	// az r első bájtja véletlenül lehet 0x30, és akkor a push elhasalna.
+	if (sig.length === 64 || (sig.length >= 63 && sig.length <= 66 && sig[0] !== 0x30)) {
 		const half = Math.floor(sig.length / 2);
 		const r = sig.slice(0, half);
 		const s = sig.slice(half);
@@ -180,6 +181,49 @@ async function subscriptionsForUsers(db: D1Database, userIds: string[]): Promise
 		for (const r of rows.results ?? []) out.push(r);
 	}
 	return out;
+}
+
+type PushKind = 'message' | 'task' | 'assignment' | 'grade';
+
+/* Némított osztály és kikapcsolt kapcsoló: ezekre nem küldünk push-t.
+ * Nincs sor: minden mehet (régi fiók, még nem szinkronizált beállítás). */
+async function allowedRecipients(
+	db: D1Database,
+	userIds: string[],
+	kind: PushKind,
+	classroomId: string
+): Promise<string[]> {
+	const uniq = [...new Set(userIds)].filter(Boolean);
+	if (uniq.length === 0) return [];
+	await ensureSecuritySchema(db);
+	const blocked = new Set<string>();
+	for (let i = 0; i < uniq.length; i += 50) {
+		const chunk = uniq.slice(i, i + 50);
+		const rows = await db
+			.prepare(
+				`SELECT user_id, messages, tasks, grades, muted_json FROM notification_prefs
+				 WHERE user_id IN (${chunk.map(() => '?').join(',')})`
+			)
+			.bind(...chunk)
+			.all<{ user_id: string; messages: number; tasks: number; grades: number; muted_json: string }>();
+		for (const r of rows.results ?? []) {
+			let muted: string[] = [];
+			try {
+				const parsed = JSON.parse(r.muted_json) as unknown;
+				if (Array.isArray(parsed)) muted = parsed.filter((x): x is string => typeof x === 'string');
+			} catch {
+				muted = [];
+			}
+			if (classroomId && muted.includes(classroomId)) {
+				blocked.add(r.user_id);
+				continue;
+			}
+			if (kind === 'message' && r.messages === 0) blocked.add(r.user_id);
+			if ((kind === 'task' || kind === 'assignment') && r.tasks === 0) blocked.add(r.user_id);
+			if (kind === 'grade' && r.grades === 0) blocked.add(r.user_id);
+		}
+	}
+	return uniq.filter((id) => !blocked.has(id));
 }
 
 function vapidJwt(publicKey: string, privateJwk: JsonWebKey, audience: string): Promise<string> {
@@ -308,8 +352,12 @@ export async function sendPushToSubscription(
 			await deletePushEndpoint(db, sub.endpoint);
 			return false;
 		}
+		if (!res.ok) {
+			console.warn(`Push kézbesítés sikertelen: ${res.status} (${endpoint.host})`);
+		}
 		return res.ok;
-	} catch {
+	} catch (e) {
+		console.warn(`Push küldési hiba: ${e instanceof Error ? e.message : 'ismeretlen'}`);
 		return false;
 	}
 }
@@ -332,9 +380,13 @@ export function fireNotify(event: { platform?: unknown }, task: Promise<unknown>
 /* Egy felhasznalo osszes eszkozere kuldes (pl. ertekeles ertesito). */
 export async function notifyUser(
 	db: D1Database,
-	opts: { userId: string; title: string; body: string; url: string; tag: string }
+	opts: { userId: string; title: string; body: string; url: string; tag: string; classroomId?: string }
 ): Promise<void> {
 	try {
+		if (opts.classroomId) {
+			const allowed = await allowedRecipients(db, [opts.userId], 'grade', opts.classroomId);
+			if (allowed.length === 0) return;
+		}
 		const subs = await subscriptionsForUsers(db, [opts.userId]);
 		if (subs.length === 0) return;
 		const msg: PushPayload = { title: opts.title, body: opts.body, url: opts.url, tag: opts.tag };
@@ -348,7 +400,15 @@ export async function notifyUser(
  * Tuzelj es felejtsd: a hivo nem varja meg (void), a valasz nem mulhat rajta. */
 export async function notifyClassroom(
 	db: D1Database,
-	opts: { classroomId: string; excludeUserId?: string; title: string; body: string; url: string; tag: string }
+	opts: {
+		classroomId: string;
+		excludeUserId?: string;
+		title: string;
+		body: string;
+		url: string;
+		tag: string;
+		kind: 'message' | 'task' | 'assignment';
+	}
 ): Promise<void> {
 	try {
 		const room = await db
@@ -360,8 +420,13 @@ export async function notifyClassroom(
 			.prepare(`SELECT user_id FROM classroom_members WHERE classroom_id = ? LIMIT 500`)
 			.bind(opts.classroomId)
 			.all<{ user_id: string }>();
-		const ids = [room.teacher_id, ...((members.results ?? []).map((m) => m.user_id))].filter(
-			(id) => id && id !== opts.excludeUserId
+		const ids = await allowedRecipients(
+			db,
+			[room.teacher_id, ...((members.results ?? []).map((m) => m.user_id))].filter(
+				(id) => id && id !== opts.excludeUserId
+			),
+			opts.kind,
+			opts.classroomId
 		);
 		const subs = await subscriptionsForUsers(db, ids);
 		if (subs.length === 0) return;

@@ -21,7 +21,7 @@ export default defineConfig({
 			filename: 'service-worker.ts',
 			registerType: 'autoUpdate',
 			injectManifest: {
-				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2}', 'icons/*.png'],
+				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2}', 'client/icons/*.png'],
 				// Az API soha nem mehet service-worker-cache-be: az élő dolgozat
 				// pollingja és a pontozás mindig hálózatról jön.
 			},

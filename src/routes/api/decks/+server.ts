@@ -25,6 +25,7 @@ export const POST: RequestHandler = async (event) => {
 	let body: {
 		title?: string;
 		kind?: string;
+		cardKind?: string;
 		subjectId?: string;
 		levelId?: string;
 		materialId?: string;
@@ -38,6 +39,7 @@ export const POST: RequestHandler = async (event) => {
 	}
 	const title = body.title?.trim() ?? '';
 	const kind = 'cards';
+	const cardKind = body.cardKind === 'study' ? 'study' : 'word';
 	const cards = (body.cards ?? [])
 		.map((c) => ({ front: c.front?.trim() ?? '', back: c.back?.trim() ?? '' }))
 		.filter((c) => c.front && c.back);
@@ -50,14 +52,15 @@ export const POST: RequestHandler = async (event) => {
 		const batch: D1PreparedStatement[] = [
 			db
 				.prepare(
-					`INSERT INTO decks (id, user_id, title, kind, subject_id, level_id, material_id, lesson_id, created_at)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+					`INSERT INTO decks (id, user_id, title, kind, card_kind, subject_id, level_id, material_id, lesson_id, created_at)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 				)
 				.bind(
 					deckId,
 					user.id,
 					title,
 					kind,
+					cardKind,
 					body.subjectId || null,
 					body.levelId || null,
 					body.materialId || null,

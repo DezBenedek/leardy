@@ -13,9 +13,10 @@
 		title?: string;
 		onClose: () => void;
 		children: Snippet;
+		headerActions?: Snippet;
 	}
 
-	let { open, label, title, onClose, children }: Props = $props();
+	let { open, label, title, onClose, children, headerActions }: Props = $props();
 
 	let panel: HTMLElement | null = $state(null);
 	let render = $state(false);
@@ -122,6 +123,9 @@
 				<p class="min-w-0 flex-1 truncate text-[15px] font-extrabold text-ink-900 dark:text-white">
 					{title ?? label}
 				</p>
+				{#if headerActions}
+					{@render headerActions()}
+				{/if}
 				<button
 					type="button"
 					onclick={beginClose}

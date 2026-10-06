@@ -34,9 +34,11 @@ export const GET: RequestHandler = async (event) => {
 		await ensureCurriculumSchema(db);
 		const g = await guard(event, db);
 		if (g instanceof Response) return g;
-		const deck = await db
+		const 		deck = await db
 			.prepare(
-				`SELECT id, title, COALESCE(kind, 'cards') AS kind, subject_id AS subjectId, level_id AS levelId,
+				`SELECT id, title, COALESCE(kind, 'cards') AS kind,
+					COALESCE(card_kind, 'word') AS cardKind,
+					subject_id AS subjectId, level_id AS levelId,
 					material_id AS materialId, lesson_id AS lessonId
 				 FROM decks WHERE id = ?`
 			)
@@ -45,6 +47,7 @@ export const GET: RequestHandler = async (event) => {
 				id: string;
 				title: string;
 				kind: string;
+				cardKind: string;
 				subjectId: string | null;
 				levelId: string | null;
 				materialId: string | null;
@@ -64,6 +67,7 @@ export const GET: RequestHandler = async (event) => {
 				id: deck.id,
 				title: deck.title,
 				kind: deck.kind === 'quiz' ? 'quiz' : 'cards',
+				cardKind: deck.cardKind === 'study' ? 'study' : 'word',
 				subjectId: deck.subjectId,
 				levelId: deck.levelId,
 				materialId: deck.materialId,
@@ -85,6 +89,7 @@ export const PATCH: RequestHandler = async (event) => {
 	let body: {
 		title?: string;
 		kind?: string;
+		cardKind?: string;
 		subjectId?: string | null;
 		levelId?: string | null;
 		materialId?: string | null;
@@ -110,6 +115,12 @@ export const PATCH: RequestHandler = async (event) => {
 		if (body.kind !== undefined) {
 			if (body.kind !== 'cards')
 				return json({ error: 'Már csak kártyacsomag van, kvízcsomag nem.' }, { status: 400 });
+		}
+		if (body.cardKind !== undefined) {
+			if (body.cardKind !== 'word' && body.cardKind !== 'study')
+				return json({ error: 'Ismeretlen csomagtípus.' }, { status: 400 });
+			sets.push('card_kind = ?');
+			args.push(body.cardKind);
 		}
 		if (body.subjectId !== undefined) {
 			sets.push('subject_id = ?');

@@ -17,7 +17,8 @@
 		Trash2,
 		X
 	} from '@lucide/svelte';
-	import type { LevelNode, Subject } from '$lib/curriculum';
+	import type { DeckCardKind, LevelNode, Subject } from '$lib/curriculum';
+	import { DECK_CARD_KINDS } from '$lib/curriculum';
 	import { toast } from '$lib/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
@@ -79,6 +80,7 @@
 
 	// Piszkozat (már csak kártyacsomag van, kvízfajta nélkül)
 	let title = $state('');
+	let cardKind = $state<DeckCardKind>('word');
 	let subjectId = $state('');
 	let levelId = $state('');
 	let materialId = $state('');
@@ -89,6 +91,7 @@
 	// Szerver-pillanatkép a dirty-figyeléshez
 	let snap = $state({
 		title: '',
+		cardKind: 'word' as DeckCardKind,
 		subject: null as string | null,
 		level: null as string | null,
 		material: null as string | null,
@@ -118,6 +121,7 @@
 	/** Változott-e valami a betöltött állapothoz képest? */
 	let dirty = $derived.by(() => {
 		if (norm(title) !== snap.title) return true;
+		if (cardKind !== snap.cardKind) return true;
 		if ((subjectId || null) !== snap.subject) return true;
 		if ((levelId || null) !== snap.level) return true;
 		if ((materialId || null) !== snap.material) return true;
@@ -178,12 +182,14 @@
 			const j = await res.json();
 			const d = j.deck;
 			title = d.title ?? '';
+			cardKind = d.cardKind === 'study' ? 'study' : 'word';
 			subjectId = d.subjectId ?? '';
 			levelId = d.levelId ?? '';
 			materialId = d.materialId ?? '';
 			lessonId = d.lessonId ?? '';
 			snap = {
 				title,
+				cardKind,
 				subject: d.subjectId ?? null,
 				level: d.levelId ?? null,
 				material: d.materialId ?? null,
@@ -288,6 +294,7 @@
 			// 1. Beállítások egyetlen PATCH-csel.
 			const patch: Record<string, string | null> = {};
 			if (t !== snap.title) patch.title = t;
+			if (cardKind !== snap.cardKind) patch.cardKind = cardKind;
 			if ((subjectId || null) !== snap.subject) patch.subjectId = subjectId || null;
 			if ((levelId || null) !== snap.level) patch.levelId = levelId || null;
 			if ((materialId || null) !== snap.material) patch.materialId = materialId || null;
@@ -301,6 +308,7 @@
 				if (!res.ok) throw new Error(await readError(res, 'Nem sikerült menteni a beállításokat.'));
 				snap = {
 					title: t,
+					cardKind,
 					subject: subjectId || null,
 					level: levelId || null,
 					material: materialId || null,
@@ -503,9 +511,29 @@
 		</label>
 
 		<p class="mt-4 text-[13px] font-semibold text-ink-900 dark:text-white">Működés</p>
-		<p class="mt-1.5 text-[13px] font-medium text-stone-500 dark:text-stone-400">
-			Szókártyacsomag Kártya, Teszt és Tanulás móddal.
-		</p>
+		<div
+			role="group"
+			aria-label="Csomag típusa"
+			class="mt-1.5 grid grid-cols-2 gap-1 rounded-2xl bg-stone-100 p-1 dark:bg-white/10"
+		>
+			{#each DECK_CARD_KINDS as o (o.id)}
+				{@const selected = cardKind === o.id}
+				<button
+					type="button"
+					aria-pressed={selected}
+					onclick={() => (cardKind = o.id)}
+					class={[
+						'rounded-xl px-2 py-2 text-left leading-none transition active:scale-[0.97]',
+						selected
+							? 'bg-white shadow-sm dark:bg-stone-800 dark:shadow-black/40'
+							: 'hover:bg-white/60 dark:hover:bg-white/5'
+					]}
+				>
+					<span class="block text-[13px] font-extrabold text-ink-900 dark:text-white">{o.title}</span>
+					<span class="mt-1 block text-[11px] font-medium text-stone-500 dark:text-stone-400">{o.desc}</span>
+				</button>
+			{/each}
+		</div>
 
 		<div class="mt-4 grid gap-2">
 			<button type="button" onclick={() => (picker = 'subject')} class={pickRowBtn}>

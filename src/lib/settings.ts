@@ -9,9 +9,10 @@ export interface AppSettings {
 	reminder: boolean;
 	/** Napi emlékeztető időpontja "HH:MM" formátumban. Minden nap szól. */
 	reminderTime: string;
-	/** Push értesítések: új tantermi üzenet, új tantermi feladat, új funkciók. */
+	/** Push értesítések: új tantermi üzenet, új tantermi feladat, új jegy, új funkciók. */
 	pushClassMessage: boolean;
 	pushClassTask: boolean;
+	pushGrades: boolean;
 	pushFeatures: boolean;
 	/** Határidő-emlékeztető: 24 órán belül lejáró tantermi feladat/beadandó. */
 	dueSoon: boolean;
@@ -37,6 +38,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 	mutedClassrooms: [],
 	pushClassMessage: true,
 	pushClassTask: true,
+	pushGrades: true,
 	pushFeatures: true,
 	sounds: false,
 	autoAudio: false,
@@ -83,6 +85,7 @@ export function loadSettings(): AppSettings {
 			mutedClassrooms: clampMuted(parsed.mutedClassrooms),
 			pushClassMessage: parsed.pushClassMessage ?? DEFAULT_SETTINGS.pushClassMessage,
 			pushClassTask: parsed.pushClassTask ?? DEFAULT_SETTINGS.pushClassTask,
+			pushGrades: parsed.pushGrades ?? DEFAULT_SETTINGS.pushGrades,
 			pushFeatures: parsed.pushFeatures ?? DEFAULT_SETTINGS.pushFeatures,
 			sounds: parsed.sounds ?? DEFAULT_SETTINGS.sounds,
 			autoAudio: parsed.autoAudio ?? DEFAULT_SETTINGS.autoAudio,
@@ -103,6 +106,23 @@ export function saveSettings(s: AppSettings): void {
 	} catch {
 		// tiltott storage: nincs mit tenni
 	}
+	syncNotifPrefs(s);
+}
+
+/** A zárt app push a szerveren szűr: némítás és kapcsolók felküldése. */
+export function syncNotifPrefs(s: AppSettings = loadSettings()): void {
+	if (!browser) return;
+	void fetch('/api/push/prefs', {
+		method: 'PUT',
+		credentials: 'same-origin',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({
+			messages: s.pushClassMessage,
+			tasks: s.pushClassTask,
+			grades: s.pushGrades,
+			muted: s.mutedClassrooms
+		})
+	}).catch(() => {});
 }
 
 /** Némított-e az adott osztály (nem jön onnan tantermi értesítés). */

@@ -1,5 +1,5 @@
 import { browser } from '$app/environment';
-import { loadSettings } from '$lib/settings';
+import { loadSettings, syncNotifPrefs } from '$lib/settings';
 import { APP_VERSION } from '$lib/version';
 
 /* Helyi push-szerű értesítések: Notification API + időzített ellenőrzés.
@@ -37,7 +37,7 @@ export function canNotify(): boolean {
 	return notifSupported() && getNotifPermission() === 'granted';
 }
 
-async function showViaServiceWorker(title: string, body: string, url: string): Promise<boolean> {
+async function showViaServiceWorker(title: string, body: string, url: string, tag: string): Promise<boolean> {
 	try {
 		if (!('serviceWorker' in navigator)) return false;
 		// Devben nincs service worker: a ready igeret sosem oldodna fel,
@@ -56,8 +56,8 @@ async function showViaServiceWorker(title: string, body: string, url: string): P
 			icon: '/icons/icon-192.png',
 			badge: '/icons/icon-192.png',
 			data: { url },
-			tag: `leardy-${url}`,
-			renotify: true
+			tag,
+			renotify: false
 		});
 		return true;
 	} catch {
@@ -68,13 +68,14 @@ async function showViaServiceWorker(title: string, body: string, url: string): P
 export async function showLocalNotification(
 	title: string,
 	body: string,
-	url = '/'
+	url = '/',
+	tag = `leardy-${url}`
 ): Promise<boolean> {
 	if (!canNotify()) return false;
-	// Kattintasra navigalas: a service worker nelkuli esethez is figyelunk.
+	// Kattintásra navigálás: a service worker nélküli esethez is figyelünk.
 	try {
-		if (await showViaServiceWorker(title, body, url)) return true;
-		const n = new Notification(title, { body, icon: '/icons/icon-192.png' });
+		if (await showViaServiceWorker(title, body, url, tag)) return true;
+		const n = new Notification(title, { body, icon: '/icons/icon-192.png', tag });
 		n.onclick = () => {
 			try {
 				window.focus();
@@ -135,7 +136,8 @@ async function checkDailyReminder(): Promise<void> {
 	const ok = await showLocalNotification(
 		'Ideje gyakorolni',
 		'Ne szakadjon meg a sorozatod, nézz rá a mai leckéidre.',
-		'/'
+		'/',
+		`reminder:${today}`
 	);
 	if (ok) setSeen(REMINDER_LAST_KEY, `${today}@${s.reminderTime}`);
 }
@@ -156,10 +158,22 @@ async function fetchJson(url: string, timeoutMs = 10_000): Promise<unknown> {
 	}
 }
 
+async function hasPushSubscription(): Promise<boolean> {
+	try {
+		if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+		const reg = await navigator.serviceWorker.getRegistration();
+		if (!reg) return false;
+		return !!(await reg.pushManager.getSubscription());
+	} catch {
+		return false;
+	}
+}
+
 async function checkClassroomUpdates(firstRun: boolean): Promise<void> {
 	const s = loadSettings();
 	if ((!s.pushClassMessage && !s.pushClassTask && !s.dueSoon) || !canNotify()) return;
 	const muted = new Set(s.mutedClassrooms ?? []);
+	const pushOn = await hasPushSubscription();
 	let list: { teaching?: ClassroomListItem[]; joined?: ClassroomListItem[] };
 	try {
 		list = (await fetchJson('/api/classrooms')) as typeof list;
@@ -188,12 +202,19 @@ async function checkClassroomUpdates(firstRun: boolean): Promise<void> {
 				// Elso indulas: csak megjegyezzuk, nem zargatunk regiekkel.
 				setSeen(key, latest.id);
 			} else if (latest.id !== seen && !firstRun) {
-				await showLocalNotification(
-					'Új tantermi üzenet',
-					latest.title || 'Új üzenet érkezett a tantermedbe.',
-					`/tanterem/${room.id}`
-				);
-				setSeen(key, latest.id);
+				// Feliratkozott eszközön a service worker már megjeleníti.
+				// Itt csak megjegyezzük, különben ugyanaz kétszer szólna.
+				if (pushOn) {
+					setSeen(key, latest.id);
+				} else {
+					const ok = await showLocalNotification(
+						'Új tantermi üzenet',
+						latest.title || 'Új üzenet érkezett a tantermedbe.',
+						`/tanterem/${room.id}`,
+						`msg:${latest.id}`
+					);
+					if (ok) setSeen(key, latest.id);
+				}
 			} else if (latest.id !== seen) {
 				setSeen(key, latest.id);
 			}
@@ -205,12 +226,17 @@ async function checkClassroomUpdates(firstRun: boolean): Promise<void> {
 			if (!seen) {
 				setSeen(key, latest.id);
 			} else if (latest.id !== seen && !firstRun) {
-				await showLocalNotification(
-					'Új tantermi feladat',
-					latest.title || 'Új feladatot kaptál a tantermedben.',
-					`/tanterem/${room.id}`
-				);
-				setSeen(key, latest.id);
+				if (pushOn) {
+					setSeen(key, latest.id);
+				} else {
+					const ok = await showLocalNotification(
+						'Új tantermi feladat',
+						latest.title || 'Új feladatot kaptál a tantermedben.',
+						`/tanterem/${room.id}`,
+						`task:${latest.id}`
+					);
+					if (ok) setSeen(key, latest.id);
+				}
 			} else if (latest.id !== seen) {
 				setSeen(key, latest.id);
 			}
@@ -230,12 +256,13 @@ async function checkClassroomUpdates(firstRun: boolean): Promise<void> {
 			for (const item of soon) {
 				const key = SEEN_DUE_PREFIX + room.id + '-' + item.id;
 				if (getSeen(key)) continue;
-				await showLocalNotification(
+				const ok = await showLocalNotification(
 					'Határidő közeleg',
 					`${item.title}: 24 órán belül lejár.`,
-					`/tanterem/${room.id}`
+					`/tanterem/${room.id}`,
+					`due:${item.id}`
 				);
-				setSeen(key, '1');
+				if (ok) setSeen(key, '1');
 			}
 		}
 	}
@@ -253,7 +280,8 @@ async function checkFeatureUpdates(): Promise<void> {
 		const ok = await showLocalNotification(
 			'Új funkciók érkeztek',
 			`Frissült a Leardy (${APP_VERSION}). Nézd meg az újdonságokat a Beállítások / Névjegy alatt.`,
-			'/beallitasok'
+			'/beallitasok',
+			`version:${APP_VERSION}`
 		);
 		if (ok) setSeen(SEEN_VERSION_KEY, APP_VERSION);
 	}
@@ -341,8 +369,6 @@ async function firstTickLoop(firstRun: boolean): Promise<void> {
 	}
 	if (!engineStopped && !document.hidden) {
 		tickTimer = setTimeout(tickLoop, 60_000);
-	} else if (!engineStopped) {
-		tickTimer = setTimeout(tickLoop, 60_000);
 	}
 }
 
@@ -350,6 +376,7 @@ export function startNotificationEngine(): void {
 	if (!browser || engineStarted) return;
 	engineStarted = true;
 	engineStopped = false;
+	syncNotifPrefs();
 	const firstRun = getSeen('leardy-notif-boot') !== '1';
 	setSeen('leardy-notif-boot', '1');
 	// Boot utan roviddel, majd percenkent. Egyetlen lancolt timer van,

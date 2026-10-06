@@ -109,6 +109,7 @@ export const DELETE: RequestHandler = async (event) => {
 		'sessions',
 		'password_reset_tokens',
 		'push_subscriptions',
+		'notification_prefs',
 		'task_submissions',
 		'assignment_submissions',
 		'assignment_uploads',

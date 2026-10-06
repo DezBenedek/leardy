@@ -90,6 +90,22 @@ export interface HomeStats {
 	todayDone: number;
 }
 
+/** Kártyacsomag típusa: Szókártya = Kártya + Teszt + Tanulás, Tanulókártya = csak kártyázás. */
+export type DeckCardKind = 'word' | 'study';
+
+export const DECK_CARD_KINDS: { id: DeckCardKind; title: string; desc: string }[] = [
+	{ id: 'word', title: 'Szókártya', desc: 'Kártya, Teszt és Tanulás mód' },
+	{ id: 'study', title: 'Tanulókártya', desc: 'Csak kártyás gyakorlás jobbra-balra' }
+];
+
+export function deckCardKindLabel(kind?: string | null): string {
+	return kind === 'study' ? 'Tanulókártya' : 'Szókártya';
+}
+
+export function isStudyDeck(kind?: string | null): boolean {
+	return kind === 'study';
+}
+
 /* Gyakorlócsomag-szerződés a server-oldal (server/curriculum.ts: listScopedPackages)
    és a felület (/gyakorlas, QuickPractice) között. */
 export interface Package {
@@ -110,6 +126,8 @@ export interface Package {
 	mine?: boolean;
 	/** Saját csomag fajtája: kártyázós vagy kvízes. */
 	kind?: 'cards' | 'quiz';
+	/** Kártyacsomag típusa: Szókártya (word) vagy Tanulókártya (study). Hiány = Szókártya. */
+	cardKind?: DeckCardKind;
 	/** Saját csomag csatolt leckéje (üres = nincs). */
 	attachedLessonId?: string;
 	attachedLessonTitle?: string;

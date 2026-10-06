@@ -105,6 +105,7 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 				id TEXT PRIMARY KEY,
 				lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
 				title TEXT NOT NULL,
+				card_kind TEXT NOT NULL DEFAULT 'word',
 				sort INTEGER NOT NULL DEFAULT 0
 			)`
 		),
@@ -125,6 +126,7 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 				user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				title TEXT NOT NULL,
 				kind TEXT NOT NULL DEFAULT 'cards',
+				card_kind TEXT NOT NULL DEFAULT 'word',
 				subject_id TEXT,
 				level_id TEXT,
 				material_id TEXT,
@@ -179,6 +181,19 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 	// Régebbi decks táblák utólagos bővítése kind-nal. Ha már létezik, a hiba elnyelhető.
 	try {
 		await db.prepare(`ALTER TABLE decks ADD COLUMN kind TEXT NOT NULL DEFAULT 'cards'`).run();
+	} catch {
+		// az oszlop már létezik
+	}
+	// Kártyacsomag típusa: Szókártya (word) vagy Tanulókártya (study).
+	try {
+		await db.prepare(`ALTER TABLE decks ADD COLUMN card_kind TEXT NOT NULL DEFAULT 'word'`).run();
+	} catch {
+		// az oszlop már létezik
+	}
+	try {
+		await db
+			.prepare(`ALTER TABLE lesson_card_packs ADD COLUMN card_kind TEXT NOT NULL DEFAULT 'word'`)
+			.run();
 	} catch {
 		// az oszlop már létezik
 	}
@@ -747,6 +762,7 @@ interface LessonCardRow {
 interface CardPackRow {
 	packId: string;
 	packTitle: string;
+	cardKind: string;
 	packSort: number;
 	lessonId: string;
 	lessonTitle: string;
@@ -770,6 +786,10 @@ function toCardQuestion(c: LessonCardRow): QuizQuestion | null {
 	};
 }
 
+function toCardKind(v: unknown): 'word' | 'study' {
+	return v === 'study' ? 'study' : 'word';
+}
+
 function toCardPack(r: CardPackRow, questions: QuizQuestion[]): Package {
 	return {
 		quizId: `pack:${r.packId}`,
@@ -784,6 +804,7 @@ function toCardPack(r: CardPackRow, questions: QuizQuestion[]): Package {
 		levelId: r.levelId ?? '',
 		questionCount: questions.length,
 		questions,
+		cardKind: toCardKind(r.cardKind),
 		attachedLessonId: r.lessonId,
 		attachedLessonTitle: r.lessonTitle
 	};
@@ -796,7 +817,8 @@ async function fetchCardPacks(
 ): Promise<{ packs: CardPackRow[]; cardsByPack: Map<string, QuizQuestion[]> }> {
 	const packsRes = await db
 		.prepare(
-			`SELECT p.id AS packId, p.title AS packTitle, COALESCE(p.sort, 0) AS packSort,
+			`SELECT p.id AS packId, p.title AS packTitle, COALESCE(p.card_kind, 'word') AS cardKind,
+				COALESCE(p.sort, 0) AS packSort,
 				le.id AS lessonId, le.title AS lessonTitle,
 				m.title AS materialTitle, s.title AS subjectTitle, l.title AS levelTitle,
 				s.id AS subjectId, l.id AS levelId
@@ -945,6 +967,7 @@ export async function getOfficialCardPack(
 		levelId: first.levelId ?? '',
 		questionCount: questions.length,
 		questions,
+		cardKind: 'word',
 		attachedLessonId: lessonId,
 		attachedLessonTitle: first.lessonTitle
 	};
@@ -972,6 +995,7 @@ export async function listUserDecks(
 		.prepare(
 			`SELECT d.id AS id, d.title AS title,
 				COALESCE(d.kind, 'cards') AS kind,
+				COALESCE(d.card_kind, 'word') AS cardKind,
 				COALESCE(s.title, 'Saját') AS subjectTitle,
 				COALESCE(l.title, '') AS levelTitle,
 				COALESCE(m.title, '') AS materialTitle,
@@ -992,6 +1016,7 @@ export async function listUserDecks(
 			id: string;
 			title: string;
 			kind: string;
+			cardKind: string;
 			subjectTitle: string;
 			levelTitle: string;
 			materialTitle: string;
@@ -1042,6 +1067,7 @@ export async function listUserDecks(
 			questions,
 			mine: true,
 			kind: d.kind === 'quiz' ? 'quiz' : 'cards',
+			cardKind: toCardKind(d.cardKind),
 			attachedLessonId: d.attachedLessonId ?? '',
 			attachedLessonTitle: d.attachedLessonTitle ?? ''
 		};
@@ -1061,6 +1087,7 @@ export async function listDecksForLesson(
 		.prepare(
 			`SELECT d.id AS id, d.title AS title,
 				COALESCE(d.kind, 'cards') AS kind,
+				COALESCE(d.card_kind, 'word') AS cardKind,
 				COALESCE(s.title, 'Saját') AS subjectTitle,
 				COALESCE(l.title, '') AS levelTitle,
 				COALESCE(m.title, '') AS materialTitle,
@@ -1081,6 +1108,7 @@ export async function listDecksForLesson(
 			id: string;
 			title: string;
 			kind: string;
+			cardKind: string;
 			subjectTitle: string;
 			levelTitle: string;
 			materialTitle: string;
@@ -1131,6 +1159,7 @@ export async function listDecksForLesson(
 			questions,
 			mine: true,
 			kind: d.kind === 'quiz' ? 'quiz' : 'cards',
+			cardKind: toCardKind(d.cardKind),
 			attachedLessonId: d.attachedLessonId ?? '',
 			attachedLessonTitle: d.attachedLessonTitle ?? ''
 		};
@@ -1150,6 +1179,7 @@ export async function getUserDeckPackage(
 		.prepare(
 			`SELECT d.id AS id, d.title AS title,
 				COALESCE(d.kind, 'cards') AS kind,
+				COALESCE(d.card_kind, 'word') AS cardKind,
 				COALESCE(s.title, 'Saját') AS subjectTitle,
 				COALESCE(l.title, '') AS levelTitle,
 				COALESCE(m.title, '') AS materialTitle,
@@ -1169,6 +1199,7 @@ export async function getUserDeckPackage(
 			id: string;
 			title: string;
 			kind: string;
+			cardKind: string;
 			subjectTitle: string;
 			levelTitle: string;
 			materialTitle: string;
@@ -1210,6 +1241,7 @@ export async function getUserDeckPackage(
 		questions,
 		mine: true,
 		kind: deck.kind === 'quiz' ? 'quiz' : 'cards',
+		cardKind: toCardKind(deck.cardKind),
 		attachedLessonId: deck.attachedLessonId ?? '',
 		attachedLessonTitle: deck.attachedLessonTitle ?? ''
 	};

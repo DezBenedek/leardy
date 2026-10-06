@@ -12,18 +12,30 @@ export interface ToastItem {
 }
 
 const DEFAULT_MS = 4500;
-// Ennyi ido alatt halvanyul el a kartya, csak utana toroljuk a listabol.
+// Ennyi idő alatt halványul el a kártya, csak utána töröljük a listából.
 const LEAVE_MS = 220;
 
 class ToastStore {
 	items = $state<ToastItem[]>([]);
 	private seq = 1;
+	private hideTimer: ReturnType<typeof setTimeout> | undefined;
+	private leaveTimer: ReturnType<typeof setTimeout> | undefined;
 
 	show(tone: ToastTone, title: string, message?: string, ms = DEFAULT_MS): number {
+		const last = this.items[this.items.length - 1];
+		// Ugyanaz jön gyorsan egymás után: csak az időzítőt indítjuk újra,
+		// a kártyához nem nyúlunk, így semmi nem villan vagy ugrik.
+		if (last && !last.leaving && last.tone === tone && last.title === title && last.message === message) {
+			this.armHide(last.id, ms);
+			return last.id;
+		}
+		clearTimeout(this.hideTimer);
+		clearTimeout(this.leaveTimer);
 		const id = this.seq++;
-		// Egyszerre csak egy: az új toast lecseréli az előzőt.
+		// Egyszerre csak egy: az új toast tartalmat cserél a kártyában,
+		// új animáció nélkül (a Toaster nem key-eli a kártyát).
 		this.items = [{ id, tone, title, message }];
-		if (ms > 0) setTimeout(() => this.dismiss(id), ms);
+		this.armHide(id, ms);
 		return id;
 	}
 
@@ -46,14 +58,23 @@ class ToastStore {
 	dismiss(id: number): void {
 		const item = this.items.find((t) => t.id === id);
 		if (!item || item.leaving) return;
+		clearTimeout(this.hideTimer);
 		item.leaving = true;
-		setTimeout(() => {
+		clearTimeout(this.leaveTimer);
+		this.leaveTimer = setTimeout(() => {
 			this.items = this.items.filter((t) => t.id !== id);
 		}, LEAVE_MS);
 	}
 
 	clear(): void {
+		clearTimeout(this.hideTimer);
+		clearTimeout(this.leaveTimer);
 		this.items = [];
+	}
+
+	private armHide(id: number, ms: number): void {
+		clearTimeout(this.hideTimer);
+		if (ms > 0) this.hideTimer = setTimeout(() => this.dismiss(id), ms);
 	}
 }
 

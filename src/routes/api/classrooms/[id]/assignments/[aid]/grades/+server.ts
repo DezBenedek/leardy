@@ -81,7 +81,8 @@ export const PATCH: RequestHandler = async (event) => {
 				title: grade !== null ? `Jegy: ${grade} (${assignment.title || 'Beadandó'})` : `Visszajelzés (${assignment.title || 'Beadandó'})`,
 				body: feedback !== '' ? feedback.slice(0, 120) : 'A tanárod értékelte a beadandódat.',
 				url: `/tanterem/${classroomId}`,
-				tag: `grade:${aid}:${targetId}`
+				tag: `grade:${aid}:${targetId}`,
+				classroomId
 			}));
 		}
 	}

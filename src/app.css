@@ -123,11 +123,11 @@ body {
 @keyframes toast-in {
 	from {
 		opacity: 0;
-		transform: translateY(-14px) scale(0.98);
+		transform: translateY(-8px);
 	}
 	to {
 		opacity: 1;
-		transform: translateY(0) scale(1);
+		transform: translateY(0);
 	}
 }
 
@@ -171,15 +171,16 @@ body {
 	animation: leardy-fade 0.2s ease both;
 }
 
-/* Felülről beúszó értesítés. */
+/* Felülről beúszó értesítés: csak az első megjelenéskor fut,
+   tartalomcsere nem indítja újra (a Toaster nem key-eli a kártyát). */
 .anim-toast {
-	animation: toast-in 0.28s cubic-bezier(0.32, 0.72, 0, 1) backwards;
+	animation: toast-in 0.2s ease-out backwards;
 }
 
 /* Értesítéskártya: megjelenés + halványulás átmenete */
 .toast-card {
 	transform-origin: top center;
-	transition: opacity 0.22s ease;
+	transition: opacity 0.18s ease-out;
 }
 
 /* Automata-tovább csík (időtartam inline style-ból jön: jó válasznál

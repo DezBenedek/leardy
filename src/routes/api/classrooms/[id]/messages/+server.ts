@@ -103,7 +103,8 @@ export const POST: RequestHandler = async (event) => {
 		title: 'Új tantermi üzenet',
 		body: title,
 		url: `/tanterem/${id}`,
-		tag: `msg:${msgId}`
+		tag: `msg:${msgId}`,
+		kind: 'message'
 	}));
 	return json({ ok: true, id: msgId }, { status: 201 });
 };

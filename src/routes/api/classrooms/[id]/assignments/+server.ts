@@ -78,7 +78,8 @@ export const POST: RequestHandler = async (event) => {
 		title: 'Új beadandó',
 		body: title,
 		url: `/tanterem/${id}`,
-		tag: `assign:${aid}`
+		tag: `assign:${aid}`,
+		kind: 'assignment'
 	}));
 	return json({ ok: true, id: aid }, { status: 201 });
 };

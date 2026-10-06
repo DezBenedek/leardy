@@ -186,27 +186,36 @@ self.addEventListener('push', (event) => {
 		badge: '/icons/icon-192.png',
 		data: { url },
 		tag,
-		renotify: true
+		renotify: false
 	} as NotificationOptions & { renotify: boolean };
 	event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', (event) => {
-	const url = (event.notification.data as { url?: string } | null)?.url ?? '/';
+	const raw = (event.notification.data as { url?: string } | null)?.url ?? '/';
 	event.notification.close();
+	let target: URL;
+	try {
+		target = new URL(raw, self.location.origin);
+	} catch {
+		target = new URL('/', self.location.origin);
+	}
+	if (target.origin !== self.location.origin) target = new URL('/', self.location.origin);
+	const path = target.pathname;
 	event.waitUntil(
 		self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
 			for (const c of clients) {
 				try {
 					const u = new URL(c.url);
-					if (u.pathname === url || (url !== '/' && u.pathname.startsWith(url))) {
+					if (u.origin !== self.location.origin) continue;
+					if (u.pathname === path || (path !== '/' && u.pathname.startsWith(`${path}/`))) {
 						return c.focus();
 					}
 				} catch {
-					// ervenytelen url: kovetkezo kliens
+					// érvénytelen url: következő kliens
 				}
 			}
-			if (self.clients.openWindow) return self.clients.openWindow(url);
+			if (self.clients.openWindow) return self.clients.openWindow(target.href);
 			return undefined;
 		})
 	);
