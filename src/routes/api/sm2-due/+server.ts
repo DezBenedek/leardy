@@ -176,7 +176,10 @@ export const GET: RequestHandler = async (event) => {
 			}
 		}
 
+		const counted = new Set<string>();
 		for (const c of lessonCardIds) {
+			if (counted.has(c.id)) continue;
+			counted.add(c.id);
 			const key = c.packId ?? `lesson:${c.lessonId}`;
 			const s = packSubject.get(key) ?? packSubject.get(c.packId ?? '');
 			if (!s || !s.subjectId) continue;

@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
 	import { ArrowLeft, ArrowLeftRight, BookOpen, Layers, Pencil, Plus, Trash2 } from '@lucide/svelte';
 	import FlipCards from '$lib/components/FlipCards.svelte';
@@ -8,7 +9,8 @@
 	import WordPractice from '$lib/components/WordPractice.svelte';
 	import type { Package, QuizQuestion } from '$lib/curriculum';
 	import { deckCardKindLabel, isStudyDeck } from '$lib/curriculum';
-	import { gradeSM2, summarizeSM2, todayDay } from '$lib/sm2';
+	import { summarizeSM2, todayDay } from '$lib/sm2';
+	import { CardReviewSession } from '$lib/card-review.svelte';
 	import { markDeckOpened } from '$lib/deck-history';
 	import { Query, markLessonDone } from '$lib/query.svelte';
 	import { toast } from '$lib/toast.svelte';
@@ -110,17 +112,18 @@
 	}
 
 	let pkg = $derived(detailQ.data?.package ?? null);
-	let progress = $state<Record<string, Mark>>({});
+	let reviews = $derived.by(() => {
+		void id;
+		return new CardReviewSession();
+	});
+	let progress = $derived(reviews.merge(detailQ.data?.progress ?? {}));
 	/** A könyvtárban lévő csomagok: a mentés/kuka gomb ehhez igazodik. */
 	let savedIds = $state<Record<string, boolean>>({});
 	let inLibrary = $derived(!pkg ? false : pkg.mine ? true : !!savedIds[id]);
 
-	$effect(() => {
-		progress = detailQ.data?.progress ?? {};
-	});
+	beforeNavigate(() => { void reviews.flush(); });
 
 	let practiceOpen = $state(false);
-	let practiceMode = $state<'sm2' | 'cards'>('sm2');
 	let cardsSwapped = $state(false);
 	/** Megfordított kártya-előlap megjegyzése csomagonként. */
 	const SWAP_KEY = 'leardy-cards-swapped';
@@ -154,7 +157,6 @@
 		saveSwapped(id, cardsSwapped);
 	}
 	let session = $state(0);
-	let pendingMarks = $state<{ key: string; known: boolean }[]>([]);
 	/** A csatolt lecke bekezdései a csoportosításhoz. */
 	let sections = $state<{ slug: string; title: string }[]>([]);
 
@@ -210,7 +212,7 @@
 	function levelOf(q: QuizQuestion): Level {
 		const m = progress[q.id];
 		if (!m || m.seen === 0) return 'new';
-		return m.known >= 2 ? 'known' : 'learning';
+		return (m.known ?? 0) >= 2 ? 'known' : 'learning';
 	}
 
 	const LEVEL_LABEL: Record<Level, string> = { new: 'Új', learning: 'Tanulom', known: 'Tudom' };
@@ -230,18 +232,18 @@
 		// A felfedezésből nyitott csomagnál a felfedezésre, máshonnan
 		// nyitottnál a könyvtárba. Közvetlen goto, mert a history.back()
 		// az adatlap és a szerkesztő között pattogna oda-vissza.
-		let back = '/kartyak';
+		let back: '/kartyak' | '/kartyak/felfedezes' = '/kartyak';
 		try {
 			const saved = sessionStorage.getItem('kartyak-detail-back');
 			if (saved === '/kartyak/felfedezes' || saved === '/kartyak') back = saved;
 		} catch {
 			// tiltott storage: marad a könyvtár
 		}
-		void goto(back);
+		void goto(resolve(back));
 	}
 
 	function goEdit() {
-		void goto(`/kartyak/${encodeURIComponent(id)}/edit`);
+		void goto(resolve('/kartyak/[id]/edit', { id }));
 	}
 
 	async function removeFromLibrary() {
@@ -253,17 +255,15 @@
 			});
 			if (!res.ok) throw new Error('Hiba történt.');
 			toast.success('Eltávolítva a könyvtárból.');
-			void goto('/kartyak');
+			void goto(resolve('/kartyak'));
 		} catch (e) {
 			toast.error('Nem sikerült eltávolítani', e instanceof Error ? e.message : 'Hiba történt.');
 		}
 	}
 
-	function openPractice(mode: 'sm2' | 'cards') {
-		pendingMarks = [];
-		practiceMode = mode;
+	function openPractice() {
 		// Kártya és SM-2 módban a megjegyzett csereállapottal indul.
-		if (mode === 'cards' || mode === 'sm2') cardsSwapped = loadSwapped(id);
+		cardsSwapped = loadSwapped(id);
 		session += 1;
 		practiceOpen = true;
 	}
@@ -282,47 +282,14 @@
 		}
 	}
 
-	async function saveMarks() {
-		const marks = pendingMarks;
-		pendingMarks = [];
-		if (marks.length === 0) return;
-		try {
-			const res = await fetch('/api/card-progress', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ results: marks.map((m) => ({ key: m.key, known: m.known })) })
-			});
-			if (res.ok) {
-				const nowDay = todayDay();
-				const next = { ...progress };
-				for (const m of marks) {
-					const cur = next[m.key] ?? { known: 0, seen: 0 };
-					// Helyi SM-2 előnézet, hogy a pöttyök és az esedékesség azonnal frissüljön.
-					const sm = gradeSM2(cur, m.known, nowDay);
-					next[m.key] = {
-						known: sm.known,
-						seen: sm.seen,
-						repetitions: sm.repetitions,
-						ease: sm.ease,
-						intervalDays: sm.intervalDays,
-						dueDay: sm.dueDay
-					};
-				}
-				progress = next;
-			}
-		} catch {
-			// a pöttyök legközelebb szinkronizálódnak
-		}
-	}
-
 	async function finishPractice(score: number, totalQ: number) {
-		await saveMarks();
+		if (!(await reviews.flush())) return;
 		if (pkg?.lessonId) await reportProgress(pkg.lessonId, score, totalQ);
 	}
 
 	/** Bezárás: az addigi válaszok mentődnek, a gyakorló záródik. */
 	function closePractice() {
-		void saveMarks();
+		void reviews.flush();
 		practiceOpen = false;
 	}
 
@@ -331,6 +298,17 @@
 		pkg && !studyOnly && total > 0 ? summarizeSM2(pkg.questions, progress, todayDay()) : null
 	);
 </script>
+
+<svelte:window onpagehide={() => void reviews.flush()} />
+
+{#snippet saveStatus()}
+	{#if reviews.error}
+		<div role="alert" class="mt-3 flex flex-wrap items-center justify-center gap-2 text-sm text-red-600 dark:text-red-400">
+			<span>Az eredményeket még nem sikerült menteni.</span>
+			<Button size="sm" variant="outline" onclick={() => void reviews.flush()}>Újrapróbálás</Button>
+		</div>
+	{/if}
+{/snippet}
 
 <svelte:head>
 	<title>{pkg ? `${pkg.title}: Kártyák` : 'Kártyák'} | Leardy</title>
@@ -421,14 +399,14 @@
 				</p>
 			{/if}
 			<div class="mt-3">
-				<Button block size="lg" onclick={() => openPractice(studyOnly ? 'cards' : 'sm2')}>
-					<Layers size={18} /> Kártya
+				<Button block size="lg" onclick={openPractice}>
+					<Layers size={18} /> {studyOnly ? 'Kártyák gyakorlása' : 'Szavak gyakorlása'}
 				</Button>
 			</div>
 			{#if pkg.lessonId && !pkg.lessonEmpty}
 				<div class="mt-2.5 text-center">
 					<a
-						href="/lecke/{pkg.lessonId}"
+						href={resolve('/lecke/[id]', { id: pkg.lessonId })}
 						class="inline-flex items-center gap-1.5 text-[13px] font-bold text-brand-600 transition hover:text-brand-700 dark:text-brand-300 dark:hover:text-white"
 					>
 						<BookOpen size={15} /> Ugrás a leckére
@@ -471,7 +449,7 @@
 			<div class="mt-3 grid gap-1.5 text-center">
 				{#each (pkg.attachedLessons ?? [{ id: pkg.attachedLessonId ?? '', title: pkg.attachedLessonTitle ?? '' }]).filter((a) => a.id) as a (a.id)}
 					<a
-						href="/lecke/{a.id}"
+						href={resolve('/lecke/[id]', { id: a.id })}
 						class="text-[13px] font-bold text-brand-600 transition hover:text-brand-700 dark:text-brand-300 dark:hover:text-white"
 					>
 						Csatolva: {a.title || 'lecke'}
@@ -481,7 +459,7 @@
 		{:else if pkg.attachedLessonId && !pkg.lessonEmpty}
 			<div class="mt-3 text-center">
 				<a
-					href="/lecke/{pkg.attachedLessonId}"
+					href={resolve('/lecke/[id]', { id: pkg.attachedLessonId })}
 					class="text-[13px] font-bold text-brand-600 transition hover:text-brand-700 dark:text-brand-300 dark:hover:text-white"
 				>
 					Csatolva: {pkg.attachedLessonTitle || 'lecke'}
@@ -507,6 +485,8 @@
 	{/if}
 {/if}
 
+{@render saveStatus()}
+
 <QuizModal open={practiceOpen} label={pkg?.title ?? 'Gyakorlás'} title={pkg?.title} onClose={closePractice}>
 	{#snippet headerActions()}
 		<button
@@ -528,23 +508,23 @@
 	{#if pkg && practiceOpen}
 		{#key session}
 			<div class="pt-1">
-				{#if practiceMode === 'sm2'}
+				{#if !studyOnly}
 					<WordPractice
 						questions={pkg.questions}
 						progress={progress}
 						swapped={cardsSwapped}
-						includeFuture
-						onMark={(idQ, known) => (pendingMarks = [...pendingMarks, { key: idQ, known }])}
+						onMark={(idQ, known) => reviews.mark(idQ, known, progress[idQ])}
 						onDone={(score, totalQ) => void finishPractice(score, totalQ)}
 					/>
 				{:else}
 					<FlipCards
 						questions={pkg.questions}
 						swapped={cardsSwapped}
-						onCard={(idQ, known) => (pendingMarks = [...pendingMarks, { key: idQ, known }])}
+						onCard={(idQ, known) => reviews.mark(idQ, known, progress[idQ])}
 						onDone={(score, totalQ) => void finishPractice(score, totalQ)}
 					/>
 				{/if}
+				{@render saveStatus()}
 			</div>
 		{/key}
 	{/if}

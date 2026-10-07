@@ -18,12 +18,16 @@
 		children: Snippet;
 		/** Gépen szélesebb párbeszéd (pl. választók, hosszú űrlapok). */
 		wide?: boolean;
+		/** A panel magassága finoman követi a tartalom változását. */
+		animateHeight?: boolean;
 	}
 
-	let { open, label, title, onBack, onEdit, editLabel = 'Szerkesztés', onClose, children, wide = false }: Props = $props();
+	let { open, label, title, onBack, onEdit, editLabel = 'Szerkesztés', onClose, children, wide = false, animateHeight = false }: Props = $props();
 
 	let panel: HTMLElement | null = $state(null);
 	let scroller: HTMLElement | null = $state(null);
+	let handle: HTMLElement | null = $state(null);
+	let panelHeight = $state<number | undefined>(undefined);
 	let render = $state(false);
 	let shown = $state(false);
 	// Gyors nyit-csuk sorozatnal az elavult rAF es idozito nem irhatja
@@ -44,6 +48,19 @@
 	let animOn = $state(true);
 	const outMs = $derived(animOn ? 230 : 0);
 	const anim = $derived(animOn ? 'duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]' : 'duration-0');
+
+	function trackContentHeight(node: HTMLElement) {
+		if (!animateHeight) return;
+		const grip = handle;
+		const update = () => {
+			panelHeight = Math.ceil(node.offsetHeight + (grip?.offsetHeight ?? 0));
+		};
+		update();
+		const observer = new ResizeObserver(update);
+		observer.observe(node);
+		if (grip) observer.observe(grip);
+		return () => observer.disconnect();
+	}
 
 	// Ki/becsukás animációval, késleltetett lecsatolással
 	$effect(() => {
@@ -184,6 +201,7 @@
 						? 'translate-y-0 opacity-100 sm:scale-100'
 						: 'translate-y-full opacity-100 sm:translate-y-10 sm:scale-[0.98] sm:opacity-0'
 				]}
+				style:height={animateHeight && panelHeight !== undefined ? `${panelHeight}px` : undefined}
 				style={dragging && dragY > 0
 					? `transform: translateY(${dragY}px); transition: none;`
 					: undefined}
@@ -199,6 +217,7 @@
 					</button>
 				{/if}
 				<div
+					bind:this={handle}
 					class="shrink-0 cursor-grab touch-none pt-3 pb-1 select-none active:cursor-grabbing sm:hidden"
 					role="presentation"
 					onpointerdown={handleDown}
@@ -213,11 +232,11 @@
 					role="presentation"
 					ontouchstart={contentTouchStart}
 					ontouchend={contentTouchEnd}
-					class="min-h-0 overflow-y-auto overscroll-contain"
+					class={['min-h-0 overflow-y-auto overscroll-contain', animateHeight && 'overflow-x-hidden [scrollbar-gutter:stable]']}
 				>
-					<div class="px-5 pt-2 pb-5 sm:px-6 sm:pb-6">
+					<div {@attach trackContentHeight} class="px-5 pt-2 pb-5 sm:px-6 sm:pb-6">
 						{#if title}
-							<div class="flex items-center gap-2">
+							<div class={['flex items-center gap-2', animateHeight && 'min-h-9']}>
 								{#if onBack}
 									<button
 										type="button"

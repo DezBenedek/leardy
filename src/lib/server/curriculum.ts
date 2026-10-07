@@ -15,7 +15,7 @@ import type {
 	SubjectTree,
 	Suggestion
 } from '$lib/curriculum';
-import { calculateSM2, qualityFor, todayDay } from '$lib/sm2';
+import { gradeSM2, todayDay } from '$lib/sm2';
 
 /** A lekérdezők D1Database-et vagy RequestEvent-et fogadnak első paramként;
  *  event esetén getDb-vel (./db) oldják fel az adatbázist. */
@@ -1931,17 +1931,19 @@ export async function saveCardProgress(
 	const now = new Date().toISOString();
 	// Meglévő állapot egy körben, hogy az SM-2 számítás pontos legyen.
 	const keys = [...new Set(trimmed.map((r) => r.key))];
-	let current = new Map<string, { known: number; seen: number; repetitions: number; ease: number; interval_days: number }>();
-	try {
+	const current = new Map<string, CardMark>();
+	for (let offset = 0; offset < keys.length; offset += 80) {
+		const chunk = keys.slice(offset, offset + 80);
 		const res = await db
 			.prepare(
 				`SELECT card_key AS cardKey, known, seen,
 					COALESCE(repetitions, 0) AS repetitions,
 					COALESCE(ease, 2.5) AS ease,
-					COALESCE(interval_days, 0) AS intervalDays
-				 FROM card_progress WHERE user_id = ? AND card_key IN (${keys.map(() => '?').join(', ')}) LIMIT 500`
+					COALESCE(interval_days, 0) AS intervalDays,
+					COALESCE(due_day, 0) AS dueDay
+				 FROM card_progress WHERE user_id = ? AND card_key IN (${chunk.map(() => '?').join(', ')}) LIMIT 500`
 			)
-			.bind(userId, ...keys)
+			.bind(userId, ...chunk)
 			.all<{
 				cardKey: string;
 				known: number;
@@ -1949,6 +1951,7 @@ export async function saveCardProgress(
 				repetitions: number;
 				ease: number;
 				intervalDays: number;
+				dueDay: number;
 			}>();
 		for (const row of res.results ?? []) {
 			current.set(row.cardKey, {
@@ -1956,61 +1959,30 @@ export async function saveCardProgress(
 				seen: row.seen ?? 0,
 				repetitions: row.repetitions ?? 0,
 				ease: row.ease ?? 2.5,
-				interval_days: row.intervalDays ?? 0
+				intervalDays: row.intervalDays ?? 0,
+				dueDay: row.dueDay ?? 0
 			});
 		}
-	} catch {
-		// olvasási hiba esetén az alapértelmezett SM-2 állapotból indulunk
 	}
-	try {
-		await db.batch(
-			trimmed.map((r) => {
-				const prev = current.get(r.key) ?? { known: 0, seen: 0, repetitions: 0, ease: 2.5, interval_days: 0 };
-				const quality = qualityFor(r.known);
-				const next = calculateSM2(quality, prev.repetitions, prev.ease, prev.interval_days);
-				const nextKnown = r.known ? prev.known + 1 : 0;
-				const nextSeen = prev.seen + 1;
-				const nextDue = today + next.intervalDays;
-				// A láncban többször szereplő kártya is helyesen halmoz: frissítjük a gyorstárat.
-				current.set(r.key, {
-					known: nextKnown,
-					seen: nextSeen,
-					repetitions: next.repetitions,
-					ease: next.ease,
-					interval_days: next.intervalDays
-				});
-				return db
-					.prepare(
-						`INSERT INTO card_progress (user_id, card_key, known, seen, updated_at, repetitions, ease, interval_days, due_day)
-						 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-						 ON CONFLICT (user_id, card_key) DO UPDATE SET
-							known = excluded.known,
-							seen = excluded.seen,
-							updated_at = excluded.updated_at,
-							repetitions = excluded.repetitions,
-							ease = excluded.ease,
-							interval_days = excluded.interval_days,
-							due_day = excluded.due_day`
-					)
-					.bind(userId, r.key, nextKnown, nextSeen, now, next.repetitions, next.ease, next.intervalDays, nextDue);
-			})
-		);
-	} catch {
-		// Régi séma (migráció előtt): visszaesés a számlálós mentésre.
-		const nowFallback = new Date().toISOString();
-		await db.batch(
-			trimmed.slice(0, 500).map((r) =>
-				db
-					.prepare(
-						`INSERT INTO card_progress (user_id, card_key, known, seen, updated_at)
-						 VALUES (?, ?, ?, 1, ?)
-						 ON CONFLICT (user_id, card_key) DO UPDATE SET
-							known = CASE WHEN excluded.known = 1 THEN card_progress.known + 1 ELSE 0 END,
-							seen = card_progress.seen + 1,
-							updated_at = excluded.updated_at`
-					)
-					.bind(userId, r.key, r.known ? 1 : 0, nowFallback)
-			)
-		);
-	}
+	await db.batch(
+		trimmed.map((r) => {
+			const next = gradeSM2(current.get(r.key), r.known, today);
+			// A láncban többször szereplő kártya is helyesen halmoz: frissítjük a gyorstárat.
+			current.set(r.key, next);
+			return db
+				.prepare(
+					`INSERT INTO card_progress (user_id, card_key, known, seen, updated_at, repetitions, ease, interval_days, due_day)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 ON CONFLICT (user_id, card_key) DO UPDATE SET
+						known = excluded.known,
+						seen = excluded.seen,
+						updated_at = excluded.updated_at,
+						repetitions = excluded.repetitions,
+						ease = excluded.ease,
+						interval_days = excluded.interval_days,
+						due_day = excluded.due_day`
+				)
+				.bind(userId, r.key, next.known, next.seen, now, next.repetitions, next.ease, next.intervalDays, next.dueDay);
+		})
+	);
 }

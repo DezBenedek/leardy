@@ -1,5 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { getDb, requireUser } from '$lib/server/db';
+import { todayDay } from '$lib/sm2';
 import {
 	ensureCurriculumSchema,
 	getCardProgress,
@@ -53,20 +54,20 @@ export const GET: RequestHandler = async (event) => {
 			if (!official.some((o) => o.quizId === p.quizId)) official.push(p);
 		}
 		// Örökölt cards: forma is kellhet, ha a pack lista nem fedte le.
-		if (legacyIds.length > 0 && official.length === 0) {
+		if (legacyIds.length > 0) {
 			const { getOfficialCardPack } = await import('$lib/server/curriculum');
 			for (const lid of legacyIds.slice(0, 20)) {
 				try {
 					const pack = await getOfficialCardPack(db, lid.slice(6));
-					if (pack && (pack.subjectId === subjectId || !pack.subjectId)) official.push(pack);
+					if (pack && (pack.subjectId === subjectId || !pack.subjectId) && !official.some((p) => p.quizId === pack.quizId)) official.push(pack);
 				} catch {
 					// egy hibás csomag nem rontja el az egészet
 				}
 			}
 		}
-		const packages = [...mine.filter((p) => (p.cardKind ?? 'word') !== 'study'), ...official];
+		const packages = [...mine, ...official].filter((p) => (p.cardKind ?? 'word') !== 'study');
 		return json(
-			{ packages, progress, today: Math.floor(Date.now() / 86_400_000) },
+			{ packages, progress, today: todayDay() },
 			{ headers: { 'cache-control': 'private, no-store' } }
 		);
 	} catch (e) {

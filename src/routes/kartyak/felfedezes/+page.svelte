@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
-	import { ArrowDownAZ, ArrowLeft, BookOpenText, Check, ChevronDown, ChevronRight, Compass, Landmark, Languages, Layers, Leaf, Plus, Shapes, SlidersHorizontal, Trash2 } from '@lucide/svelte';
+	import { ArrowDownAZ, ArrowLeft, BookOpenText, Check, ChevronDown, ChevronRight, Compass, Landmark, Languages, Layers, Leaf, Plus, Shapes, SlidersHorizontal, FunnelX } from '@lucide/svelte';
 	interface DiscSortOption {
 		id: string;
 		title: string;
@@ -14,6 +14,7 @@
 	import { Query, getOrFetch, invalidate } from '$lib/query.svelte';
 	import { loadScope, saveScope } from '$lib/scope';
 	import { toast } from '$lib/toast.svelte';
+	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import SearchInput from '$lib/ui/SearchInput.svelte';
@@ -452,9 +453,9 @@
 			Szűrők
 		</h2>
 		{#if activeFilterCount > 0}
-			<IconButton ariaLabel="Szűrők törlése" tone="danger" size={40} onclick={resetFilters}>
-				<Trash2 size={18} />
-			</IconButton>
+			<Button variant="outline" size="sm" onclick={resetFilters}>
+				<FunnelX size={16} aria-hidden="true" /> Szűrők törlése
+			</Button>
 		{/if}
 	</div>
 	<div class="mt-2 grid gap-2">

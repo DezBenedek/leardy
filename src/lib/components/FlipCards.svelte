@@ -56,7 +56,7 @@
 	let current = $derived(cards[Math.min(idx, cards.length - 1)]);
 	let done = $derived(Math.min(idx, cards.length));
 	/** A csík az aktuális kártya sorszámát mutatja, mint a mellette lévő szöveg. */
-	let pct = $derived(cards.length > 0 ? Math.round(((done + 1) / cards.length) * 100) : 0);
+	let pct = $derived(cards.length > 0 ? Math.round((done / cards.length) * 100) : 0);
 	/** Rövid szövegű paklinál keskenyebb az oszlop (450px), egyébként max 550px. */
 	let compact = $derived(
 		cards.length > 0 &&
@@ -126,7 +126,11 @@
 	});
 
 	function grade(knew: boolean, dir: 1 | -1) {
-		if (finished || exitDir !== 0) return;
+		if (finished || exitDir !== 0 || !current) return;
+		if (!revealed) {
+			revealed = true;
+			return;
+		}
 		const q = current;
 		clearTimeout(exitTimer);
 		dragging = false;
@@ -145,7 +149,7 @@
 	}
 
 	function onDown(e: PointerEvent) {
-		if (finished || exitDir !== 0) return;
+		if (finished || exitDir !== 0 || !e.isPrimary || e.button !== 0) return;
 		dragging = true;
 		moved = false;
 		vertical = false;
@@ -194,9 +198,9 @@
 	$effect(() => {
 		if (!browser) return;
 		const onKey = (e: KeyboardEvent) => {
-			if (finished || exitDir !== 0) return;
+			if (finished || exitDir !== 0 || e.repeat) return;
 			const t = e.target as HTMLElement | null;
-			if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+			if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
 			if (e.key === 'ArrowRight') {
 				e.preventDefault();
 				grade(true, 1);
@@ -227,8 +231,7 @@
 	/** Húzás iránya: jobbra = Tudom (zöld), balra = Nem tudom (piros). */
 	let swipeDir = $derived(dragging && Math.abs(dragX) > 20 ? (dragX > 0 ? 'right' : 'left') : null);
 
-	/** Automatikus betűméret: rövid szöveg nagyra nő, hosszú kicsire zsugorodik,
-	   a felesleg túlcsordulás helyett levágódik (line-clamp + overflow-hidden). */
+	/** A rövid szöveg nagyobb, a hosszú kisebb betűméretet kap és görgethető. */
 	function fitSize(text: string | undefined, base: number): number {
 		const len = (text ?? '').trim().length;
 		if (len <= 8) return base + 14;
@@ -258,11 +261,11 @@
 
 {#if cards.length === 0}
 	<EmptyState
-		title="Nincs szókártyázható kérdés"
+		title="Nincs gyakorolható kártya"
 		description="Ebben a csomagban nincs felfedhető válaszú kérdés."
 	/>
 {:else if finished}
-	<div class="mx-auto grid min-h-[calc(100dvh-140px)] w-full max-w-[550px] place-items-center pt-4 pb-24">
+	<div class="mx-auto w-full max-w-[550px] py-6">
 		<div class="w-full rounded-[20px] bg-stone-100 p-6 text-center sm:p-8 dark:bg-white/5">
 			<p class="font-display text-[30px] leading-none font-extrabold text-ink-900 tabular-nums dark:text-white">
 				{known}/{cards.length}
@@ -292,7 +295,7 @@
 			<div
 				class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-stone-100 dark:bg-white/10"
 				role="progressbar"
-				aria-valuenow={done + 1}
+				aria-valuenow={done}
 				aria-valuemin={0}
 				aria-valuemax={cards.length}
 				aria-label="Haladás"
@@ -307,19 +310,19 @@
 			</p>
 		</div>
 
-		<div class="grid flex-1 place-items-center pt-4 pb-24">
+		<div class="grid flex-1 place-items-center pt-4">
 			<div class={['w-full', compact ? 'max-w-[450px]' : 'max-w-[550px]']}>
 				<div class="anim-pop relative h-72 sm:h-80 [perspective:1400px]">
 			<div
 				role="button"
 				tabindex="0"
-				aria-label="Kártya: {frontText}. Koppintás a fordításhoz, húzás jobbra ha tudod, balra ha nem tudod."
+				aria-label="Kártya: {revealed ? backText : frontText}. Koppintás a fordításhoz, felfedés után húzás jobbra ha tudod, balra ha nem tudod."
 				onpointerdown={onDown}
 				onpointermove={onMove}
 				onpointerup={onUp}
-				onpointercancel={onUp}
+				onpointercancel={() => { dragging = false; dragX = 0; }}
 				style={dragStyle}
-				class="absolute inset-0 cursor-grab touch-pan-y outline-none select-none active:cursor-grabbing"
+				class="absolute inset-0 cursor-grab touch-pan-y rounded-[24px] outline-none select-none focus-visible:ring-4 focus-visible:ring-brand-400 active:cursor-grabbing"
 			>
 				<div
 					class={[
@@ -328,6 +331,7 @@
 					]}
 				>
 					<div
+						aria-hidden={revealed}
 						class={[
 							'absolute inset-0 flex flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] border bg-white p-6 text-center shadow-lg shadow-stone-900/5 [backface-visibility:hidden] dark:bg-stone-900 dark:shadow-black/30',
 							swipeDir === 'right'
@@ -341,7 +345,7 @@
 							{frontLabel}
 						</p>
 						<p
-							class="line-clamp-6 leading-snug font-extrabold text-balance text-ink-900 dark:text-white"
+							class="max-h-full overflow-y-auto leading-snug font-extrabold text-balance text-ink-900 dark:text-white"
 							style="font-size: {frontSize}px"
 						>
 							{frontText}
@@ -371,6 +375,7 @@
 						{/if}
 					</div>
 					<div
+						aria-hidden={!revealed}
 						class={[
 							'absolute inset-0 flex flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] bg-brand-600 p-6 text-center shadow-lg shadow-brand-600/25 [backface-visibility:hidden] [transform:rotateY(180deg)] dark:bg-brand-500',
 							swipeDir === 'right'
@@ -382,7 +387,7 @@
 					>
 						<p class="text-[11px] font-bold tracking-widest text-white/60 uppercase">{backLabel}</p>
 						<p
-							class="line-clamp-6 leading-snug font-extrabold text-balance text-white"
+							class="max-h-full overflow-y-auto leading-snug font-extrabold text-balance text-white"
 							style="font-size: {backSize}px"
 						>
 							{backText}
@@ -412,9 +417,20 @@
 			</div>
 		</div>
 
-		<p class="mt-3 text-center text-[12px] font-medium text-stone-400 dark:text-stone-500">
-			Húzd jobbra, ha tudod · balra, ha nem tudod
-		</p>
+		<div class="mt-4 grid gap-2 pb-6">
+			{#if !revealed}
+				<Button block size="lg" onclick={() => (revealed = true)}>Válasz felfedése</Button>
+			{:else}
+				<div class="grid grid-cols-2 gap-2">
+					<Button variant="danger" disabled={exitDir !== 0} onclick={() => grade(false, -1)}>
+						<X size={18} /> Nem tudom
+					</Button>
+					<Button disabled={exitDir !== 0} onclick={() => grade(true, 1)}>
+						<Check size={18} /> Tudom
+					</Button>
+				</div>
+			{/if}
+		</div>
 			</div>
 		</div>
 	</div>

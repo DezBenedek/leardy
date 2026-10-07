@@ -2,6 +2,8 @@
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { untrack } from 'svelte';
+	import { fly } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	import {
 		ArrowDownAZ,
 		BookOpenText,
@@ -15,21 +17,24 @@
 		Layers,
 		Leaf,
 		ListOrdered,
+		LoaderCircle,
 		Play,
 		Shapes,
 		SlidersHorizontal,
-		Trash2
+		FunnelX
 	} from '@lucide/svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import QuickPractice from '$lib/components/QuickPractice.svelte';
-	import type { LevelNode, Package, QuizQuestion, SubjectTree } from '$lib/curriculum';
+	import type { Package, QuizQuestion, SubjectTree } from '$lib/curriculum';
 	import { normHu } from '$lib/deck-history';
 	import { loadLastLesson } from '$lib/lesson-history';
 	import { Query, getOrFetch, peek } from '$lib/query.svelte';
 	import { loadScope, saveScope } from '$lib/scope';
 	import { loadSettings } from '$lib/settings';
 	import { toast } from '$lib/toast.svelte';
+	import { motionOK } from '$lib/overlay';
 	import Card from '$lib/ui/Card.svelte';
+	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import SearchInput from '$lib/ui/SearchInput.svelte';
@@ -77,8 +82,11 @@
 		languages: Languages,
 		book: BookOpenText
 	};
+	let scopeIconReady = $state(false);
+	// Hydráláskor ugyanaz az ikon kell, mint a szerveren. A mentett tantárgy
+	// csak mount után válthatja le, különben eltérő SVG-elemek maradhatnak bent.
 	let ScopeIcon = $derived(
-		activeSubject ? (subjectIcons[activeSubject.icon] ?? Shapes) : Shapes
+		subjectIcons[(scopeIconReady ? activeSubject : data.subjects[0])?.icon ?? ''] ?? Shapes
 	);
 
 	/* Tantárgy és szint választó drawer: előbb a tantárgy-lista, rákattintva
@@ -86,48 +94,72 @@
 	   koppintva lép életbe és zárja a drawert. */
 	let scopeOpen = $state(false);
 	let scopeStep = $state<'subject' | 'level'>('subject');
+	let scopeDirection = $state(1);
+	let scopeMotion = $state(true);
 	let pendingSubjectId = $state('');
-	let pendingLevels = $state<LevelNode[]>([]);
+	let pendingTree = $state<SubjectTree | null>(null);
+	let pendingLevels = $derived(pendingTree?.levels ?? []);
 	let pendingLoading = $state(false);
+	let pendingError = $state(false);
 	let scopeGen = 0;
 
 	let pendingSubject = $derived(data.subjects.find((s) => s.id === pendingSubjectId) ?? null);
 	let pendingLevelLabelLow = $derived((pendingSubject?.levelLabel || 'Szint').toLowerCase());
 
 	function openScope() {
+		scopeGen++;
+		scopeMotion = motionOK();
+		scopeDirection = 1;
 		scopeStep = 'subject';
 		pendingSubjectId = '';
-		pendingLevels = [];
+		pendingTree = null;
 		pendingLoading = false;
+		pendingError = false;
 		scopeOpen = true;
 	}
 
 	function closeScope() {
+		scopeGen++;
 		scopeOpen = false;
 	}
 
 	function backToSubjects() {
+		scopeGen++;
+		scopeDirection = -1;
 		scopeStep = 'subject';
 		pendingSubjectId = '';
+		pendingLoading = false;
 	}
 
 	async function goSubject(id: string) {
 		pendingSubjectId = id;
-		scopeStep = 'level';
+		scopeDirection = 1;
 		const gen = ++scopeGen;
-		if (id === subjectId && treeQ.data) {
-			pendingLevels = treeQ.data.levels;
-			pendingLoading = false;
+		pendingError = false;
+		// A listaoldallal közös gyorstár: ismételt választáskor nincs töltőállapot.
+		pendingTree = peek<SubjectTree | null>(`tree:${id}`, TREE_STALE) ??
+			(id === subjectId && !treeQ.loading ? treeQ.data ?? null : null);
+		pendingLoading = false;
+		if (pendingTree) {
+			scopeStep = 'level';
 			return;
 		}
 		pendingLoading = true;
 		try {
-			const res = await fetch(`/api/browse?subject=${encodeURIComponent(id)}`);
-			const j = await res.json().catch(() => ({}));
+			const tree = await getOrFetch<SubjectTree>(`tree:${id}`, async () => {
+				const tree = await fetchTreeRaw(id);
+				if (!tree) throw new Error('A tananyag betöltése sikertelen.');
+				return tree;
+			}, TREE_TTL);
 			if (gen !== scopeGen) return;
-			pendingLevels = res.ok && j.tree ? (j.tree.levels ?? []) : [];
+			if (!tree) throw new Error('A tananyag betöltése sikertelen.');
+			pendingTree = tree;
+			scopeStep = 'level';
 		} catch {
-			if (gen === scopeGen) pendingLevels = [];
+			if (gen === scopeGen) {
+				pendingError = true;
+				scopeStep = 'level';
+			}
 		} finally {
 			if (gen === scopeGen) pendingLoading = false;
 		}
@@ -138,11 +170,14 @@
 	let prevSubject = $state<string | null>(null);
 
 	function pickLevel(lid: string) {
+		if (pendingLoading || pendingError || !pendingTree) return;
 		const sid = pendingSubjectId;
 		prevSubject = sid;
 		subjectId = sid;
 		levelId = lid;
-		scopeOpen = false;
+		// A kiválasztott fa már betöltődött a Drawer-ben, az oldal azonnal átveheti.
+		treeQ.prime(`tree:${sid}`, TREE_STALE);
+		closeScope();
 	}
 
 	async function fetchTreeRaw(id: string): Promise<SubjectTree | null> {
@@ -298,6 +333,7 @@
 	let lastLesson = $state<{ id: string; title: string } | null>(null);
 
 	onMount(() => {
+		scopeIconReady = true;
 		lastLesson = loadLastLesson();
 	});
 
@@ -370,7 +406,9 @@
 				disabled={searchFocus}
 				onclick={openScope}
 			>
-				<ScopeIcon size={24} strokeWidth={1.75} />
+				{#key ScopeIcon}
+					<ScopeIcon size={24} strokeWidth={1.75} class="size-6 shrink-0" aria-hidden="true" />
+				{/key}
 			</IconButton>
 		</div>
 	</div>
@@ -524,10 +562,14 @@
 	title={scopeStep === 'level' ? (pendingSubject?.title ?? 'Szint') : 'Tantárgy'}
 	onBack={scopeStep === 'level' ? backToSubjects : undefined}
 	onClose={closeScope}
+	animateHeight
 	wide
 >
 	{#if scopeStep === 'subject'}
-		<ul class="-mx-1 mt-2 space-y-0.5">
+		<ul
+			in:fly={{ x: scopeDirection * 24, duration: scopeMotion ? 220 : 0, easing: cubicOut }}
+			class="-mx-1 mt-2 space-y-0.5"
+		>
 			{#if data.subjects.length === 0}
 				<li>
 					<p class="p-2 text-sm text-stone-500 dark:text-stone-400">Nincs megjeleníthető tantárgy.</p>
@@ -540,6 +582,8 @@
 						<button
 							type="button"
 							aria-pressed={selected}
+							aria-busy={pendingLoading && pendingSubjectId === s.id}
+							disabled={pendingLoading && pendingSubjectId === s.id}
 							onclick={() => void goSubject(s.id)}
 							class={[optRowBtn, selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
 						>
@@ -552,7 +596,10 @@
 									{s.lessonCount} lecke
 								</span>
 							</span>
-							{#if selected}
+							{#if pendingLoading && pendingSubjectId === s.id}
+								<LoaderCircle size={18} class="shrink-0 animate-spin text-brand-600 motion-reduce:animate-none dark:text-white" aria-hidden="true" />
+								<span class="sr-only" role="status">Szintek betöltése…</span>
+							{:else if selected}
 								<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
 							{:else}
 								<ChevronRight size={17} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
@@ -563,9 +610,26 @@
 			{/if}
 		</ul>
 	{:else}
-		<ul class="-mx-1 mt-2 space-y-0.5">
+		<ul
+			in:fly={{ x: scopeDirection * 24, duration: scopeMotion ? 220 : 0, easing: cubicOut }}
+			class="-mx-1 mt-2 space-y-0.5"
+		>
 			{#if pendingLoading}
-				<li><p class="p-2 text-sm text-stone-500 dark:text-stone-400">Töltés…</p></li>
+				<li role="status" class="flex items-center gap-2 p-2 text-sm text-stone-500 dark:text-stone-400">
+					<LoaderCircle size={18} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+					Szintek betöltése…
+				</li>
+			{:else if pendingError}
+				<li class="p-2 text-sm text-stone-500 dark:text-stone-400">
+					<p>Nem sikerült betölteni a szinteket.</p>
+					<button
+						type="button"
+						onclick={() => void goSubject(pendingSubjectId)}
+						class="mt-2 rounded-xl px-3 py-2 font-semibold text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-white/5"
+					>
+						Újrapróbálás
+					</button>
+				</li>
 			{:else}
 				{@const allSelected = pendingSubjectId === subjectId && levelId === ''}
 				<li>
@@ -632,9 +696,9 @@
 			Szűrők
 		</h2>
 		{#if activeFilterCount > 0}
-			<IconButton ariaLabel="Szűrők törlése" tone="danger" size={40} onclick={resetFilters}>
-				<Trash2 size={18} />
-			</IconButton>
+			<Button variant="outline" size="sm" onclick={resetFilters}>
+				<FunnelX size={16} aria-hidden="true" /> Szűrők törlése
+			</Button>
 		{/if}
 	</div>
 	<div class="mt-2 grid gap-2">

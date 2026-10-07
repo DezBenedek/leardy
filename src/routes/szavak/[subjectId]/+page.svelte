@@ -1,12 +1,14 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import { ArrowLeft, ArrowLeftRight, ChevronDown } from '@lucide/svelte';
 	import WordPractice from '$lib/components/WordPractice.svelte';
 	import type { Package } from '$lib/curriculum';
 	import { loadDeckOpened } from '$lib/deck-history';
 	import { Query } from '$lib/query.svelte';
-	import { gradeSM2, summarizeSM2, todayDay } from '$lib/sm2';
+	import { summarizeSM2, todayDay } from '$lib/sm2';
+	import { CardReviewSession } from '$lib/card-review.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
@@ -50,16 +52,18 @@
 	});
 
 	let packages = $derived(wordsQ.data?.packages ?? []);
-	let progress = $state<Record<string, Mark>>({});
-	$effect(() => {
-		progress = wordsQ.data?.progress ?? {};
+	let reviews = $derived.by(() => {
+		void subjectId;
+		return new CardReviewSession();
 	});
+	let progress = $derived(reviews.merge(wordsQ.data?.progress ?? {}));
+
+	beforeNavigate(() => { void reviews.flush(); });
 
 	let swapped = $state(false);
 	let listOpen = $state(false);
-	let pendingMarks = $state<{ key: string; known: boolean }[]>([]);
 
-	let questions = $derived(packages.flatMap((p) => p.questions));
+	let questions = $derived([...new Map(packages.flatMap((p) => p.questions).map((q) => [q.id, q])).values()]);
 	let cardToPack = $derived.by(() => {
 		const m: Record<string, string> = {};
 		for (const p of packages) for (const q of p.questions) m[q.id] = p.quizId;
@@ -82,7 +86,7 @@
 
 	function goBack() {
 		// Félúton visszalépéskor az addigi válaszok mentődnek.
-		void saveMarks();
+		void reviews.flush();
 		try {
 			if (window.history.length > 1) {
 				window.history.back();
@@ -91,42 +95,20 @@
 		} catch {
 			// fallback alább
 		}
-		void goto('/');
-	}
-
-	async function saveMarks() {
-		const marks = pendingMarks;
-		pendingMarks = [];
-		if (marks.length === 0) return;
-		try {
-			const res = await fetch('/api/card-progress', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ results: marks.map((m) => ({ key: m.key, known: m.known })) })
-			});
-			if (res.ok) {
-				const nowDay = todayDay();
-				const next = { ...progress };
-				for (const m of marks) {
-					const cur = next[m.key] ?? { known: 0, seen: 0 };
-					const sm = gradeSM2(cur, m.known, nowDay);
-					next[m.key] = {
-						known: sm.known,
-						seen: sm.seen,
-						repetitions: sm.repetitions,
-						ease: sm.ease,
-						intervalDays: sm.intervalDays,
-						dueDay: sm.dueDay
-					};
-				}
-				progress = next;
-				wordsQ.touch();
-			}
-		} catch {
-			// legközelebb szinkronizál
-		}
+		void goto(resolve('/'));
 	}
 </script>
+
+<svelte:window onpagehide={() => void reviews.flush()} />
+
+{#snippet saveStatus()}
+	{#if reviews.error}
+		<div role="alert" class="mt-3 flex flex-wrap items-center justify-center gap-2 text-sm text-red-600 dark:text-red-400">
+			<span>Az eredményeket még nem sikerült menteni.</span>
+			<Button size="sm" variant="outline" onclick={() => void reviews.flush()}>Újrapróbálás</Button>
+		</div>
+	{/if}
+{/snippet}
 
 <svelte:head>
 	<title>{subjectTitle} szavak | Leardy</title>
@@ -170,8 +152,8 @@
 {:else if total === 0}
 	<div class="mt-4">
 		<EmptyState
-			title="Nincs letöltött szókártya"
-			description="Ments a könyvtáradba ebből a nyelvből, és itt gyakorolhatod."
+			title="Még nincsenek mentett szavaid"
+			description="Ments egy szókártyacsomagot a könyvtáradba, és itt gyakorolhatod a szavait."
 		/>
 		<div class="mt-4 flex justify-center gap-2">
 			<Button href="/kartyak/felfedezes">Felfedezés</Button>
@@ -189,11 +171,13 @@
 				recentPackIds={recentPackIds}
 				cardToPack={cardToPack}
 				packOrder={packages.map((p) => p.quizId)}
-				onMark={(idQ, known) => (pendingMarks = [...pendingMarks, { key: idQ, known }])}
-				onDone={() => void saveMarks()}
+				onMark={(idQ, known) => reviews.mark(idQ, known, progress[idQ])}
+				onDone={() => void reviews.flush()}
 			/>
 		{/key}
 	</div>
+
+	{@render saveStatus()}
 
 	<section aria-label="Csomagok" class="mt-4 pb-6">
 		<div class="rounded-[20px] border border-stone-200 bg-white dark:border-white/10 dark:bg-stone-900">
@@ -223,7 +207,7 @@
 					<div class="grid gap-2 border-t border-stone-100 px-3 py-3 dark:border-white/5">
 						{#each packages as p (p.quizId)}
 							<a
-								href="/kartyak/{encodeURIComponent(p.quizId)}"
+								href={resolve('/kartyak/[id]', { id: p.quizId })}
 								class="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-3.5 py-2.5 transition hover:border-brand-300 active:scale-[0.99] dark:border-white/10 dark:bg-stone-900"
 							>
 								<span class="min-w-0 flex-1">

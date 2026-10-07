@@ -4,17 +4,13 @@
 	import { Check, Lightbulb, RotateCcw, X } from '@lucide/svelte';
 	import type { QuizQuestion } from '$lib/curriculum';
 	import type { SM2Mark } from '$lib/sm2';
-	import { buildWordQueue, formatInterval, gradeSM2, summarizeSM2, todayDay } from '$lib/sm2';
+	import { buildDailyWordQueue, buildWordQueue, formatInterval, gradeSM2, todayDay } from '$lib/sm2';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 
-	/* Szavak gyakorlása: Tudom vagy Nem tudom. Alapból az összes esedékes
-	   és új szó jön, nyugodt, csomagonkénti sorrendben keverés nélkül.
-	   A még nem esedékes szó nem kerül bele: amit tudtál, az csak
-	   holnap vagy később tér vissza, de a menet végén a maradék is
-	   folytatható. Direkt csomagnyitásnál semmi nem marad ki.
-	   A nem tudott szó meneten belül később újra jön, legfeljebb kétszer.
-	   Minden értékelés után látszik, mikor jön újra a szó. */
+	/* Az esedékes és új szavak csomagonként követik egymást.
+	   A hibás szó legfeljebb kétszer tér vissza, az eredményben egyszer számít.
+	   Esedékes szavak nélkül a kevésbé biztos szavakból indul egy rövid kör. */
 
 	interface Props {
 		questions: QuizQuestion[];
@@ -22,8 +18,6 @@
 		onMark?: (id: string, known: boolean) => void;
 		onDone?: (score: number, total: number) => void;
 		swapped?: boolean;
-		/** Direkt csomagnyitás: a még nem esedékes szó is bekerül, semmi nem marad ki. */
-		includeFuture?: boolean;
 		recentPackIds?: string[];
 		cardToPack?: Record<string, string>;
 		/** Csomagsorrend az összesített gyakorláshoz, a csomagok megjelenési sorrendjében. */
@@ -38,7 +32,6 @@
 		onMark,
 		onDone,
 		swapped = false,
-		includeFuture = false,
 		recentPackIds = [],
 		cardToPack = {},
 		packOrder = [],
@@ -46,19 +39,24 @@
 	}: Props = $props();
 
 	const SWIPE_AT = 110;
-	const today = todayDay();
+	let today = $state(todayDay());
 	/* Nem tudott szó visszapörgetése: ennyi kártyával később jön újra,
 	   kártyánként legfeljebb ennyiszer egy meneten belül. */
 	const REPEAT_GAP = 7;
 	const REPEAT_MAX = 2;
-	/** Maradék-folytatás: a napi adag után a még nem esedékes szavak is jönnek. */
-	let extra = $state(false);
+	let reviewRound = $state(false);
 	let repeats: Record<string, number> = {};
+	let sessionProgress = $state<Record<string, Partial<SM2Mark> | undefined>>({});
+	let outcomes = $state<Record<string, boolean>>({});
+	let ready = $state(false);
+	let questionIds = $derived(questions.map((q) => q.id).join('\n'));
 
 	let queue = $state<{ q: QuizQuestion }[]>([]);
 	let idx = $state(0);
 	let revealed = $state(false);
-	let known = $state(0);
+	let known = $derived(Object.values(outcomes).filter(Boolean).length);
+	let reviewed = $derived(Object.keys(outcomes).length);
+	let missed = $derived(reviewed - known);
 	let notified = $state(false);
 	let lastFeedback = $state('');
 	let dragging = $state(false);
@@ -74,36 +72,35 @@
 	let finished = $derived(queue.length > 0 && idx >= queue.length);
 	let current = $derived(queue[Math.min(idx, queue.length - 1)] ?? null);
 	let done = $derived(Math.min(idx, queue.length));
-	let pct = $derived(queue.length > 0 ? Math.round(((done + 1) / queue.length) * 100) : 0);
-	/** Még nem esedékes szavak: a napi adag után folytatható maradék. */
-	let futureCount = $derived(
-		questions.length > 0 ? summarizeSM2(questions, progress, today).future : 0
-	);
-	let showExtra = $derived(!includeFuture && !extra && futureCount > 0);
+	let pct = $derived(queue.length > 0 ? Math.round((done / queue.length) * 100) : 0);
 
-	function deal() {
+	function deal(mode: 'daily' | 'extra' | 'missed' = 'daily') {
 		clearTimeout(exitTimer);
-		const q = buildWordQueue(questions, progress, {
-			today,
-			recentPackIds,
-			cardToPack,
-			packOrder,
-			includeFuture: includeFuture || extra
-		});
+		today = todayDay();
+		const remaining = questions.filter((q) => !(q.id in outcomes));
+		const pool = mode === 'missed'
+			? questions.filter((q) => outcomes[q.id] === false)
+			: mode === 'extra' && remaining.length > 0 ? remaining : questions;
+		sessionProgress = { ...progress, ...sessionProgress };
+		const options = { today, recentPackIds, cardToPack, packOrder };
+		const q = mode === 'missed'
+			? buildWordQueue(pool, sessionProgress, { ...options, includeFuture: true })
+			: buildDailyWordQueue(pool, sessionProgress, options);
+		reviewRound = q.length > 0 && q.every((e) => e.meta.isFuture);
 		queue = q.map((e) => ({ q: e.item }));
 		idx = 0;
 		revealed = false;
-		known = 0;
+		outcomes = {};
 		notified = false;
 		lastFeedback = '';
 		repeats = {};
+		ready = true;
 		showInstant();
 	}
 
-	/** Újrakezdés: a maradék-folytatás kikapcsol, tiszta napi sor jön. */
-	function restart() {
-		extra = false;
-		deal();
+	/** Csak a kör végén még hibás szavakat vesszük elő újra. */
+	function repeatMissed() {
+		deal('missed');
 	}
 
 	function requeue(card: { q: QuizQuestion }) {
@@ -130,8 +127,12 @@
 	}
 
 	$effect(() => {
-		void questions.length;
-		untrack(() => deal());
+		void questionIds;
+		untrack(() => {
+			sessionProgress = { ...progress };
+			outcomes = {};
+			deal();
+		});
 	});
 
 	$effect(() => {
@@ -148,22 +149,26 @@
 	$effect(() => {
 		if (finished && !notified && queue.length > 0) {
 			notified = true;
-			onDone?.(known, queue.length);
+			onDone?.(known, reviewed);
 		}
 	});
 
-	function previewNext(id: string, knew: boolean): string {
-		const next = gradeSM2(progress[id], knew, today);
-		return formatInterval(next.intervalDays);
-	}
-
 	function grade(knew: boolean, dir: 1 | -1) {
 		if (finished || exitDir !== 0 || !current) return;
+		if (!revealed) {
+			revealed = true;
+			return;
+		}
 		const card = current;
 		clearTimeout(exitTimer);
 		dragging = false;
-		if (knew) known += 1;
-		lastFeedback = previewNext(card.q.id, knew);
+		today = todayDay();
+		const next = gradeSM2(sessionProgress[card.q.id], knew, today);
+		sessionProgress = { ...sessionProgress, [card.q.id]: next };
+		outcomes = { ...outcomes, [card.q.id]: knew };
+		lastFeedback = knew
+			? formatInterval(next.dueDay - today)
+			: (repeats[card.q.id] ?? 0) < REPEAT_MAX ? 'Ebben a körben még visszatér.' : 'Holnap újra gyakorolhatod.';
 		onMark?.(card.q.id, knew);
 		exitDir = dir;
 		dragX = dir * 700;
@@ -177,7 +182,7 @@
 	}
 
 	function onDown(e: PointerEvent) {
-		if (finished || exitDir !== 0) return;
+		if (finished || exitDir !== 0 || !e.isPrimary || e.button !== 0) return;
 		dragging = true;
 		moved = false;
 		vertical = false;
@@ -209,6 +214,7 @@
 		if (!dragging) return;
 		dragging = false;
 		if (!moved) {
+			if (exitDir !== 0) return;
 			revealed = !revealed;
 			return;
 		}
@@ -221,12 +227,17 @@
 		else dragX = 0;
 	}
 
+	function cancelDrag() {
+		dragging = false;
+		dragX = 0;
+	}
+
 	$effect(() => {
 		if (!browser) return;
 		const onKey = (e: KeyboardEvent) => {
-			if (finished || exitDir !== 0) return;
+			if (finished || exitDir !== 0 || e.repeat) return;
 			const t = e.target as HTMLElement | null;
-			if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+			if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
 			if (e.key === 'ArrowRight') {
 				e.preventDefault();
 				grade(true, 1);
@@ -282,51 +293,32 @@
 	);
 </script>
 
-{#if queue.length === 0}
-	<EmptyState
-		title="Mára végeztél"
-		description="Nincs esedékes szó, a tudott szavak holnap jönnek újra."
-	/>
-	{#if showExtra}
-		<div class="mx-auto mt-4 w-full max-w-[550px] text-center">
-			<Button onclick={() => {
-				extra = true;
-				deal();
-			}}>
-				Mégis gyakorlok ({futureCount})
-			</Button>
-		</div>
-	{/if}
+{#if ready && queue.length === 0}
+	<EmptyState title="Nincs gyakorolható szó" description="Ebben a csomagban még nincsenek szavak." />
 {:else if finished}
-	<div class={['mx-auto grid w-full max-w-[550px] place-items-center pt-4', embedded ? 'min-h-[calc(100dvh-260px)]' : 'min-h-[calc(100dvh-140px)] pb-24']}>
-		<div class="w-full rounded-[20px] bg-stone-100 p-6 text-center sm:p-8 dark:bg-white/5">
-			<p class="font-display text-[30px] leading-none font-extrabold text-ink-900 tabular-nums dark:text-white">
-				{known}/{queue.length}
-			</p>
+	<div class="mx-auto w-full max-w-[550px] py-6">
+		<div class="rounded-[20px] bg-stone-100 p-6 text-center sm:p-8 dark:bg-white/5">
+			<div class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+				<Check size={26} aria-hidden="true" />
+			</div>
+			<h2 class="font-display text-[24px] font-extrabold text-ink-900 dark:text-white">
+				Kör teljesítve
+			</h2>
 			<p class="mt-2 text-sm font-medium text-stone-500 dark:text-stone-400">
-				{#if known === queue.length}
-					Mindet tudtad.
-				{:else if known === 0}
-					Egyet sem tudtál, holnap újra jönnek.
-				{:else}
-					{queue.length - known} szó holnap újra jön.
-				{/if}
+				{reviewed} szót gyakoroltál, {known} sikerült.{#if missed > 0} {missed} még gyakorlást igényel.{/if}
 			</p>
-			{#if lastFeedback}
-				<p class="mt-1 text-[12px] font-bold text-stone-400 dark:text-stone-500">{lastFeedback}</p>
-			{/if}
-			<div class="mt-4 flex justify-center gap-2">
-				<Button variant="outline" onclick={restart}>
-					<RotateCcw size={16} /> Újra
-				</Button>
-				{#if showExtra}
-					<Button onclick={() => {
-						extra = true;
-						deal();
-					}}>
-						Maradék is ({futureCount})
+			<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">
+				Bármikor indíthatsz új gyakorlókört.
+			</p>
+			<div class="mt-4 flex flex-wrap justify-center gap-2">
+				{#if missed > 0}
+					<Button variant="outline" onclick={repeatMissed}>
+						<RotateCcw size={16} /> A nehezebb szavak újra ({missed})
 					</Button>
 				{/if}
+				<Button onclick={() => deal('extra')}>
+					Új gyakorlókör
+				</Button>
 			</div>
 		</div>
 	</div>
@@ -336,7 +328,7 @@
 			<div
 				class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-stone-100 dark:bg-white/10"
 				role="progressbar"
-				aria-valuenow={done + 1}
+				aria-valuenow={done}
 				aria-valuemin={0}
 				aria-valuemax={queue.length}
 				aria-label="Haladás"
@@ -351,22 +343,29 @@
 			</p>
 		</div>
 
+		{#if reviewRound}
+			<p class="mt-2 text-center text-[12px] font-medium text-stone-500 dark:text-stone-400">
+				Ismétlés a kevésbé biztos szavakból
+			</p>
+		{/if}
+
 		<div class="grid flex-1 place-items-center pt-3">
 			<div class="w-full">
 				<div class="anim-pop relative h-72 sm:h-80 [perspective:1400px]">
 					<div
 						role="button"
 						tabindex="0"
-						aria-label="Kártya: {frontText}. Koppintás a fordításhoz, húzás jobbra ha tudod, balra ha nem tudod."
+						aria-label="Kártya: {revealed ? backText : frontText}. Koppintás a fordításhoz, felfedés után húzás jobbra ha tudod, balra ha nem tudod."
 						onpointerdown={onDown}
 						onpointermove={onMove}
 						onpointerup={onUp}
-						onpointercancel={onUp}
+						onpointercancel={cancelDrag}
 						style={dragStyle}
-						class="absolute inset-0 cursor-grab touch-pan-y outline-none select-none active:cursor-grabbing"
+						class="absolute inset-0 cursor-grab touch-pan-y rounded-[24px] outline-none select-none focus-visible:ring-4 focus-visible:ring-brand-400 active:cursor-grabbing"
 					>
 						<div class={[flipCls, revealed ? '[transform:rotateY(180deg)]' : '']}>
 							<div
+								aria-hidden={revealed}
 								class={[
 									'absolute inset-0 flex flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] border bg-white p-6 text-center shadow-lg shadow-stone-900/5 [backface-visibility:hidden] dark:bg-stone-900 dark:shadow-black/30',
 									swipeDir === 'right'
@@ -380,7 +379,7 @@
 									{frontLabel}
 								</p>
 								<p
-									class="line-clamp-6 leading-snug font-extrabold text-balance text-ink-900 dark:text-white"
+									class="max-h-full overflow-y-auto leading-snug font-extrabold text-balance text-ink-900 dark:text-white"
 									style="font-size: {frontSize}px"
 								>
 									{frontText}
@@ -410,6 +409,7 @@
 								{/if}
 							</div>
 							<div
+								aria-hidden={!revealed}
 								class={[
 									'absolute inset-0 flex flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] bg-brand-600 p-6 text-center shadow-lg shadow-brand-600/25 [backface-visibility:hidden] [transform:rotateY(180deg)] dark:bg-brand-500',
 									swipeDir === 'right'
@@ -421,7 +421,7 @@
 							>
 								<p class="text-[11px] font-bold tracking-widest text-white/60 uppercase">{backLabel}</p>
 								<p
-									class="line-clamp-6 leading-snug font-extrabold text-balance text-white"
+									class="max-h-full overflow-y-auto leading-snug font-extrabold text-balance text-white"
 									style="font-size: {backSize}px"
 								>
 									{backText}
@@ -453,23 +453,36 @@
 			</div>
 		</div>
 
-		<div class={['grid grid-cols-2 gap-2 pt-3', embedded ? '' : 'pb-24']}>
-			<button
-				type="button"
-				onclick={() => grade(false, -1)}
-				class="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-red-500 px-4 py-3 text-[16px] font-extrabold text-white transition hover:bg-red-600 active:scale-[0.98]"
-				aria-label="Nem tudom"
-			>
-				<X size={20} strokeWidth={3} aria-hidden="true" /> Nem tudom
-			</button>
-			<button
-				type="button"
-				onclick={() => grade(true, 1)}
-				class="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-[16px] font-extrabold text-white transition hover:bg-emerald-600 active:scale-[0.98]"
-				aria-label="Tudom"
-			>
-				<Check size={20} strokeWidth={3} aria-hidden="true" /> Tudom
-			</button>
-		</div>
+		<p aria-live="polite" class="min-h-5 pt-2 text-center text-[12px] font-medium text-stone-500 dark:text-stone-400">
+			{lastFeedback}
+		</p>
+		{#if !revealed}
+			<div class={['pt-3', embedded ? '' : 'pb-24']}>
+				<Button block size="lg" onclick={() => (revealed = true)}>
+					Válasz felfedése
+				</Button>
+			</div>
+		{:else}
+			<div class={['grid grid-cols-2 gap-2 pt-3', embedded ? '' : 'pb-24']}>
+				<button
+					type="button"
+					disabled={exitDir !== 0}
+					onclick={() => grade(false, -1)}
+					class="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-red-500 px-4 py-3 text-[16px] font-extrabold text-white transition hover:bg-red-600 active:scale-[0.98]"
+					aria-label="Nem tudom"
+				>
+					<X size={20} strokeWidth={3} aria-hidden="true" /> Nem tudom
+				</button>
+				<button
+					type="button"
+					disabled={exitDir !== 0}
+					onclick={() => grade(true, 1)}
+					class="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-[16px] font-extrabold text-white transition hover:bg-emerald-600 active:scale-[0.98]"
+					aria-label="Tudom"
+				>
+					<Check size={20} strokeWidth={3} aria-hidden="true" /> Tudom
+				</button>
+			</div>
+		{/if}
 	</div>
 {/if}

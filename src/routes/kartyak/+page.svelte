@@ -16,7 +16,7 @@
 		Plus,
 		Shapes,
 		SlidersHorizontal,
-		Trash2
+		FunnelX
 	} from '@lucide/svelte';
 	interface LibSortOption {
 		id: string;
@@ -588,9 +588,9 @@
 			Szűrők
 		</h2>
 		{#if activeFilterCount > 0}
-			<IconButton ariaLabel="Szűrők törlése" tone="danger" size={40} onclick={resetFilters}>
-				<Trash2 size={18} />
-			</IconButton>
+			<Button variant="outline" size="sm" onclick={resetFilters}>
+				<FunnelX size={16} aria-hidden="true" /> Szűrők törlése
+			</Button>
 		{/if}
 	</div>
 	<div class="mt-2 grid gap-2">
