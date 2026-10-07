@@ -8,6 +8,8 @@ export interface Subject {
 	sort: number;
 	levelCount: number;
 	lessonCount: number;
+	/** Hivatalos kártyacsomagok száma a tantárgyban (kártyaválasztókhoz). */
+	packCount: number;
 	/** A szint-választó címkéje ennél a tantárgynál ("Szint", "Évfolyam", ...). */
 	levelLabel: string;
 }
@@ -90,13 +92,8 @@ export interface HomeStats {
 	todayDone: number;
 }
 
-/** Kártyacsomag típusa: Szókártya = Kártya + Teszt + Tanulás, Tanulókártya = csak kártyázás. */
+/** Kártyacsomag típusa: Szókártya és Tanulókártya, mindkettő kártyás gyakorlással. */
 export type DeckCardKind = 'word' | 'study';
-
-export const DECK_CARD_KINDS: { id: DeckCardKind; title: string; desc: string }[] = [
-	{ id: 'word', title: 'Szókártya', desc: 'Kártya, Teszt és Tanulás mód' },
-	{ id: 'study', title: 'Tanulókártya', desc: 'Csak kártyás gyakorlás jobbra-balra' }
-];
 
 export function deckCardKindLabel(kind?: string | null): string {
 	return kind === 'study' ? 'Tanulókártya' : 'Szókártya';
@@ -128,9 +125,15 @@ export interface Package {
 	kind?: 'cards' | 'quiz';
 	/** Kártyacsomag típusa: Szókártya (word) vagy Tanulókártya (study). Hiány = Szókártya. */
 	cardKind?: DeckCardKind;
-	/** Saját csomag csatolt leckéje (üres = nincs). */
+	/** Saját csomag csatolt leckéje (üres = nincs). Több csatolásnál az első. */
 	attachedLessonId?: string;
 	attachedLessonTitle?: string;
+	/** Több leckéhez csatolás: az összes csatolt lecke azonosítója. */
+	attachedLessonIds?: string[];
+	/** Több leckéhez csatolás: az összes csatolt lecke címmel. */
+	attachedLessons?: { id: string; title: string }[];
+	/** A csatolt lecke üres (nincs szöveg és kvíz): önálló szókártya, leckeoldal nélkül. */
+	lessonEmpty?: boolean;
 }
 
 /** Kártyázható-e a kérdés (egyértelmű szöveges válaszú)? */

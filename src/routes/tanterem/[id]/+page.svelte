@@ -14,11 +14,11 @@ import {
 	GraduationCap,
 	Image as ImageIcon,
 	Layers,
+	ListChecks,
 	LogOut,
 	Megaphone,
 	Mic,
 	Paperclip,
-	Play,
 	Plus,
 	RefreshCw,
 	RotateCcw,
@@ -2033,7 +2033,7 @@ import {
 						disabled={quizLoading || lessons.length === 0}
 						onclick={() => detailTask && startTaskQuiz(detailTask)}
 					>
-						<Play size={18} /> {quizLoading ? 'Összeállítás…' : 'Kitöltés'}
+						<ListChecks size={18} /> {quizLoading ? 'Összeállítás…' : 'Kitöltés'}
 					</Button>
 				</div>
 			{/if}

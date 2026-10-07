@@ -1,6 +1,14 @@
 @import 'tailwindcss';
 @import './lib/ui/tokens.css';
 
+@font-face {
+	font-family: 'Excalifont';
+	src: url('/Excalifont-Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
@@ -215,6 +223,45 @@ html[data-lefontfam='modern'] {
 html[data-lefontfam='book'] {
 	--font-sans: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
 	--font-display: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+}
+
+html[data-lefontfam='excalifont'] {
+	--font-sans: 'Excalifont', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-display: 'Excalifont', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	font-synthesis-weight: auto;
+}
+
+/* Excalifont csak normál vágattal érhető el, ezért a 600-as súlytól
+   felfelé a böngésző szintetizált félkövért használ. A vékony kézírásos
+   vonalakhoz ez önmagában kevés, ezért a vastagabb elemek vékony
+   körvonalat is kapnak, hogy Excalifonttal is láthatóan vastagabbak
+   legyenek. */
+html[data-lefontfam='excalifont'] :where(b, strong) {
+	font-weight: 700;
+}
+
+html[data-lefontfam='excalifont'] :where(.font-medium) {
+	-webkit-text-stroke-width: 0.15px;
+	-webkit-text-stroke-color: currentColor;
+	paint-order: stroke fill;
+}
+
+html[data-lefontfam='excalifont'] :where(.font-semibold) {
+	-webkit-text-stroke-width: 0.25px;
+	-webkit-text-stroke-color: currentColor;
+	paint-order: stroke fill;
+}
+
+html[data-lefontfam='excalifont'] :where(b, strong, .font-bold) {
+	-webkit-text-stroke-width: 0.35px;
+	-webkit-text-stroke-color: currentColor;
+	paint-order: stroke fill;
+}
+
+html[data-lefontfam='excalifont'] :where(.font-extrabold, .font-black, h1, h2, h3) {
+	-webkit-text-stroke-width: 0.5px;
+	-webkit-text-stroke-color: currentColor;
+	paint-order: stroke fill;
 }
 
 /* Mozgás csökkentése: kézi kapcsoló az OS prefers-reduced-motion mellé.

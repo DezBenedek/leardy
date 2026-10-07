@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { CalendarDays, ChevronRight, Flame, Settings } from '@lucide/svelte';
+	import { goto } from '$app/navigation';
+	import { CalendarDays, ChevronRight, Flame, Languages, Settings } from '@lucide/svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { Query } from '$lib/query.svelte';
 	import TaskDetailDrawer, { type TaskDetail } from '$lib/components/TaskDetailDrawer.svelte';
@@ -13,6 +14,21 @@
 	let { data }: { data: PageData } = $props();
 
 	let homeQ = new Query<{ streak: number }>();
+
+	interface LangDue {
+		subjectId: string;
+		subjectTitle: string;
+		due: number;
+		fresh: number;
+		total: number;
+		packs: number;
+		linkId: string;
+	}
+
+	let wordsQ = new Query<{ languages: LangDue[] }>();
+
+	let words = $derived(wordsQ.data?.languages ?? []);
+	let wordsLoading = $derived(wordsQ.data == null && !wordsQ.error);
 
 	type DueQuiz = TaskDetail & { kind: 'quiz' };
 	type DueAssignment = AssignmentDetail & { kind: 'assignment' };
@@ -81,6 +97,28 @@
 		);
 	}
 	loadDueTasks();
+
+	// Nyelvi szavak esedékessége a könyvtár alapján (Angol, Német, Olasz, Spanyol).
+	wordsQ.prime('sm2-due', HOME_STALE);
+	wordsQ.load(
+		'sm2-due',
+		async () => {
+			try {
+				const res = await fetch('/api/sm2-due');
+				if (!res.ok) return { languages: [] };
+				const j = await res.json();
+				return { languages: j.languages ?? [] };
+			} catch {
+				return { languages: [] };
+			}
+		},
+		HOME_TTL,
+		HOME_STALE
+	);
+
+	function goWords(subjectId: string) {
+		void goto(`/szavak/${encodeURIComponent(subjectId)}`);
+	}
 </script>
 
 <svelte:head>
@@ -103,10 +141,10 @@
 </header>
 
 <section aria-label="Széria" class="mt-4">
-	<Card tone="brand" pad="lg">
+	<Card tone="brand" pad="md">
 		<div class="flex items-center gap-3">
 			<span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-white/15 text-2xl">
-				<Flame size={26} />
+				<Flame size={30} color="#eb6734" strokeWidth={3}/>
 			</span>
 			<div class="min-w-0">
 				<p class="font-display text-[22px] leading-tight font-extrabold">
@@ -114,13 +152,53 @@
 				</p>
 			</div>
 		</div>
-		{#if data.lessonCount > 0}
-			<p class="mt-3 text-[13px] font-medium text-white/60">
-				{data.subjectCount} tantárgy · {data.lessonCount} lecke vár rád.
-			</p>
-		{/if}
 	</Card>
 </section>
+
+{#if wordsLoading || words.length > 0}
+	<section aria-label="Szavak gyakorlása" class="mt-5">
+		<h2 class="font-display px-1 text-[19px] font-extrabold tracking-tight text-ink-900 dark:text-white">
+			Szavak gyakorlása
+		</h2>
+		<div class="mt-2.5">
+			{#if wordsLoading}
+				<div role="status" aria-label="Betöltés" class="grid gap-2.5">
+					<Card>
+						<span class="flex items-center gap-3">
+							<span class="min-w-0 flex-1 space-y-2">
+								<Skeleton cls="h-[18px] w-2/3 rounded-lg" />
+								<Skeleton cls="h-5 w-24 rounded-full" />
+							</span>
+							<Skeleton cls="size-5 shrink-0 rounded-full" />
+						</span>
+					</Card>
+					<span class="sr-only">Betöltés…</span>
+				</div>
+			{:else}
+				<div class="grid gap-2.5">
+					{#each words as w (w.subjectId)}
+						<Card onclick={() => goWords(w.subjectId)} ariaLabel="{w.subjectTitle} szavak gyakorlása">
+							<span class="flex items-center gap-3">
+								<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/20 dark:text-brand-300" aria-hidden="true">
+									<Languages size={19} />
+								</span>
+								<span class="min-w-0 flex-1">
+									<span class="font-display block truncate text-[16px] font-extrabold text-ink-900 dark:text-white">
+										{w.subjectTitle} szavak gyakorlása
+									</span>
+									<span class="mt-0.5 block truncate text-[12px] font-bold text-stone-500 dark:text-stone-400">
+										{w.due} esedékes · {w.fresh} új · {w.total} szó · {w.packs} csomag
+									</span>
+								</span>
+								<ChevronRight size={19} class="shrink-0 text-stone-300 dark:text-stone-600" />
+							</span>
+						</Card>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	</section>
+{/if}
 
 <section aria-label="Határidős feladataim" class="mt-5">
 	<h2 class="font-display px-1 text-[19px] font-extrabold tracking-tight text-ink-900 dark:text-white">

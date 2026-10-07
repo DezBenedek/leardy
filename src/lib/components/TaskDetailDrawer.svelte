@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CalendarDays, Check, Play, RotateCcw, Send, Undo2 } from '@lucide/svelte';
+	import { CalendarDays, Check, ListChecks, RotateCcw, Send, Undo2 } from '@lucide/svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import QuizModal from '$lib/components/QuizModal.svelte';
@@ -200,7 +200,7 @@
 						disabled={quizLoading || t.lessons.length === 0}
 						onclick={startQuiz}
 					>
-						<Play size={18} /> {quizLoading ? 'Összeállítás…' : 'Kitöltés'}
+						<ListChecks size={18} /> {quizLoading ? 'Összeállítás…' : 'Kitöltés'}
 					</Button>
 				</div>
 			{/if}

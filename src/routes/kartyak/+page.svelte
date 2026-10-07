@@ -24,8 +24,9 @@
 		desc: string;
 		icon: typeof History;
 	}
-	import type { DeckCardKind, LevelNode, Package, Subject } from '$lib/curriculum';
-	import { DECK_CARD_KINDS, deckCardKindLabel } from '$lib/curriculum';
+	import type { LevelNode, Package, Subject } from '$lib/curriculum';
+	import { deckCardKindLabel } from '$lib/curriculum';
+	import { cardKindForSubject } from '$lib/sm2';
 	import { loadDeckOpened, normHu } from '$lib/deck-history';
 	import { Query, getOrFetch } from '$lib/query.svelte';
 	import { loadScope, saveScope } from '$lib/scope';
@@ -147,8 +148,9 @@
 	}
 
 	function pkgHaystack(p: Package): string {
+		const attached = (p.attachedLessons ?? []).map((a) => a.title).join(' ');
 		return normHu(
-			[p.title, p.subjectTitle, p.levelTitle, p.attachedLessonTitle, p.lessonTitle, p.materialTitle]
+			[p.title, p.subjectTitle, p.levelTitle, p.attachedLessonTitle, attached, p.lessonTitle, p.materialTitle]
 				.filter(Boolean)
 				.join(' ')
 		);
@@ -194,8 +196,14 @@
 		const parts: string[] = [];
 		if (p.subjectTitle && !(subjectId && p.subjectId === subjectId)) parts.push(p.subjectTitle);
 		if (p.levelTitle && !(levelId && p.levelId === levelId)) parts.push(p.levelTitle);
-		if (p.attachedLessonTitle && !p.title.startsWith(p.attachedLessonTitle))
-			parts.push(p.attachedLessonTitle);
+		const attachedTitles = (p.attachedLessons ?? [])
+			.map((a) => a.title)
+			.filter((t) => t && !p.title.startsWith(t));
+		const legacyAttached =
+			p.attachedLessonTitle && !p.title.startsWith(p.attachedLessonTitle) ? [p.attachedLessonTitle] : [];
+		const allAttached = attachedTitles.length > 0 ? attachedTitles : legacyAttached;
+		if (allAttached.length === 1) parts.push(allAttached[0]);
+		else if (allAttached.length > 1) parts.push(`${allAttached.length} leckéhez csatolva`);
 		parts.push(kindLabel);
 		parts.push(`${p.questionCount} kártya`);
 		return parts.join(' · ');
@@ -207,10 +215,18 @@
 	let dTitle = $state('');
 	let dSubject = $state('');
 	let dLevel = $state('');
-	let dCardKind = $state<DeckCardKind>('word');
 	let dLevels = $state<LevelNode[]>([]);
 	let dBusy = $state(false);
 	let lastDeckSubject = $state('');
+	/** Automatikus típus a választott tantárgy alapján: nyelvnél Szókártya, máshol Tanulókártya. */
+	let dAutoKind = $derived(
+		cardKindForSubject(
+			subjects.find((s) => s.id === dSubject)?.title ?? '',
+			subjects.find((s) => s.id === dSubject)?.icon ?? 'book',
+			dSubject || null
+		)
+	);
+	let dAutoKindLabel = $derived(dAutoKind === 'study' ? 'Tanulókártya' : 'Szókártya');
 
 	const subjectIcons: Record<string, typeof Landmark> = {
 		landmark: Landmark,
@@ -296,7 +312,6 @@
 		dSubject = subjectId;
 		lastDeckSubject = subjectId;
 		dLevel = '';
-		dCardKind = 'word';
 		dBusy = false;
 		picker = null;
 		void fetchDeckLevels(subjectId);
@@ -346,7 +361,6 @@
 				body: JSON.stringify({
 					title: dTitle.trim(),
 					kind: 'cards',
-					cardKind: dCardKind,
 					subjectId: dSubject || undefined,
 					levelId: dLevel || undefined
 				})
@@ -780,30 +794,6 @@
 			class="mt-1.5 {cardInput} w-full"
 		/>
 	</label>
-	<p class="mt-4 text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Típus</p>
-	<div
-		role="group"
-		aria-label="Csomag típusa"
-		class="mt-1 grid grid-cols-2 gap-1 rounded-2xl bg-stone-100 p-1 dark:bg-white/10"
-	>
-		{#each DECK_CARD_KINDS as o (o.id)}
-			{@const selected = dCardKind === o.id}
-			<button
-				type="button"
-				aria-pressed={selected}
-				onclick={() => (dCardKind = o.id)}
-				class={[
-					'rounded-xl px-2 py-2 text-left leading-none transition active:scale-[0.97]',
-					selected
-						? 'bg-white shadow-sm dark:bg-stone-800 dark:shadow-black/40'
-						: 'hover:bg-white/60 dark:hover:bg-white/5'
-				]}
-			>
-				<span class="block text-[13px] font-extrabold text-ink-900 dark:text-white">{o.title}</span>
-				<span class="mt-1 block text-[11px] font-medium text-stone-500 dark:text-stone-400">{o.desc}</span>
-			</button>
-		{/each}
-	</div>
 	<div class="mt-3 grid gap-2">
 		<button type="button" onclick={() => (picker = 'subject')} class={pickRowBtn}>
 			<span class="min-w-0 flex-1">
@@ -861,7 +851,7 @@
 					<span class={optTile(selected)}><SIcon size={18} aria-hidden="true" /></span>
 					<span class="min-w-0 flex-1">
 						<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{s.title}</span>
-						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">{s.lessonCount} lecke</span>
+						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">{s.packCount} csomag</span>
 					</span>
 					{#if selected}
 						<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />

@@ -2,13 +2,13 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
-	import { ArrowLeft, ArrowLeftRight, BookOpen, GraduationCap, Layers, Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import { ArrowLeft, ArrowLeftRight, BookOpen, Layers, Pencil, Plus, Trash2 } from '@lucide/svelte';
 	import FlipCards from '$lib/components/FlipCards.svelte';
 	import QuizModal from '$lib/components/QuizModal.svelte';
-	import SmartLearn from '$lib/components/SmartLearn.svelte';
-	import WriteTest from '$lib/components/WriteTest.svelte';
+	import WordPractice from '$lib/components/WordPractice.svelte';
 	import type { Package, QuizQuestion } from '$lib/curriculum';
 	import { deckCardKindLabel, isStudyDeck } from '$lib/curriculum';
+	import { gradeSM2, summarizeSM2, todayDay } from '$lib/sm2';
 	import { markDeckOpened } from '$lib/deck-history';
 	import { Query, markLessonDone } from '$lib/query.svelte';
 	import { toast } from '$lib/toast.svelte';
@@ -17,13 +17,17 @@
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import Skeleton from '$lib/ui/Skeleton.svelte';
 
-	/* Kártyacsomag-adatlap: saját deckek és hivatalos (leckénkénti) csomagok.
-	   A kvízek nem tartoznak ide: a kvíz a lecke oldalán él.
-	   Mindkét fajta 3 gyakorlási módot kap: Kártya, Teszt, Tanulás. */
+	/* Kártyacsomag-adatlap: saját deckek és hivatalos csomagok.
+	   Szókártya SM-2 sorrenddel gyakorol (Tudom vagy Nem tudom),
+	   Tanulókártya csak szabad kártyázást kap. */
 
 	interface Mark {
 		known: number;
 		seen: number;
+		repetitions?: number;
+		ease?: number;
+		intervalDays?: number;
+		dueDay?: number;
 	}
 
 	interface Detail {
@@ -116,7 +120,7 @@
 	});
 
 	let practiceOpen = $state(false);
-	let practiceMode = $state<'cards' | 'write' | 'learn'>('cards');
+	let practiceMode = $state<'sm2' | 'cards'>('sm2');
 	let cardsSwapped = $state(false);
 	/** Megfordított kártya-előlap megjegyzése csomagonként. */
 	const SWAP_KEY = 'leardy-cards-swapped';
@@ -255,11 +259,11 @@
 		}
 	}
 
-	function openPractice(mode: 'cards' | 'write' | 'learn') {
+	function openPractice(mode: 'sm2' | 'cards') {
 		pendingMarks = [];
 		practiceMode = mode;
-		// Kártya módban a megjegyzett csereállapottal indul, legközelebb is úgy marad.
-		if (mode === 'cards') cardsSwapped = loadSwapped(id);
+		// Kártya és SM-2 módban a megjegyzett csereállapottal indul.
+		if (mode === 'cards' || mode === 'sm2') cardsSwapped = loadSwapped(id);
 		session += 1;
 		practiceOpen = true;
 	}
@@ -278,33 +282,54 @@
 		}
 	}
 
-	async function finishPractice(score: number, totalQ: number) {
+	async function saveMarks() {
 		const marks = pendingMarks;
 		pendingMarks = [];
-		if (marks.length > 0) {
-			try {
-				const res = await fetch('/api/card-progress', {
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({ results: marks.map((m) => ({ key: m.key, known: m.known })) })
-				});
-				if (res.ok) {
-					const next = { ...progress };
-					for (const m of marks) {
-						const cur = next[m.key] ?? { known: 0, seen: 0 };
-						next[m.key] = {
-							known: m.known ? cur.known + 1 : 0,
-							seen: cur.seen + 1
-						};
-					}
-					progress = next;
+		if (marks.length === 0) return;
+		try {
+			const res = await fetch('/api/card-progress', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ results: marks.map((m) => ({ key: m.key, known: m.known })) })
+			});
+			if (res.ok) {
+				const nowDay = todayDay();
+				const next = { ...progress };
+				for (const m of marks) {
+					const cur = next[m.key] ?? { known: 0, seen: 0 };
+					// Helyi SM-2 előnézet, hogy a pöttyök és az esedékesség azonnal frissüljön.
+					const sm = gradeSM2(cur, m.known, nowDay);
+					next[m.key] = {
+						known: sm.known,
+						seen: sm.seen,
+						repetitions: sm.repetitions,
+						ease: sm.ease,
+						intervalDays: sm.intervalDays,
+						dueDay: sm.dueDay
+					};
 				}
-			} catch {
-				// a pöttyök legközelebb szinkronizálódnak
+				progress = next;
 			}
+		} catch {
+			// a pöttyök legközelebb szinkronizálódnak
 		}
+	}
+
+	async function finishPractice(score: number, totalQ: number) {
+		await saveMarks();
 		if (pkg?.lessonId) await reportProgress(pkg.lessonId, score, totalQ);
 	}
+
+	/** Bezárás: az addigi válaszok mentődnek, a gyakorló záródik. */
+	function closePractice() {
+		void saveMarks();
+		practiceOpen = false;
+	}
+
+	/** Szókártya SM-2 összesítése a gyakorló gombhoz. */
+	let sm2 = $derived(
+		pkg && !studyOnly && total > 0 ? summarizeSM2(pkg.questions, progress, todayDay()) : null
+	);
 </script>
 
 <svelte:head>
@@ -390,29 +415,17 @@
 					style="width: {knownPct}%"
 				></div>
 			</div>
-			<div class="mt-4">
-				{#if studyOnly}
-					<Button block size="lg" onclick={() => openPractice('cards')}>
-						<Layers size={18} /> Kártyás gyakorlás
-					</Button>
-					<p class="mt-2 text-center text-[12px] font-medium text-stone-500 dark:text-stone-400">
-						Tanulókártya: csak jobbra-balra gyakorlás.
-					</p>
-				{:else}
-					<div class="grid grid-cols-3 gap-2">
-						<Button variant="outline" size="lg" onclick={() => openPractice('cards')}>
-							<Layers size={18} /> Kártya
-						</Button>
-						<Button variant="outline" size="lg" onclick={() => openPractice('write')}>
-							Teszt
-						</Button>
-						<Button size="lg" onclick={() => openPractice('learn')}>
-							<GraduationCap size={18} /> Tanulás
-						</Button>
-					</div>
-				{/if}
+			{#if sm2 && sm2.due > 0}
+				<p class="mt-2 text-center text-[13px] font-bold text-stone-500 tabular-nums dark:text-stone-400">
+					{sm2.due} esedékes
+				</p>
+			{/if}
+			<div class="mt-3">
+				<Button block size="lg" onclick={() => openPractice(studyOnly ? 'cards' : 'sm2')}>
+					<Layers size={18} /> Kártya
+				</Button>
 			</div>
-			{#if pkg.lessonId}
+			{#if pkg.lessonId && !pkg.lessonEmpty}
 				<div class="mt-2.5 text-center">
 					<a
 						href="/lecke/{pkg.lessonId}"
@@ -454,7 +467,18 @@
 				</div>
 			{/each}
 		</div>
-		{#if pkg.attachedLessonId}
+		{#if (pkg.attachedLessons ?? []).length > 0 && !pkg.lessonEmpty}
+			<div class="mt-3 grid gap-1.5 text-center">
+				{#each (pkg.attachedLessons ?? [{ id: pkg.attachedLessonId ?? '', title: pkg.attachedLessonTitle ?? '' }]).filter((a) => a.id) as a (a.id)}
+					<a
+						href="/lecke/{a.id}"
+						class="text-[13px] font-bold text-brand-600 transition hover:text-brand-700 dark:text-brand-300 dark:hover:text-white"
+					>
+						Csatolva: {a.title || 'lecke'}
+					</a>
+				{/each}
+			</div>
+		{:else if pkg.attachedLessonId && !pkg.lessonEmpty}
 			<div class="mt-3 text-center">
 				<a
 					href="/lecke/{pkg.attachedLessonId}"
@@ -464,9 +488,6 @@
 				</a>
 			</div>
 		{/if}
-		<p class="mt-3 text-center text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">
-			{pkg.mine ? 'Saját csomag' : 'Hivatalos csomag'}
-		</p>
 	{:else}
 		<div class="mt-4">
 			<EmptyState
@@ -486,10 +507,9 @@
 	{/if}
 {/if}
 
-<QuizModal open={practiceOpen} label={pkg?.title ?? 'Gyakorlás'} title={pkg?.title} onClose={() => (practiceOpen = false)}>
+<QuizModal open={practiceOpen} label={pkg?.title ?? 'Gyakorlás'} title={pkg?.title} onClose={closePractice}>
 	{#snippet headerActions()}
-		{#if practiceMode === 'cards'}
-			<button
+		<button
 				type="button"
 				onclick={toggleSwap}
 				aria-label="Előlap és hátlap cseréje"
@@ -504,20 +524,16 @@
 			>
 				<ArrowLeftRight size={18} />
 			</button>
-		{/if}
 	{/snippet}
 	{#if pkg && practiceOpen}
 		{#key session}
 			<div class="pt-1">
-				{#if practiceMode === 'write'}
-					<WriteTest
+				{#if practiceMode === 'sm2'}
+					<WordPractice
 						questions={pkg.questions}
-						onMark={(idQ, known) => (pendingMarks = [...pendingMarks, { key: idQ, known }])}
-						onDone={(score, totalQ) => void finishPractice(score, totalQ)}
-					/>
-				{:else if practiceMode === 'learn'}
-					<SmartLearn
-						questions={pkg.questions}
+						progress={progress}
+						swapped={cardsSwapped}
+						includeFuture
 						onMark={(idQ, known) => (pendingMarks = [...pendingMarks, { key: idQ, known }])}
 						onDone={(score, totalQ) => void finishPractice(score, totalQ)}
 					/>

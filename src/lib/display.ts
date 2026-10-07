@@ -2,7 +2,7 @@ import { browser } from '$app/environment';
 import type { AppSettings } from '$lib/settings';
 
 /* Megjelenési beállítások alkalmazása a <html> elemen.
-   - data-lefontfam: system | modern | book (betűtípus)
+   - data-lefontfam: system | modern | book | excalifont (betűtípus)
    - .reduce-motion: animációk kikapcsolása (az OS prefers-reduced-motion mellé)
    - .compact: sűrűbb listák, kisebb térközök
    Az alapszöveg mérete fix (lásd app.css), nincs hozzá beállítás.

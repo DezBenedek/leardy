@@ -3,8 +3,9 @@
 
 	export const fontFamilyStacks: Record<FontFamilyChoice, string> = {
 		system: "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
-		modern: "var(--font-display)",
-		book: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, Georgia, serif"
+		modern: "'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif",
+		book: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, Georgia, serif",
+		excalifont: "'Excalifont', ui-sans-serif, system-ui, sans-serif"
 	};
 </script>
 
@@ -29,7 +30,8 @@
 	const options: { id: FontFamilyChoice; label: string }[] = [
 		{ id: 'system', label: 'Rendszer' },
 		{ id: 'modern', label: 'Modern' },
-		{ id: 'book', label: 'Könyvszerű' }
+		{ id: 'book', label: 'Könyvszerű' },
+		{ id: 'excalifont', label: 'Excalifont' }
 	];
 
 	let active = $derived(options.find((o) => o.id === value) ?? options[0]);

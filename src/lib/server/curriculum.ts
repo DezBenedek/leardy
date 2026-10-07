@@ -15,6 +15,7 @@ import type {
 	SubjectTree,
 	Suggestion
 } from '$lib/curriculum';
+import { calculateSM2, qualityFor, todayDay } from '$lib/sm2';
 
 /** A lekérdezők D1Database-et vagy RequestEvent-et fogadnak első paramként;
  *  event esetén getDb-vel (./db) oldják fel az adatbázist. */
@@ -145,12 +146,30 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 			)`
 		),
 		db.prepare(
+			`CREATE TABLE IF NOT EXISTS deck_lessons (
+				deck_id TEXT NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+				lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+				PRIMARY KEY (deck_id, lesson_id)
+			)`
+		),
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS lesson_card_pack_lessons (
+				pack_id TEXT NOT NULL REFERENCES lesson_card_packs(id) ON DELETE CASCADE,
+				lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+				PRIMARY KEY (pack_id, lesson_id)
+			)`
+		),
+		db.prepare(
 			`CREATE TABLE IF NOT EXISTS card_progress (
 				user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				card_key TEXT NOT NULL,
 				known INTEGER NOT NULL DEFAULT 0,
 				seen INTEGER NOT NULL DEFAULT 0,
 				updated_at TEXT NOT NULL DEFAULT '',
+				repetitions INTEGER NOT NULL DEFAULT 0,
+				ease REAL NOT NULL DEFAULT 2.5,
+				interval_days INTEGER NOT NULL DEFAULT 0,
+				due_day INTEGER NOT NULL DEFAULT 0,
 				PRIMARY KEY (user_id, card_key)
 			)`
 		),
@@ -176,7 +195,14 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_decks_user ON decks(user_id)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_deck_cards_deck ON deck_cards(deck_id, sort)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_card_progress_user ON card_progress(user_id)`),
-		db.prepare(`CREATE INDEX IF NOT EXISTS idx_library_user ON library(user_id)`)
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_card_progress_due ON card_progress(user_id, due_day)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_library_user ON library(user_id)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_deck_lessons_deck ON deck_lessons(deck_id)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_deck_lessons_lesson ON deck_lessons(lesson_id)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_pack_lessons_pack ON lesson_card_pack_lessons(pack_id)`),
+		db.prepare(
+			`CREATE INDEX IF NOT EXISTS idx_pack_lessons_lesson ON lesson_card_pack_lessons(lesson_id)`
+		)
 	]);
 	// Régebbi decks táblák utólagos bővítése kind-nal. Ha már létezik, a hiba elnyelhető.
 	try {
@@ -223,6 +249,295 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 	} catch {
 		// az oszlop már létezik
 	}
+	// SM-2 ütemezés a meglévő card_progress sorokban, új tábla nélkül.
+	// Csak a megérintett kártyához jön létre sor, ezért sor takarékos marad.
+	for (const ddl of [
+		`ALTER TABLE card_progress ADD COLUMN repetitions INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE card_progress ADD COLUMN ease REAL NOT NULL DEFAULT 2.5`,
+		`ALTER TABLE card_progress ADD COLUMN interval_days INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE card_progress ADD COLUMN due_day INTEGER NOT NULL DEFAULT 0`
+	]) {
+		try {
+			await db.prepare(ddl).run();
+		} catch {
+			// az oszlop már létezik
+		}
+	}
+	// Több leckéhez csatolás: kapcsolótáblák. A régi egy-leckés
+	// `lesson_id` megmarad elsődlegesnek, a kapcsoló az összes csatolást tartja.
+	try {
+		await db
+			.prepare(
+				`CREATE TABLE IF NOT EXISTS deck_lessons (
+					deck_id TEXT NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+					lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+					PRIMARY KEY (deck_id, lesson_id)
+				)`
+			)
+			.run();
+	} catch {
+		// már létezik
+	}
+	try {
+		await db
+			.prepare(
+				`CREATE TABLE IF NOT EXISTS lesson_card_pack_lessons (
+					pack_id TEXT NOT NULL REFERENCES lesson_card_packs(id) ON DELETE CASCADE,
+					lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+					PRIMARY KEY (pack_id, lesson_id)
+				)`
+			)
+			.run();
+	} catch {
+		// már létezik
+	}
+	// Régi egy-leckés csatolások átmentése a kapcsolóba (idempotens).
+	try {
+		await db
+			.prepare(
+				`INSERT OR IGNORE INTO deck_lessons (deck_id, lesson_id)
+				 SELECT id, lesson_id FROM decks WHERE lesson_id IS NOT NULL AND TRIM(lesson_id) != ''`
+			)
+			.run();
+	} catch {
+		// tábla még nincs vagy nincs mit menteni
+	}
+	try {
+		await db
+			.prepare(
+				`INSERT OR IGNORE INTO lesson_card_pack_lessons (pack_id, lesson_id)
+				 SELECT id, lesson_id FROM lesson_card_packs WHERE lesson_id IS NOT NULL AND TRIM(lesson_id) != ''`
+			)
+			.run();
+	} catch {
+		// tábla még nincs vagy nincs mit menteni
+	}
+}
+
+/** Csatolt leckék egy saját csomaghoz: kapcsoló + régi oszlop uniója. */
+async function deckAttachedLessons(
+	db: D1Database,
+	deckId: string
+): Promise<{ id: string; title: string }[]> {
+	const ids = new Set<string>();
+	try {
+		const r = await db
+			.prepare(`SELECT lesson_id AS id FROM deck_lessons WHERE deck_id = ?`)
+			.bind(deckId)
+			.all<{ id: string }>();
+		for (const row of r.results ?? []) if (row.id) ids.add(row.id);
+	} catch {
+		// kapcsoló még nincs
+	}
+	try {
+		const legacy = await db
+			.prepare(`SELECT lesson_id AS id FROM decks WHERE id = ?`)
+			.bind(deckId)
+			.first<{ id: string | null }>();
+		if (legacy?.id) ids.add(legacy.id);
+	} catch {
+		// nincs régi oszlop
+	}
+	if (ids.size === 0) return [];
+	try {
+		const list = [...ids];
+		const res = await db
+			.prepare(`SELECT id, title FROM lessons WHERE id IN (${list.map(() => '?').join(', ')})`)
+			.bind(...list)
+			.all<{ id: string; title: string }>();
+		const byId = new Map((res.results ?? []).map((l) => [l.id, l.title]));
+		return list
+			.filter((id) => byId.has(id))
+			.map((id) => ({ id, title: byId.get(id) ?? '' }));
+	} catch {
+		return [...ids].map((id) => ({ id, title: '' }));
+	}
+}
+
+/** Csatolt leckék egy hivatalos csomaghoz: kapcsoló + régi oszlop uniója. */
+async function packAttachedLessons(
+	db: D1Database,
+	packId: string
+): Promise<{ id: string; title: string }[]> {
+	const ids = new Set<string>();
+	try {
+		const r = await db
+			.prepare(`SELECT lesson_id AS id FROM lesson_card_pack_lessons WHERE pack_id = ?`)
+			.bind(packId)
+			.all<{ id: string }>();
+		for (const row of r.results ?? []) if (row.id) ids.add(row.id);
+	} catch {
+		// kapcsoló még nincs
+	}
+	try {
+		const legacy = await db
+			.prepare(`SELECT lesson_id AS id FROM lesson_card_packs WHERE id = ?`)
+			.bind(packId)
+			.first<{ id: string | null }>();
+		if (legacy?.id) ids.add(legacy.id);
+	} catch {
+		// nincs régi oszlop
+	}
+	if (ids.size === 0) return [];
+	try {
+		const list = [...ids];
+		const res = await db
+			.prepare(`SELECT id, title FROM lessons WHERE id IN (${list.map(() => '?').join(', ')})`)
+			.bind(...list)
+			.all<{ id: string; title: string }>();
+		const byId = new Map((res.results ?? []).map((l) => [l.id, l.title]));
+		return list
+			.filter((id) => byId.has(id))
+			.map((id) => ({ id, title: byId.get(id) ?? '' }));
+	} catch {
+		return [...ids].map((id) => ({ id, title: '' }));
+	}
+}
+
+/** Saját csomag csatolásainak cseréje: kapcsoló újraírva, régi oszlop az elsőre áll. */
+export async function setDeckLessons(
+	db: D1Database,
+	deckId: string,
+	lessonIds: string[]
+): Promise<void> {
+	const uniq = [...new Set(lessonIds.map((s) => s.trim()).filter(Boolean))].slice(0, 50);
+	try {
+		await db.prepare(`DELETE FROM deck_lessons WHERE deck_id = ?`).bind(deckId).run();
+	} catch {
+		// kapcsoló még nincs
+	}
+	if (uniq.length > 0) {
+		try {
+			await db.batch(
+				uniq.map((lid) =>
+					db
+						.prepare(`INSERT OR IGNORE INTO deck_lessons (deck_id, lesson_id) VALUES (?, ?)`)
+						.bind(deckId, lid)
+				)
+			);
+		} catch {
+			// egyedi írásokkal próbálkozunk
+			for (const lid of uniq) {
+				try {
+					await db
+						.prepare(`INSERT OR IGNORE INTO deck_lessons (deck_id, lesson_id) VALUES (?, ?)`)
+						.bind(deckId, lid)
+						.run();
+				} catch {
+					// egy hibás csatolás nem blokkol
+				}
+			}
+		}
+	}
+	try {
+		await db.prepare(`UPDATE decks SET lesson_id = ? WHERE id = ?`).bind(uniq[0] ?? null, deckId).run();
+	} catch {
+		// régi oszlop nélkül is jó a kapcsoló
+	}
+}
+
+/** Hivatalos csomag csatolásainak cseréje (admin/seed rétegnek). */
+export async function setPackLessons(
+	db: D1Database,
+	packId: string,
+	lessonIds: string[]
+): Promise<void> {
+	const uniq = [...new Set(lessonIds.map((s) => s.trim()).filter(Boolean))].slice(0, 50);
+	try {
+		await db.prepare(`DELETE FROM lesson_card_pack_lessons WHERE pack_id = ?`).bind(packId).run();
+	} catch {
+		// kapcsoló még nincs
+	}
+	if (uniq.length > 0) {
+		try {
+			await db.batch(
+				uniq.map((lid) =>
+					db
+						.prepare(
+							`INSERT OR IGNORE INTO lesson_card_pack_lessons (pack_id, lesson_id) VALUES (?, ?)`
+						)
+						.bind(packId, lid)
+				)
+			);
+		} catch {
+			for (const lid of uniq) {
+				try {
+					await db
+						.prepare(
+							`INSERT OR IGNORE INTO lesson_card_pack_lessons (pack_id, lesson_id) VALUES (?, ?)`
+						)
+						.bind(packId, lid)
+						.run();
+				} catch {
+					// egy hibás csatolás nem blokkol
+				}
+			}
+		}
+	}
+	// Az elsődleges lecke marad a régi oszlopban, hogy a JOIN-ok működjenek.
+	try {
+		if (uniq.length > 0) {
+			await db.prepare(`UPDATE lesson_card_packs SET lesson_id = ? WHERE id = ?`).bind(uniq[0], packId).run();
+		}
+	} catch {
+		// régi oszlop nélkül is jó a kapcsoló
+	}
+}
+
+/** Kötegelt csatolás-térkép hivatalos csomagokhoz (packId -> leckék). */
+async function packMultiMap(
+	db: D1Database,
+	packIds: string[]
+): Promise<Map<string, { id: string; title: string }[]>> {
+	const out = new Map<string, { id: string; title: string }[]>();
+	if (packIds.length === 0) return out;
+	try {
+		const res = await db
+			.prepare(
+				`SELECT pl.pack_id AS packId, le.id AS id, le.title AS title
+				 FROM lesson_card_pack_lessons pl
+				 JOIN lessons le ON le.id = pl.lesson_id
+				 WHERE pl.pack_id IN (${packIds.map(() => '?').join(', ')})`
+			)
+			.bind(...packIds)
+			.all<{ packId: string; id: string; title: string }>();
+		for (const r of res.results ?? []) {
+			const list = out.get(r.packId) ?? [];
+			if (!list.some((x) => x.id === r.id)) list.push({ id: r.id, title: r.title });
+			out.set(r.packId, list);
+		}
+	} catch {
+		// kapcsoló még nincs: üres térkép
+	}
+	return out;
+}
+
+/** Kötegelt csatolás-térkép saját csomagokhoz (deckId -> leckék). */
+async function deckMultiMap(
+	db: D1Database,
+	deckIds: string[]
+): Promise<Map<string, { id: string; title: string }[]>> {
+	const out = new Map<string, { id: string; title: string }[]>();
+	if (deckIds.length === 0) return out;
+	try {
+		const res = await db
+			.prepare(
+				`SELECT dl.deck_id AS deckId, le.id AS id, le.title AS title
+				 FROM deck_lessons dl
+				 JOIN lessons le ON le.id = dl.lesson_id
+				 WHERE dl.deck_id IN (${deckIds.map(() => '?').join(', ')})`
+			)
+			.bind(...deckIds)
+			.all<{ deckId: string; id: string; title: string }>();
+		for (const r of res.results ?? []) {
+			const list = out.get(r.deckId) ?? [];
+			if (!list.some((x) => x.id === r.id)) list.push({ id: r.id, title: r.title });
+			out.set(r.deckId, list);
+		}
+	} catch {
+		// kapcsoló még nincs
+	}
+	return out;
 }
 
 interface SubjectRow {
@@ -238,8 +553,8 @@ export async function listSubjects(dbOrEvent: DbOrEvent): Promise<Subject[]> {
 	// Nincs ensure: az olvasást nem blokkoljuk ~25 DDL-lel (migrációk + író API-k biztosítják).
 	// D1-optimalizálás: a korábbi korrelált COUNT-allekérdezések minden tantárgyra
 	// újraolvasták a levels/materials/lessons táblákat (N * teljes scan).
-	// Helyette 1 batchelt körben: tantárgyak + 2 GROUP BY számlálás.
-	const [subjectsRes, levelCountRes, lessonCountRes] = await db.batch([
+	// Helyette 1 batchelt körben: tantárgyak + 3 GROUP BY számlálás.
+	const [subjectsRes, levelCountRes, lessonCountRes, packCountRes] = await db.batch([
 		db.prepare(
 			`SELECT id, title, COALESCE(icon, 'book') AS icon, COALESCE(sort, 0) AS sort,
 				COALESCE(level_label, 'Szint') AS levelLabel
@@ -247,11 +562,25 @@ export async function listSubjects(dbOrEvent: DbOrEvent): Promise<Subject[]> {
 				ORDER BY sort, title`
 		),
 		db.prepare(`SELECT subject_id AS id, COUNT(*) AS n FROM levels GROUP BY subject_id`),
+		// Leckeszám: csak a tartalmas leckék (szöveg vagy kvíz). Az üres
+		// szókártya-hordozók nem számítanak bele, hogy a szám őszinte maradjon.
 		db.prepare(
-			`SELECT l.subject_id AS id, COUNT(*) AS n FROM lessons le
+			`SELECT l.subject_id AS id, COUNT(DISTINCT le.id) AS n FROM lessons le
 				 JOIN materials m ON m.id = le.material_id
 				 JOIN levels l ON l.id = m.level_id
+				 LEFT JOIN quizzes q ON q.lesson_id = le.id
+				 WHERE TRIM(COALESCE(le.body_md, '')) != '' OR q.id IS NOT NULL
 				 GROUP BY l.subject_id`
+		),
+		// Csomagszám: kártyát tartalmazó hivatalos csomagok tantárgyanként.
+		db.prepare(
+			`SELECT s.id AS id, COUNT(DISTINCT p.id) AS n FROM lesson_card_packs p
+				 JOIN lessons le ON le.id = p.lesson_id
+				 JOIN materials m ON m.id = le.material_id
+				 JOIN levels l ON l.id = m.level_id
+				 JOIN subjects s ON s.id = l.subject_id
+				 JOIN lesson_cards c ON c.pack_id = p.id
+				 GROUP BY s.id`
 		)
 	]);
 	const subjects = (subjectsRes as unknown as { results: SubjectRow[] }).results ?? [];
@@ -263,6 +592,10 @@ export async function listSubjects(dbOrEvent: DbOrEvent): Promise<Subject[]> {
 	for (const r of (lessonCountRes as unknown as { results: { id: string; n: number }[] })
 		.results ?? [])
 		lessonCounts.set(r.id, r.n ?? 0);
+	const packCounts = new Map<string, number>();
+	for (const r of (packCountRes as unknown as { results: { id: string; n: number }[] })
+		.results ?? [])
+		packCounts.set(r.id, r.n ?? 0);
 	return subjects.map((r) => ({
 		id: r.id,
 		title: r.title,
@@ -270,6 +603,7 @@ export async function listSubjects(dbOrEvent: DbOrEvent): Promise<Subject[]> {
 		sort: r.sort ?? 0,
 		levelCount: levelCounts.get(r.id) ?? 0,
 		lessonCount: lessonCounts.get(r.id) ?? 0,
+		packCount: packCounts.get(r.id) ?? 0,
 		levelLabel: r.levelLabel || 'Szint'
 	}));
 }
@@ -330,6 +664,7 @@ interface LessonRefRow {
 	material_id: string;
 	title: string;
 	sort: number;
+	bodyLen: number;
 }
 
 export async function getSubjectTree(
@@ -341,7 +676,7 @@ export async function getSubjectTree(
 	// Nincs ensure: olvasást nem blokkolunk DDL-lel.
 	// D1-optimalizálás: a 4 független olvasás 1 batchelt körben fut
 	// (eddig 1 + 1 batch(3) + 1 = 3 kör volt).
-	const [subjectRes, levelsRes, materialsRes, lessonsRes] = await db.batch([
+	const [subjectRes, levelsRes, materialsRes, lessonsRes, quizCountRes, packCountRes] = await db.batch([
 		db
 			.prepare(
 				`SELECT id, title, COALESCE(icon, 'book') AS icon, COALESCE(sort, 0) AS sort,
@@ -362,11 +697,31 @@ export async function getSubjectTree(
 			.bind(subjectId),
 		db
 			.prepare(
-				`SELECT le.id, le.material_id, le.title, COALESCE(le.sort, 0) AS sort
+				`SELECT le.id, le.material_id, le.title, COALESCE(le.sort, 0) AS sort,
+					LENGTH(TRIM(COALESCE(le.body_md, ''))) AS bodyLen
 				 FROM lessons le
 				 JOIN materials m ON m.id = le.material_id
 				 JOIN levels l ON l.id = m.level_id
 				 WHERE l.subject_id = ? ORDER BY le.sort, le.title`
+			)
+			.bind(subjectId),
+		db
+			.prepare(
+				`SELECT q.lesson_id AS id, COUNT(*) AS n FROM quizzes q
+				 JOIN lessons le ON le.id = q.lesson_id
+				 JOIN materials m ON m.id = le.material_id
+				 JOIN levels l ON l.id = m.level_id
+				 WHERE l.subject_id = ? GROUP BY q.lesson_id`
+			)
+			.bind(subjectId),
+		db
+			.prepare(
+				`SELECT COUNT(DISTINCT p.id) AS n FROM lesson_card_packs p
+				 JOIN lessons le ON le.id = p.lesson_id
+				 JOIN materials m ON m.id = le.material_id
+				 JOIN levels l ON l.id = m.level_id
+				 JOIN lesson_cards c ON c.pack_id = p.id
+				 WHERE l.subject_id = ?`
 			)
 			.bind(subjectId)
 	]);
@@ -378,7 +733,14 @@ export async function getSubjectTree(
 	if (!subject) return null;
 	const levels = (levelsRes as unknown as { results: LevelRow[] }).results ?? [];
 	const materials = (materialsRes as unknown as { results: MaterialRow[] }).results ?? [];
-	const lessons = (lessonsRes as unknown as { results: LessonRefRow[] }).results ?? [];
+	const allLessons = (lessonsRes as unknown as { results: LessonRefRow[] }).results ?? [];
+	// Csak tartalmas lecke látszik: szöveges leírás vagy legalább egy kvíz kell.
+	// A puszta szókártya-hordozó leckék (üres szöveg, kvíz nélkül) nem kellenek sehova.
+	const quizCounts = new Map<string, number>();
+	for (const r of (quizCountRes as unknown as { results: { id: string; n: number }[] }).results ?? []) {
+		quizCounts.set(r.id, r.n ?? 0);
+	}
+	const lessons = allLessons.filter((le) => (le.bodyLen ?? 0) > 0 || (quizCounts.get(le.id) ?? 0) > 0);
 
 	/** Teljesített leckék, csak bejelentkezve. D1-optimalizálás: csak az adott
 	 *  tantárgy leckéire szűrve (eddig a user ÖSSZES haladása lejött). */
@@ -438,6 +800,8 @@ export async function getSubjectTree(
 		levelLabel: subject.levelLabel || 'Szint',
 		levelCount: levelNodes.length,
 		lessonCount,
+		packCount:
+			(packCountRes as unknown as { results: { n: number }[] }).results?.[0]?.n ?? 0,
 		levels: levelNodes
 	};
 }
@@ -771,6 +1135,8 @@ interface CardPackRow {
 	levelTitle: string;
 	subjectId: string;
 	levelId: string;
+	bodyLen: number;
+	lessonEmpty?: boolean;
 }
 
 function toCardQuestion(c: LessonCardRow): QuizQuestion | null {
@@ -790,7 +1156,16 @@ function toCardKind(v: unknown): 'word' | 'study' {
 	return v === 'study' ? 'study' : 'word';
 }
 
-function toCardPack(r: CardPackRow, questions: QuizQuestion[]): Package {
+function toCardPack(
+	r: CardPackRow,
+	questions: QuizQuestion[],
+	attached?: { id: string; title: string }[]
+): Package {
+	const multi =
+		attached && attached.length > 0
+			? attached
+			: [{ id: r.lessonId, title: r.lessonTitle }];
+	const first = multi[0] ?? { id: r.lessonId, title: r.lessonTitle };
 	return {
 		quizId: `pack:${r.packId}`,
 		title: r.packTitle,
@@ -805,8 +1180,11 @@ function toCardPack(r: CardPackRow, questions: QuizQuestion[]): Package {
 		questionCount: questions.length,
 		questions,
 		cardKind: toCardKind(r.cardKind),
-		attachedLessonId: r.lessonId,
-		attachedLessonTitle: r.lessonTitle
+		attachedLessonId: first.id,
+		attachedLessonTitle: first.title,
+		attachedLessonIds: multi.map((m) => m.id),
+		attachedLessons: multi,
+		lessonEmpty: r.lessonEmpty ?? false
 	};
 }
 
@@ -820,6 +1198,7 @@ async function fetchCardPacks(
 			`SELECT p.id AS packId, p.title AS packTitle, COALESCE(p.card_kind, 'word') AS cardKind,
 				COALESCE(p.sort, 0) AS packSort,
 				le.id AS lessonId, le.title AS lessonTitle,
+				LENGTH(TRIM(COALESCE(le.body_md, ''))) AS bodyLen,
 				m.title AS materialTitle, s.title AS subjectTitle, l.title AS levelTitle,
 				s.id AS subjectId, l.id AS levelId
 			 FROM lesson_card_packs p
@@ -836,6 +1215,22 @@ async function fetchCardPacks(
 	const packRows = packsRes.results ?? [];
 	const cardsByPack = new Map<string, QuizQuestion[]>();
 	if (packRows.length > 0) {
+		// Üres lecke jelzés: nincs szöveg és nincs kvíz. Az ilyen csomag
+		// önálló szókártya, leckeoldalra mutató link nélkül.
+		const quizRes = await db
+			.prepare(
+				`SELECT lesson_id AS id, COUNT(*) AS n FROM quizzes
+				 WHERE lesson_id IN (${[...new Set(packRows.map((r) => r.lessonId))].map(() => '?').join(', ')})
+				 GROUP BY lesson_id`
+			)
+			.bind(...[...new Set(packRows.map((r) => r.lessonId))])
+			.all<{ id: string; n: number }>()
+			.catch(() => ({ results: [] }) as { results: { id: string; n: number }[] });
+		const quizCounts = new Map<string, number>();
+		for (const row of quizRes.results ?? []) quizCounts.set(row.id, row.n ?? 0);
+		for (const r of packRows) {
+			r.lessonEmpty = (r.bodyLen ?? 0) === 0 && (quizCounts.get(r.lessonId) ?? 0) === 0;
+		}
 		const cardsRes = await db
 			.prepare(
 				`SELECT id, lesson_id, pack_id, COALESCE(section_slug, '') AS section_slug,
@@ -877,27 +1272,79 @@ export async function listOfficialCardPacks(
 	}
 	const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
 	const { packs, cardsByPack } = await fetchCardPacks(db, where, args);
+	const multi = await packMultiMap(
+		db,
+		packs.map((r) => r.packId)
+	).catch(() => new Map<string, { id: string; title: string }[]>());
 	const out: Package[] = [];
 	for (const r of packs) {
 		const questions = cardsByPack.get(r.packId) ?? [];
 		if (questions.length === 0) continue;
-		out.push(toCardPack(r, questions));
+		const m = multi.get(r.packId);
+		const attached =
+			m && m.length > 0 ? m : [{ id: r.lessonId, title: r.lessonTitle }];
+		// Az elsődleges mindig elöl, duplikátum nélkül.
+		if (!attached.some((a) => a.id === r.lessonId)) {
+			attached.unshift({ id: r.lessonId, title: r.lessonTitle });
+		}
+		out.push(toCardPack(r, questions, attached));
 	}
 	return out;
 }
 
-/** Egy lecke összes hivatalos kártyacsomagja (a leckeoldal Kapcsolódó részéhez). */
+/** Egy lecke összes hivatalos kártyacsomagja (a leckeoldal Kapcsolódó részéhez).
+ *  A kapcsolótábla szerint több leckéhez csatolt csomag mindegyik leckénél megjelenik. */
 export async function listOfficialCardPacksForLesson(
 	dbOrEvent: DbOrEvent,
 	lessonId: string
 ): Promise<Package[]> {
 	const db = resolveDb(dbOrEvent);
-	const { packs, cardsByPack } = await fetchCardPacks(db, `WHERE p.lesson_id = ?`, [lessonId]);
+	const { packs: legacyPacks, cardsByPack: legacyCards } = await fetchCardPacks(
+		db,
+		`WHERE p.lesson_id = ?`,
+		[lessonId]
+	);
+	const byPack = new Map<string, CardPackRow>();
+	for (const r of legacyPacks) byPack.set(r.packId, r);
+	const mergedCards = new Map(legacyCards);
+	// Kapcsoló szerinti extra csomagok (régi DB-n a tábla hiánya nem hiba).
+	try {
+		const extra = await db
+			.prepare(`SELECT pack_id AS packId FROM lesson_card_pack_lessons WHERE lesson_id = ?`)
+			.bind(lessonId)
+			.all<{ packId: string }>();
+		const extraIds = (extra.results ?? [])
+			.map((r) => r.packId)
+			.filter((id) => id && !byPack.has(id));
+		for (const pid of extraIds.slice(0, 50)) {
+			try {
+				const { packs, cardsByPack } = await fetchCardPacks(db, `WHERE p.id = ?`, [pid]);
+				const r = packs[0];
+				if (!r) continue;
+				byPack.set(r.packId, r);
+				const qs = cardsByPack.get(r.packId) ?? [];
+				if (qs.length > 0) mergedCards.set(r.packId, qs);
+			} catch {
+				// egy hibás csomag nem blokkol
+			}
+		}
+	} catch {
+		// kapcsoló még nincs
+	}
+	const packIds = [...byPack.keys()];
+	const multi = await packMultiMap(db, packIds).catch(
+		() => new Map<string, { id: string; title: string }[]>()
+	);
 	const out: Package[] = [];
-	for (const r of packs) {
-		const questions = cardsByPack.get(r.packId) ?? [];
+	for (const r of byPack.values()) {
+		const questions = mergedCards.get(r.packId) ?? [];
 		if (questions.length === 0) continue;
-		out.push(toCardPack(r, questions));
+		const m = multi.get(r.packId);
+		const attached = m && m.length > 0 ? m : [{ id: r.lessonId, title: r.lessonTitle }];
+		if (!attached.some((a) => a.id === r.lessonId)) {
+			attached.unshift({ id: r.lessonId, title: r.lessonTitle });
+		}
+		out.push(toCardPack(r, questions, attached));
 	}
 	return out;
 }
@@ -913,7 +1360,18 @@ export async function getOfficialCardPackById(
 	if (!r) return null;
 	const questions = cardsByPack.get(r.packId) ?? [];
 	if (questions.length === 0) return null;
-	return toCardPack(r, questions);
+	let attached: { id: string; title: string }[] | undefined;
+	try {
+		attached = await packAttachedLessons(db, r.packId);
+	} catch {
+		attached = undefined;
+	}
+	const list =
+		attached && attached.length > 0 ? attached : [{ id: r.lessonId, title: r.lessonTitle }];
+	if (!list.some((a) => a.id === r.lessonId)) {
+		list.unshift({ id: r.lessonId, title: r.lessonTitle });
+	}
+	return toCardPack(r, questions, list);
 }
 
 /** Egyetlen hivatalos kártyacsomag leckéhez (vagy null, ha nincs kártyája).
@@ -969,7 +1427,9 @@ export async function getOfficialCardPack(
 		questions,
 		cardKind: 'word',
 		attachedLessonId: lessonId,
-		attachedLessonTitle: first.lessonTitle
+		attachedLessonTitle: first.lessonTitle,
+		attachedLessonIds: [lessonId],
+		attachedLessons: [{ id: lessonId, title: first.lessonTitle }]
 	};
 }
 
@@ -1050,8 +1510,18 @@ export async function listUserDecks(
 		});
 		cardsByDeck.set(c.deck_id, list);
 	}
+	const multi = await deckMultiMap(
+		db,
+		decks.map((d) => d.id)
+	).catch(() => new Map<string, { id: string; title: string }[]>());
 	return decks.map((d) => {
 		const questions = cardsByDeck.get(d.id) ?? [];
+		const m = multi.get(d.id) ?? [];
+		// Régi egy-leckés mező is része a többes listának.
+		if (d.attachedLessonId && !m.some((x) => x.id === d.attachedLessonId)) {
+			m.unshift({ id: d.attachedLessonId, title: d.attachedLessonTitle ?? '' });
+		}
+		const first = m[0];
 		return {
 			quizId: `deck:${d.id}`,
 			title: d.title,
@@ -1068,21 +1538,35 @@ export async function listUserDecks(
 			mine: true,
 			kind: d.kind === 'quiz' ? 'quiz' : 'cards',
 			cardKind: toCardKind(d.cardKind),
-			attachedLessonId: d.attachedLessonId ?? '',
-			attachedLessonTitle: d.attachedLessonTitle ?? ''
+			attachedLessonId: first?.id ?? (d.attachedLessonId ?? ''),
+			attachedLessonTitle: first?.title ?? (d.attachedLessonTitle ?? ''),
+			attachedLessonIds: m.map((x) => x.id),
+			attachedLessons: m
 		};
 	});
 }
 
 /** Egy leckéhez csatolt saját csomagok (a leckeoldal „Kapcsolódó csomagok” részéhez).
  *  D1-optimalizálás: SQL-ben szűrve a leckére (eddig az ÖSSZES saját csomag
- *  + kártya lejött, és JS-ben szűrtünk). */
+ *  + kártya lejött, és JS-ben szűrtünk).
+ *  Több leckéhez csatolt csomag mindegyik leckénél megjelenik (kapcsolótábla unió). */
 export async function listDecksForLesson(
 	dbOrEvent: DbOrEvent,
 	userId: string | number,
 	lessonId: string
 ): Promise<Package[]> {
 	const db = resolveDb(dbOrEvent);
+	// Kapcsoló szerinti deck-azonosítók (régi DB-n üres).
+	let extraIds: string[] = [];
+	try {
+		const extra = await db
+			.prepare(`SELECT deck_id AS id FROM deck_lessons WHERE lesson_id = ?`)
+			.bind(lessonId)
+			.all<{ id: string }>();
+		extraIds = (extra.results ?? []).map((r) => r.id).filter(Boolean);
+	} catch {
+		extraIds = [];
+	}
 	const decksRes = await db
 		.prepare(
 			`SELECT d.id AS id, d.title AS title,
@@ -1100,10 +1584,14 @@ export async function listDecksForLesson(
 			 LEFT JOIN levels l ON l.id = d.level_id
 			 LEFT JOIN materials m ON m.id = d.material_id
 			 LEFT JOIN lessons le ON le.id = d.lesson_id
-			 WHERE d.user_id = ? AND d.lesson_id = ?
+			 WHERE d.user_id = ? AND (${
+				 extraIds.length > 0
+					 ? `d.lesson_id = ? OR d.id IN (${extraIds.map(() => '?').join(', ')})`
+					 : `d.lesson_id = ?`
+			 })
 			 ORDER BY d.created_at DESC`
 		)
-		.bind(userId, lessonId)
+		.bind(userId, lessonId, ...extraIds)
 		.all<{
 			id: string;
 			title: string;
@@ -1142,8 +1630,17 @@ export async function listDecksForLesson(
 		});
 		cardsByDeck.set(c.deck_id, list);
 	}
+	const multi = await deckMultiMap(
+		db,
+		decks.map((d) => d.id)
+	).catch(() => new Map<string, { id: string; title: string }[]>());
 	return decks.map((d) => {
 		const questions = cardsByDeck.get(d.id) ?? [];
+		const m = multi.get(d.id) ?? [];
+		if (d.attachedLessonId && !m.some((x) => x.id === d.attachedLessonId)) {
+			m.unshift({ id: d.attachedLessonId, title: d.attachedLessonTitle ?? '' });
+		}
+		const first = m[0];
 		return {
 			quizId: `deck:${d.id}`,
 			title: d.title,
@@ -1160,8 +1657,10 @@ export async function listDecksForLesson(
 			mine: true,
 			kind: d.kind === 'quiz' ? 'quiz' : 'cards',
 			cardKind: toCardKind(d.cardKind),
-			attachedLessonId: d.attachedLessonId ?? '',
-			attachedLessonTitle: d.attachedLessonTitle ?? ''
+			attachedLessonId: first?.id ?? (d.attachedLessonId ?? ''),
+			attachedLessonTitle: first?.title ?? (d.attachedLessonTitle ?? ''),
+			attachedLessonIds: m.map((x) => x.id),
+			attachedLessons: m
 		};
 	});
 }
@@ -1226,6 +1725,16 @@ export async function getUserDeckPackage(
 		correct_answer: c.back,
 		sectionSlug: c.section_slug ?? ''
 	}));
+	let multi: { id: string; title: string }[] = [];
+	try {
+		multi = await deckAttachedLessons(db, deckId);
+	} catch {
+		multi = [];
+	}
+	if (deck.attachedLessonId && !multi.some((x) => x.id === deck.attachedLessonId)) {
+		multi.unshift({ id: deck.attachedLessonId, title: deck.attachedLessonTitle ?? '' });
+	}
+	const first = multi[0];
 	return {
 		quizId: `deck:${deck.id}`,
 		title: deck.title,
@@ -1242,8 +1751,10 @@ export async function getUserDeckPackage(
 		mine: true,
 		kind: deck.kind === 'quiz' ? 'quiz' : 'cards',
 		cardKind: toCardKind(deck.cardKind),
-		attachedLessonId: deck.attachedLessonId ?? '',
-		attachedLessonTitle: deck.attachedLessonTitle ?? ''
+		attachedLessonId: first?.id ?? (deck.attachedLessonId ?? ''),
+		attachedLessonTitle: first?.title ?? (deck.attachedLessonTitle ?? ''),
+		attachedLessonIds: multi.map((x) => x.id),
+		attachedLessons: multi
 	};
 }
 
@@ -1311,19 +1822,34 @@ export async function listOfficialCardPacksByIds(
 		`WHERE p.id IN (${ids.map(() => '?').join(', ')})`,
 		ids
 	);
+	const multi = await packMultiMap(
+		db,
+		packs.map((r) => r.packId)
+	).catch(() => new Map<string, { id: string; title: string }[]>());
 	const out: Package[] = [];
 	for (const r of packs) {
 		const questions = cardsByPack.get(r.packId) ?? [];
 		if (questions.length === 0) continue;
-		out.push(toCardPack(r, questions));
+		const m = multi.get(r.packId);
+		const attached = m && m.length > 0 ? m : [{ id: r.lessonId, title: r.lessonTitle }];
+		if (!attached.some((a) => a.id === r.lessonId)) {
+			attached.unshift({ id: r.lessonId, title: r.lessonTitle });
+		}
+		out.push(toCardPack(r, questions, attached));
 	}
 	return out;
 }
 
-/** Kártyánkénti tudásszint: kulcs (kérdés-azonosító) → sorozat + látva. */
+/** Kártyánkénti tudásszint SM-2 ütemezéssel: kulcs (kérdés-azonosító) → állapot.
+ *  A repetitions, ease, intervalDays és dueDay hajtja a szavak gyakorlását,
+ *  a known és seen a régi pöttyök és csíkok miatt marad. */
 export interface CardMark {
 	known: number;
 	seen: number;
+	repetitions: number;
+	ease: number;
+	intervalDays: number;
+	dueDay: number;
 }
 
 export async function getCardProgress(
@@ -1332,18 +1858,65 @@ export async function getCardProgress(
 ): Promise<Record<string, CardMark>> {
 	const db = resolveDb(dbOrEvent);
 	// D1-optimalizálás: felső korlát, hogy egy elfajult haladás-tábla se olvasson korlátlan sort.
-	const res = await db
-		.prepare(`SELECT card_key AS cardKey, known, seen FROM card_progress WHERE user_id = ? LIMIT 5000`)
-		.bind(userId)
-		.all<{ cardKey: string; known: number; seen: number }>();
-	const map: Record<string, CardMark> = {};
-	for (const row of res.results ?? []) {
-		map[row.cardKey] = { known: row.known ?? 0, seen: row.seen ?? 0 };
+	try {
+		const res = await db
+			.prepare(
+				`SELECT card_key AS cardKey, known, seen,
+					COALESCE(repetitions, 0) AS repetitions,
+					COALESCE(ease, 2.5) AS ease,
+					COALESCE(interval_days, 0) AS intervalDays,
+					COALESCE(due_day, 0) AS dueDay
+				 FROM card_progress WHERE user_id = ? LIMIT 5000`
+			)
+			.bind(userId)
+			.all<{
+				cardKey: string;
+				known: number;
+				seen: number;
+				repetitions: number;
+				ease: number;
+				intervalDays: number;
+				dueDay: number;
+			}>();
+		const map: Record<string, CardMark> = {};
+		for (const row of res.results ?? []) {
+			map[row.cardKey] = {
+				known: row.known ?? 0,
+				seen: row.seen ?? 0,
+				repetitions: row.repetitions ?? 0,
+				ease: row.ease ?? 2.5,
+				intervalDays: row.intervalDays ?? 0,
+				dueDay: row.dueDay ?? 0
+			};
+		}
+		return map;
+	} catch {
+		// Régi séma (migráció előtt): SM-2 mezők nélkül, alapértelmezett ütemezéssel.
+		try {
+			const res = await db
+				.prepare(`SELECT card_key AS cardKey, known, seen FROM card_progress WHERE user_id = ? LIMIT 5000`)
+				.bind(userId)
+				.all<{ cardKey: string; known: number; seen: number }>();
+			const map: Record<string, CardMark> = {};
+			for (const row of res.results ?? []) {
+				map[row.cardKey] = {
+					known: row.known ?? 0,
+					seen: row.seen ?? 0,
+					repetitions: 0,
+					ease: 2.5,
+					intervalDays: 0,
+					dueDay: 0
+				};
+			}
+			return map;
+		} catch {
+			return {};
+		}
 	}
-	return map;
 }
 
-/** Osztályzatok mentése: seen +1, known = tudta ? known+1 : 0. */
+/** SM-2 osztályzatok mentése helyben frissítve: nincs új sor ismétléskor.
+ *  Tudom = quality 4, Nem tudom = quality 1, intervallum napokban, due nap sorszámmal. */
 export async function saveCardProgress(
 	dbOrEvent: DbOrEvent,
 	userId: string | number,
@@ -1353,19 +1926,91 @@ export async function saveCardProgress(
 	// Nincs ensure: a sémát a migrációk biztosítják.
 	const rows = results.filter((r) => r && typeof r.key === 'string' && r.key);
 	if (rows.length === 0) return;
+	const trimmed = rows.slice(0, 500);
+	const today = todayDay();
 	const now = new Date().toISOString();
-	await db.batch(
-		rows.slice(0, 500).map((r) =>
-			db
-				.prepare(
-					`INSERT INTO card_progress (user_id, card_key, known, seen, updated_at)
-					 VALUES (?, ?, ?, 1, ?)
-					 ON CONFLICT (user_id, card_key) DO UPDATE SET
-						known = CASE WHEN excluded.known = 1 THEN card_progress.known + 1 ELSE 0 END,
-						seen = card_progress.seen + 1,
-						updated_at = excluded.updated_at`
-				)
-				.bind(userId, r.key, r.known ? 1 : 0, now)
-		)
-	);
+	// Meglévő állapot egy körben, hogy az SM-2 számítás pontos legyen.
+	const keys = [...new Set(trimmed.map((r) => r.key))];
+	let current = new Map<string, { known: number; seen: number; repetitions: number; ease: number; interval_days: number }>();
+	try {
+		const res = await db
+			.prepare(
+				`SELECT card_key AS cardKey, known, seen,
+					COALESCE(repetitions, 0) AS repetitions,
+					COALESCE(ease, 2.5) AS ease,
+					COALESCE(interval_days, 0) AS intervalDays
+				 FROM card_progress WHERE user_id = ? AND card_key IN (${keys.map(() => '?').join(', ')}) LIMIT 500`
+			)
+			.bind(userId, ...keys)
+			.all<{
+				cardKey: string;
+				known: number;
+				seen: number;
+				repetitions: number;
+				ease: number;
+				intervalDays: number;
+			}>();
+		for (const row of res.results ?? []) {
+			current.set(row.cardKey, {
+				known: row.known ?? 0,
+				seen: row.seen ?? 0,
+				repetitions: row.repetitions ?? 0,
+				ease: row.ease ?? 2.5,
+				interval_days: row.intervalDays ?? 0
+			});
+		}
+	} catch {
+		// olvasási hiba esetén az alapértelmezett SM-2 állapotból indulunk
+	}
+	try {
+		await db.batch(
+			trimmed.map((r) => {
+				const prev = current.get(r.key) ?? { known: 0, seen: 0, repetitions: 0, ease: 2.5, interval_days: 0 };
+				const quality = qualityFor(r.known);
+				const next = calculateSM2(quality, prev.repetitions, prev.ease, prev.interval_days);
+				const nextKnown = r.known ? prev.known + 1 : 0;
+				const nextSeen = prev.seen + 1;
+				const nextDue = today + next.intervalDays;
+				// A láncban többször szereplő kártya is helyesen halmoz: frissítjük a gyorstárat.
+				current.set(r.key, {
+					known: nextKnown,
+					seen: nextSeen,
+					repetitions: next.repetitions,
+					ease: next.ease,
+					interval_days: next.intervalDays
+				});
+				return db
+					.prepare(
+						`INSERT INTO card_progress (user_id, card_key, known, seen, updated_at, repetitions, ease, interval_days, due_day)
+						 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+						 ON CONFLICT (user_id, card_key) DO UPDATE SET
+							known = excluded.known,
+							seen = excluded.seen,
+							updated_at = excluded.updated_at,
+							repetitions = excluded.repetitions,
+							ease = excluded.ease,
+							interval_days = excluded.interval_days,
+							due_day = excluded.due_day`
+					)
+					.bind(userId, r.key, nextKnown, nextSeen, now, next.repetitions, next.ease, next.intervalDays, nextDue);
+			})
+		);
+	} catch {
+		// Régi séma (migráció előtt): visszaesés a számlálós mentésre.
+		const nowFallback = new Date().toISOString();
+		await db.batch(
+			trimmed.slice(0, 500).map((r) =>
+				db
+					.prepare(
+						`INSERT INTO card_progress (user_id, card_key, known, seen, updated_at)
+						 VALUES (?, ?, ?, 1, ?)
+						 ON CONFLICT (user_id, card_key) DO UPDATE SET
+							known = CASE WHEN excluded.known = 1 THEN card_progress.known + 1 ELSE 0 END,
+							seen = card_progress.seen + 1,
+							updated_at = excluded.updated_at`
+					)
+					.bind(userId, r.key, r.known ? 1 : 0, nowFallback)
+			)
+		);
+	}
 }

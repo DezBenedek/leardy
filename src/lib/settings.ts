@@ -3,7 +3,7 @@ import { browser } from '$app/environment';
 /* Közös app-beállítások (localStorage: leardy-settings).
    A beállítások oldal írja, a QuickPractice és társai olvassák. */
 
-export type FontFamilyChoice = 'system' | 'modern' | 'book';
+export type FontFamilyChoice = 'system' | 'modern' | 'book' | 'excalifont';
 
 export interface AppSettings {
 	reminder: boolean;
@@ -23,7 +23,7 @@ export interface AppSettings {
 	autoAudio: boolean;
 	/** Véletlen gyors-kvíz kérdésszáma (1-50). */
 	quickQuizCount: number;
-	/** Betűtípus: rendszer (telefon alapja), modern vagy könyvszerű. */
+	/** Betűtípus: rendszer (telefon alapja), modern, könyvszerű vagy Excalifont. */
 	fontFamily: FontFamilyChoice;
 	/** Mozgás csökkentése: kikapcsolja az animációkat. */
 	reduceMotion: boolean;
@@ -69,7 +69,7 @@ function clampMuted(v: unknown): string[] {
 }
 
 function clampFontFamily(v: unknown): FontFamilyChoice {
-	return v === 'modern' || v === 'book' ? v : 'system';
+	return v === 'modern' || v === 'book' || v === 'excalifont' ? v : 'system';
 }
 
 export function loadSettings(): AppSettings {

@@ -20,7 +20,7 @@
 	{#if questions.length === 0}
 		<EmptyState
 			title="Nincs kérdés"
-			description="A villámkvíz csak a szűrésbe eső, zöld pipával teljesített leckékből kérdez."
+			description="A véletlen kvízhez most nincs elérhető kvízkérdés."
 		/>
 	{:else}
 		{#key questions}

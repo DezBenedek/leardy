@@ -411,7 +411,7 @@
 		theme.choice === 'light' ? 'Világos' : theme.choice === 'dark' ? 'Sötét' : 'Rendszer'
 	);
 	function fontFamilyLabel(f: string): string {
-		return f === 'modern' ? 'Modern' : f === 'book' ? 'Könyvszerű' : 'Rendszer';
+		return f === 'modern' ? 'Modern' : f === 'book' ? 'Könyvszerű' : f === 'excalifont' ? 'Excalifont' : 'Rendszer';
 	}
 
 	let displayLabel = $derived(

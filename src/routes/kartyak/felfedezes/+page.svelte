@@ -99,14 +99,16 @@
 				: 'bg-stone-100 text-stone-500 dark:bg-white/10 dark:text-stone-300'
 		].join(' ');
 
-	let filterSubjectTitle = $derived(subjects.find((s) => s.id === subjectId)?.title ?? 'Választás');
+	let filterSubjectTitle = $derived(
+		subjectId ? (subjects.find((s) => s.id === subjectId)?.title ?? 'Összes') : 'Összes'
+	);
 	let filterLevelLabel = $derived(subjects.find((s) => s.id === subjectId)?.levelLabel || 'Szint');
 	let filterLevelTitle = $derived(
 		levelId ? (levels.find((l) => l.id === levelId)?.title ?? 'Mindegyik') : 'Mindegyik'
 	);
 	let filterSortTitle = $derived(discSortOptions.find((o) => o.id === sortId)?.title ?? 'Rendezés');
 
-	/** Aktív szűrők száma a szűrőgomb jelvényéhez (a tantárgy mindig választott). */
+	/** Aktív szűrők száma a szűrőgomb jelvényéhez (az Összes tantárgy az alap). */
 	let activeFilterCount = $derived(
 		(levelId ? 1 : 0) + (savedFilter !== 'all' ? 1 : 0) + (sortId !== 'featured' ? 1 : 0)
 	);
@@ -264,8 +266,9 @@
 	$effect(() => {
 		const list = subjectsQ.data;
 		if (!list) return;
-		if (!subjectId || !list.some((s) => s.id === subjectId)) {
-			subjectId = list[0]?.id ?? '';
+		// Érvénytelen mentett szűrő visszaáll Összesre; üres a megengedett alap.
+		if (subjectId && !list.some((s) => s.id === subjectId)) {
+			subjectId = '';
 		}
 	});
 
@@ -275,6 +278,11 @@
 		const id = subjectId;
 		if (prevSubject !== null && prevSubject !== id) levelId = '';
 		prevSubject = id;
+		if (!id) {
+			levelId = '';
+			levelsQ.load(null, () => Promise.resolve([]), LEVELS_TTL, LEVELS_STALE);
+			return;
+		}
 		levelsQ.load(id ? `levels:${id}` : null, () => fetchLevelsRaw(id), LEVELS_TTL, LEVELS_STALE);
 	});
 
@@ -459,11 +467,11 @@
 			</span>
 			<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
 		</button>
-		<button type="button" onclick={() => (fPicker = 'level')} aria-haspopup="dialog" class={pickRowBtn}>
+		<button type="button" onclick={() => (fPicker = 'level')} disabled={!subjectId} aria-haspopup="dialog" class={pickRowBtn}>
 			<span class="min-w-0 flex-1">
-				<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">{filterLevelLabel}</span>
+				<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">{subjectId ? filterLevelLabel : 'Szint'}</span>
 				<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
-					{filterLevelTitle}
+					{subjectId ? filterLevelTitle : 'Előbb válassz tantárgyat'}
 				</span>
 			</span>
 			<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
@@ -507,6 +515,26 @@
 
 <Sheet open={fPicker === 'subject'} label="Tantárgy választása" title="Tantárgy" onClose={() => (fPicker = null)}>
 	<ul class="-mx-1 mt-2 space-y-0.5">
+		<li>
+			<button
+				type="button"
+				aria-pressed={subjectId === ''}
+				onclick={() => {
+					subjectId = '';
+					fPicker = null;
+				}}
+				class={[optRowBtn, subjectId === '' ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
+			>
+				<span class={optTile(subjectId === '')}><Shapes size={18} aria-hidden="true" /></span>
+				<span class="min-w-0 flex-1">
+					<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">Összes</span>
+					<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">Minden tantárgy csomagjai</span>
+				</span>
+				{#if subjectId === ''}
+					<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
+				{/if}
+			</button>
+		</li>
 		{#each subjects as s (s.id)}
 			{@const SIcon = subjectIcons[s.icon] ?? Shapes}
 			{@const selected = s.id === subjectId}
@@ -523,7 +551,7 @@
 					<span class={optTile(selected)}><SIcon size={18} aria-hidden="true" /></span>
 					<span class="min-w-0 flex-1">
 						<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{s.title}</span>
-						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">{s.lessonCount} lecke</span>
+						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">{s.packCount} csomag</span>
 					</span>
 					{#if selected}
 						<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />

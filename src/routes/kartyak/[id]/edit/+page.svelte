@@ -3,7 +3,6 @@
 	import { page } from '$app/state';
 	import {
 		ArrowLeft,
-		BookOpen,
 		BookOpenText,
 		Check,
 		ChevronDown,
@@ -18,10 +17,12 @@
 		X
 	} from '@lucide/svelte';
 	import type { DeckCardKind, LevelNode, Subject } from '$lib/curriculum';
-	import { DECK_CARD_KINDS } from '$lib/curriculum';
+	import { deckCardKindLabel } from '$lib/curriculum';
+	import { cardKindForSubject } from '$lib/sm2';
 	import { toast } from '$lib/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
+	import ContentPicker, { type ContentPick } from '$lib/components/ContentPicker.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import Sheet from '$lib/ui/Sheet.svelte';
@@ -54,7 +55,7 @@
 	let loadError = $state<string | null>(null);
 	let saving = $state(false);
 	let settingsOpen = $state(false);
-	let picker = $state<'subject' | 'level' | 'material' | 'lesson' | null>(null);
+	let picker = $state<'subject' | 'level' | null>(null);
 	let armDelete = $state(false);
 	let armTimer: ReturnType<typeof setTimeout> | undefined;
 	let nextKey = $state(1);
@@ -85,6 +86,10 @@
 	let levelId = $state('');
 	let materialId = $state('');
 	let lessonId = $state('');
+	/** Több leckéhez csatolás: az összes csatolt lecke azonosítója. */
+	let lessonIds = $state<string[]>([]);
+	let attachedLessons = $state<ContentPick[]>([]);
+	let lessonPickerOpen = $state(false);
 	let cards = $state<CardRow[]>([]);
 	let removedIds = $state<string[]>([]);
 
@@ -95,7 +100,8 @@
 		subject: null as string | null,
 		level: null as string | null,
 		material: null as string | null,
-		lesson: null as string | null
+		lesson: null as string | null,
+		lessons: [] as string[]
 	});
 
 	let subjects = $state<Subject[]>([]);
@@ -113,6 +119,8 @@
 	let lessonTitle = $derived(lessonOptions.find((l) => l.id === lessonId)?.title ?? '');
 	let frontLabel = 'Előlap';
 	let backLabel = 'Hátlap';
+	/** Automatikus típus: a tantárgy dönti el, nem kézi választás. */
+	let autoKindLabel = $derived(deckCardKindLabel(cardKind));
 
 	function norm(s: string): string {
 		return s.trim();
@@ -125,6 +133,9 @@
 		if ((subjectId || null) !== snap.subject) return true;
 		if ((levelId || null) !== snap.level) return true;
 		if ((materialId || null) !== snap.material) return true;
+		const cur = [...lessonIds].sort().join('|');
+		const old = [...snap.lessons].sort().join('|');
+		if (cur !== old) return true;
 		if ((lessonId || null) !== snap.lesson) return true;
 		if (removedIds.length > 0) return true;
 		for (const c of cards) {
@@ -186,14 +197,41 @@
 			subjectId = d.subjectId ?? '';
 			levelId = d.levelId ?? '';
 			materialId = d.materialId ?? '';
-			lessonId = d.lessonId ?? '';
+			const ids: string[] = Array.isArray(d.lessonIds)
+				? d.lessonIds.filter(Boolean)
+				: d.lessonId
+					? [d.lessonId]
+					: [];
+			lessonIds = ids;
+			lessonId = ids[0] ?? '';
+			const rawLessons: { id: string; title: string }[] = Array.isArray(d.lessons)
+				? d.lessons
+				: [];
+			attachedLessons = lessonIds.map((id) => {
+				const found = rawLessons.find((l) => l.id === id);
+				return {
+					kind: 'lesson' as const,
+					subjectId: subjectId,
+					subjectTitle: '',
+					levelId: levelId,
+					levelTitle: '',
+					levelLabel: 'Szint',
+					topicId: materialId,
+					topicTitle: '',
+					lessonId: id,
+					lessonTitle: found?.title ?? id,
+					quizCount: 0,
+					crumb: found?.title ?? id
+				};
+			});
 			snap = {
 				title,
 				cardKind,
 				subject: d.subjectId ?? null,
 				level: d.levelId ?? null,
 				material: d.materialId ?? null,
-				lesson: d.lessonId ?? null
+				lesson: d.lessonId ?? null,
+				lessons: [...lessonIds]
 			};
 			cards = (d.cards ?? []).map(
 				(c: { id: string; front: string; back: string; sectionSlug?: string }) => ({
@@ -234,12 +272,17 @@
 	});
 
 	// Kaszkád: csak lefelé nulláz, mentés a Mentés gombbal.
+	// A típus automatikus: tantárgyváltáskor azonnal újraszámoljuk.
 	function onSubject(v: string) {
 		subjectId = v;
 		levelId = '';
 		materialId = '';
 		lessonId = '';
+		lessonIds = [];
+		attachedLessons = [];
 		for (const c of cards) c.sectionSlug = '';
+		const subj = subjects.find((s) => s.id === v);
+		cardKind = cardKindForSubject(subj?.title ?? '', subj?.icon ?? 'book', v || null);
 		void fetchLevels(v);
 	}
 
@@ -247,17 +290,37 @@
 		levelId = v;
 		materialId = '';
 		lessonId = '';
+		lessonIds = [];
+		attachedLessons = [];
 		for (const c of cards) c.sectionSlug = '';
 	}
 
 	function onMaterial(v: string) {
 		materialId = v;
-		lessonId = '';
+		// Többes csatolásnál a témakör csak tájékoztató: a leckék maradnak.
 		for (const c of cards) c.sectionSlug = '';
 	}
 
-	function onLesson(v: string) {
-		lessonId = v;
+	function onLessonPick(picks: ContentPick[]) {
+		attachedLessons = picks;
+		lessonIds = picks.map((p) => p.lessonId).filter(Boolean);
+		lessonId = lessonIds[0] ?? '';
+		// Örökölt egy-leckés mezők az első választáshoz igazodnak.
+		const first = picks[0];
+		if (first) {
+			materialId = first.topicId ?? materialId;
+		} else {
+			materialId = '';
+			lessonId = '';
+		}
+		lessonPickerOpen = false;
+	}
+
+	function removeLesson(id: string) {
+		attachedLessons = attachedLessons.filter((p) => p.lessonId !== id);
+		lessonIds = lessonIds.filter((x) => x !== id);
+		lessonId = lessonIds[0] ?? '';
+		if (lessonIds.length === 0) materialId = '';
 	}
 
 	function addRow() {
@@ -291,14 +354,17 @@
 		}
 		saving = true;
 		try {
-			// 1. Beállítások egyetlen PATCH-csel.
-			const patch: Record<string, string | null> = {};
-			if (t !== snap.title) patch.title = t;
-			if (cardKind !== snap.cardKind) patch.cardKind = cardKind;
-			if ((subjectId || null) !== snap.subject) patch.subjectId = subjectId || null;
+		// 1. Beállítások egyetlen PATCH-csel. A típus automatikus,
+		// ezért cardKind nem megy: a tantárgy dönti el a szerveren is.
+		// Több lecke: lessonIds tömb megy, a régi lessonId az elsőnek felel meg.
+		const patch: Record<string, string | string[] | null> = {};
+		if (t !== snap.title) patch.title = t;
+		if ((subjectId || null) !== snap.subject) patch.subjectId = subjectId || null;
 			if ((levelId || null) !== snap.level) patch.levelId = levelId || null;
 			if ((materialId || null) !== snap.material) patch.materialId = materialId || null;
-			if ((lessonId || null) !== snap.lesson) patch.lessonId = lessonId || null;
+			const curLessons = [...lessonIds].sort().join('|');
+			const oldLessons = [...snap.lessons].sort().join('|');
+			if (curLessons !== oldLessons) patch.lessonIds = [...lessonIds];
 			if (Object.keys(patch).length > 0) {
 				const res = await fetch(`/api/decks/${encodeURIComponent(deckId)}`, {
 					method: 'PATCH',
@@ -306,14 +372,23 @@
 					body: JSON.stringify(patch)
 				});
 				if (!res.ok) throw new Error(await readError(res, 'Nem sikerült menteni a beállításokat.'));
-				snap = {
-					title: t,
-					cardKind,
-					subject: subjectId || null,
-					level: levelId || null,
-					material: materialId || null,
-					lesson: lessonId || null
-				};
+			snap = {
+				title: t,
+				cardKind,
+				subject: subjectId || null,
+				level: levelId || null,
+				material: materialId || null,
+				lesson: lessonId || null,
+				lessons: [...lessonIds]
+			};
+			// Tantárgyváltás után a szerver automatikus típusát vesszük át.
+			try {
+				const subj = subjects.find((s) => s.id === subjectId);
+				cardKind = cardKindForSubject(subj?.title ?? '', subj?.icon ?? 'book', subjectId || null);
+				snap.cardKind = cardKind;
+			} catch {
+				// marad a helyi érték
+			}
 				title = t;
 			}
 			// 2. Törölt kártyák.
@@ -509,32 +584,6 @@
 				class="mt-1.5 {inputCls}"
 			/>
 		</label>
-
-		<p class="mt-4 text-[13px] font-semibold text-ink-900 dark:text-white">Működés</p>
-		<div
-			role="group"
-			aria-label="Csomag típusa"
-			class="mt-1.5 grid grid-cols-2 gap-1 rounded-2xl bg-stone-100 p-1 dark:bg-white/10"
-		>
-			{#each DECK_CARD_KINDS as o (o.id)}
-				{@const selected = cardKind === o.id}
-				<button
-					type="button"
-					aria-pressed={selected}
-					onclick={() => (cardKind = o.id)}
-					class={[
-						'rounded-xl px-2 py-2 text-left leading-none transition active:scale-[0.97]',
-						selected
-							? 'bg-white shadow-sm dark:bg-stone-800 dark:shadow-black/40'
-							: 'hover:bg-white/60 dark:hover:bg-white/5'
-					]}
-				>
-					<span class="block text-[13px] font-extrabold text-ink-900 dark:text-white">{o.title}</span>
-					<span class="mt-1 block text-[11px] font-medium text-stone-500 dark:text-stone-400">{o.desc}</span>
-				</button>
-			{/each}
-		</div>
-
 		<div class="mt-4 grid gap-2">
 			<button type="button" onclick={() => (picker = 'subject')} class={pickRowBtn}>
 				<span class="min-w-0 flex-1">
@@ -557,27 +606,42 @@
 		</div>
 
 		<p class="mt-4 text-[13px] font-semibold text-ink-900 dark:text-white">
-			Csatolás <span class="font-normal text-stone-400 dark:text-stone-500">(opcionális)</span>
+			Csatolás <span class="font-normal text-stone-400 dark:text-stone-500">(opcionális, több lecke is lehet)</span>
 		</p>
 		<div class="mt-1.5 grid gap-2">
-			<button type="button" onclick={() => (picker = 'material')} disabled={!levelId} class={pickRowBtn}>
+			<button type="button" onclick={() => (lessonPickerOpen = true)} class={pickRowBtn}>
 				<span class="min-w-0 flex-1">
-					<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Témakör</span>
+					<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Leckék</span>
 					<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
-						{materialTitle || 'Nincs témakör'}
+						{attachedLessons.length > 0 ? `${attachedLessons.length} lecke csatolva` : 'Nincs csatolva'}
 					</span>
 				</span>
 				<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
 			</button>
-			<button type="button" onclick={() => (picker = 'lesson')} disabled={!materialId} class={pickRowBtn}>
-				<span class="min-w-0 flex-1">
-					<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Lecke</span>
-					<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
-						{lessonTitle || 'Nincs lecke'}
-					</span>
-				</span>
-				<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
-			</button>
+			{#if attachedLessons.length > 0}
+				<ul class="grid gap-1.5">
+					{#each attachedLessons as a (a.lessonId)}
+						<li class="flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-transparent">
+							<span class="min-w-0 flex-1">
+								<span class="block truncate text-[13px] font-bold text-ink-900 dark:text-white">
+									{a.lessonTitle}
+								</span>
+								<span class="block truncate text-[11px] font-medium text-stone-500 dark:text-stone-400">
+									{a.crumb}
+								</span>
+							</span>
+							<button
+								type="button"
+								onclick={() => removeLesson(a.lessonId)}
+								aria-label="{a.lessonTitle} csatolás törlése"
+								class="grid size-8 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+							>
+								<X size={15} />
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 		</div>
 
 		<div class="mt-6 border-t border-stone-200 pt-4 dark:border-white/10">
@@ -630,7 +694,7 @@
 					<span class={optTile(selected)}><SIcon size={18} aria-hidden="true" /></span>
 					<span class="min-w-0 flex-1">
 						<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{s.title}</span>
-						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">{s.lessonCount} lecke</span>
+						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">{s.packCount} csomag</span>
 					</span>
 					{#if selected}
 						<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
@@ -689,93 +753,13 @@
 	</ul>
 </Sheet>
 
-<Sheet open={picker === 'material'} label="Témakör választása" title="Témakör" onClose={() => (picker = null)}>
-	<ul class="-mx-1 mt-2 space-y-0.5">
-		<li>
-			<button
-				type="button"
-				onclick={() => {
-					onMaterial('');
-					picker = null;
-				}}
-				class={[optRowBtn, !materialId ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
-			>
-				<span class={optTile(!materialId)}><Shapes size={18} aria-hidden="true" /></span>
-				<span class="min-w-0 flex-1">
-					<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">Nincs témakör</span>
-					<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">Csatolás nélkül</span>
-				</span>
-				{#if !materialId}
-					<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
-				{/if}
-			</button>
-		</li>
-		{#each materials as m (m.id)}
-			{@const selected = m.id === materialId}
-			<li>
-				<button
-					type="button"
-					onclick={() => {
-						onMaterial(m.id);
-						picker = null;
-					}}
-					class={[optRowBtn, selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
-				>
-					<span class={optTile(selected)}><BookOpenText size={18} aria-hidden="true" /></span>
-					<span class="min-w-0 flex-1">
-						<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{m.title}</span>
-						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">{m.lessons.length} lecke</span>
-					</span>
-					{#if selected}
-						<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
-					{/if}
-				</button>
-			</li>
-		{/each}
-	</ul>
-</Sheet>
-
-<Sheet open={picker === 'lesson'} label="Lecke választása" title="Lecke" onClose={() => (picker = null)}>
-	<ul class="-mx-1 mt-2 space-y-0.5">
-		<li>
-			<button
-				type="button"
-				onclick={() => {
-					onLesson('');
-					picker = null;
-				}}
-				class={[optRowBtn, !lessonId ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
-			>
-				<span class={optTile(!lessonId)}><Shapes size={18} aria-hidden="true" /></span>
-				<span class="min-w-0 flex-1">
-					<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">Nincs lecke</span>
-					<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">Csatolás nélkül</span>
-				</span>
-				{#if !lessonId}
-					<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
-				{/if}
-			</button>
-		</li>
-		{#each lessonOptions as le (le.id)}
-			{@const selected = le.id === lessonId}
-			<li>
-				<button
-					type="button"
-					onclick={() => {
-						onLesson(le.id);
-						picker = null;
-					}}
-					class={[optRowBtn, selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
-				>
-					<span class={optTile(selected)}><BookOpen size={18} aria-hidden="true" /></span>
-					<span class="min-w-0 flex-1">
-						<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{le.title}</span>
-					</span>
-					{#if selected}
-						<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
-					{/if}
-				</button>
-			</li>
-		{/each}
-	</ul>
-</Sheet>
+<ContentPicker
+	open={lessonPickerOpen}
+	subjects={subjects}
+	baseSubjectId={subjectId || undefined}
+	select="lesson"
+	multi
+	initialSelected={attachedLessons}
+	onClose={() => (lessonPickerOpen = false)}
+	onPick={(picks) => onLessonPick(picks)}
+/>

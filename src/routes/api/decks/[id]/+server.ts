@@ -1,7 +1,8 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { D1Database } from '@cloudflare/workers-types';
 import { getDb, requireUser, type PublicUser } from '$lib/server/db';
-import { ensureCurriculumSchema } from '$lib/server/curriculum';
+import { ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum';
+import { cardKindForSubject } from '$lib/sm2';
 
 /* Saját csomag lekérése, módosítása, törlése.
    Mindhárom requireUser + ownership-ellenőrzéssel (idegen id → 404). */
@@ -62,6 +63,42 @@ export const GET: RequestHandler = async (event) => {
 			)
 			.bind(g.deckId)
 			.all<{ id: string; front: string; back: string; sectionSlug: string }>();
+		let lessonIds: string[] = [];
+		let lessons: { id: string; title: string }[] = [];
+		try {
+			const linkRes = await db
+				.prepare(
+					`SELECT dl.lesson_id AS id, COALESCE(le.title, '') AS title
+					 FROM deck_lessons dl LEFT JOIN lessons le ON le.id = dl.lesson_id
+					 WHERE dl.deck_id = ?`
+				)
+				.bind(g.deckId)
+				.all<{ id: string; title: string }>();
+			const rows = (linkRes.results ?? []).filter((r) => r.id);
+			if (deck.lessonId && !rows.some((r) => r.id === deck.lessonId)) {
+				rows.unshift({ id: deck.lessonId, title: '' });
+			}
+			if (rows.length > 0) {
+				const ids = rows.map((r) => r.id);
+				try {
+					const tRes = await db
+						.prepare(`SELECT id, title FROM lessons WHERE id IN (${ids.map(() => '?').join(', ')})`)
+						.bind(...ids)
+						.all<{ id: string; title: string }>();
+					const byId = new Map((tRes.results ?? []).map((l) => [l.id, l.title]));
+					lessons = ids
+						.filter((id) => byId.has(id))
+						.map((id) => ({ id, title: byId.get(id) ?? '' }));
+				} catch {
+					lessons = rows.map((r) => ({ id: r.id, title: r.title ?? '' }));
+				}
+			} else if (deck.lessonId) {
+				lessons = [{ id: deck.lessonId, title: '' }];
+			}
+			lessonIds = lessons.map((l) => l.id);
+		} catch {
+			lessonIds = deck.lessonId ? [deck.lessonId] : [];
+		}
 		return json({
 			deck: {
 				id: deck.id,
@@ -72,6 +109,8 @@ export const GET: RequestHandler = async (event) => {
 				levelId: deck.levelId,
 				materialId: deck.materialId,
 				lessonId: deck.lessonId,
+				lessonIds,
+				lessons,
 				cards: cardsRes.results ?? []
 			}
 		});
@@ -94,6 +133,7 @@ export const PATCH: RequestHandler = async (event) => {
 		levelId?: string | null;
 		materialId?: string | null;
 		lessonId?: string | null;
+		lessonIds?: string[];
 	};
 	try {
 		body = await event.request.json();
@@ -116,12 +156,8 @@ export const PATCH: RequestHandler = async (event) => {
 			if (body.kind !== 'cards')
 				return json({ error: 'Már csak kártyacsomag van, kvízcsomag nem.' }, { status: 400 });
 		}
-		if (body.cardKind !== undefined) {
-			if (body.cardKind !== 'word' && body.cardKind !== 'study')
-				return json({ error: 'Ismeretlen csomagtípus.' }, { status: 400 });
-			sets.push('card_kind = ?');
-			args.push(body.cardKind);
-		}
+		// Típus automatikus: kézi cardKind nem számít, a tantárgy dönt.
+		// Nyelvnél Szókártya, máshol Tanulókártya, besorolatlanból Szókártya.
 		if (body.subjectId !== undefined) {
 			sets.push('subject_id = ?');
 			args.push(body.subjectId || null);
@@ -134,16 +170,51 @@ export const PATCH: RequestHandler = async (event) => {
 			sets.push('material_id = ?');
 			args.push(body.materialId || null);
 		}
-		if (body.lessonId !== undefined) {
+		let nextLessonIds: string[] | null = null;
+		if (body.lessonIds !== undefined) {
+			nextLessonIds = Array.isArray(body.lessonIds)
+				? [...new Set(body.lessonIds.map((s) => `${s ?? ''}`.trim()).filter(Boolean))].slice(0, 50)
+				: [];
+			sets.push('lesson_id = ?');
+			args.push(nextLessonIds[0] ?? null);
+		} else if (body.lessonId !== undefined) {
 			const lesson = body.lessonId || null;
 			sets.push('lesson_id = ?');
 			args.push(lesson);
+			nextLessonIds = lesson ? [lesson] : [];
 		}
-		if (sets.length === 0) return json({ error: 'Nincs módosítás.' }, { status: 400 });
-		await db
-			.prepare(`UPDATE decks SET ${sets.join(', ')} WHERE id = ?`)
-			.bind(...args, g.deckId)
-			.run();
+		// Tantárgyváltáskor az automatikus típus is frissül ugyanabban az írásban.
+		if (body.subjectId !== undefined) {
+			try {
+				const newSubjectId = body.subjectId || null;
+				let auto: 'word' | 'study' = 'word';
+				if (newSubjectId) {
+					const subj = await db
+						.prepare(`SELECT title, COALESCE(icon, 'book') AS icon FROM subjects WHERE id = ?`)
+						.bind(newSubjectId)
+						.first<{ title: string; icon: string }>();
+					auto = cardKindForSubject(subj?.title ?? '', subj?.icon ?? 'book', newSubjectId);
+				}
+				sets.push('card_kind = ?');
+				args.push(auto);
+			} catch {
+				// típus nélkül is menthető a besorolás
+			}
+		}
+		if (sets.length === 0 && nextLessonIds === null) return json({ error: 'Nincs módosítás.' }, { status: 400 });
+		if (sets.length > 0) {
+			await db
+				.prepare(`UPDATE decks SET ${sets.join(', ')} WHERE id = ?`)
+				.bind(...args, g.deckId)
+				.run();
+		}
+		if (nextLessonIds !== null) {
+			try {
+				await setDeckLessons(db, g.deckId, nextLessonIds);
+			} catch {
+				// a régi oszlop már beállt
+			}
+		}
 		return json({ ok: true });
 	} catch (e) {
 		return json(
@@ -165,6 +236,11 @@ export const DELETE: RequestHandler = async (event) => {
 			db.prepare(`DELETE FROM deck_cards WHERE deck_id = ?`).bind(g.deckId),
 			db.prepare(`DELETE FROM decks WHERE id = ?`).bind(g.deckId)
 		]);
+		try {
+			await db.prepare(`DELETE FROM deck_lessons WHERE deck_id = ?`).bind(g.deckId).run();
+		} catch {
+			// kapcsoló még nincs
+		}
 		return json({ ok: true });
 	} catch (e) {
 		return json(

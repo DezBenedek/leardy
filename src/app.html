@@ -31,7 +31,7 @@
 				var raw = localStorage.getItem('leardy-settings');
 				if (raw) {
 					var s = JSON.parse(raw);
-					var fam = s && (s.fontFamily === 'modern' || s.fontFamily === 'book') ? s.fontFamily : 'system';
+					var fam = s && (s.fontFamily === 'modern' || s.fontFamily === 'book' || s.fontFamily === 'excalifont') ? s.fontFamily : 'system';
 					document.documentElement.dataset.lefontfam = fam;
 					if (s && s.reduceMotion) document.documentElement.classList.add('reduce-motion');
 					if (s && s.compactList) document.documentElement.classList.add('compact');

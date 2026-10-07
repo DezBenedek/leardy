@@ -1,13 +1,12 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount, tick } from 'svelte';
-	import { ArrowLeft, ChevronDown, ChevronRight, Layers, ListChecks } from '@lucide/svelte';
+	import { ArrowLeft, ChevronDown, ChevronRight, Dices, Layers } from '@lucide/svelte';
 	import QuizModal from '$lib/components/QuizModal.svelte';
 	import QuizRunner from '$lib/components/QuizRunner.svelte';
 	import type { Package, QuizQuestion } from '$lib/curriculum';
+	import { markLessonOpened } from '$lib/lesson-history';
 	import { markLessonDone } from '$lib/query.svelte';
-	import Button from '$lib/ui/Button.svelte';
-	import Card from '$lib/ui/Card.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import { renderMarkdown, splitSections } from '$lib/markdown';
 	import type { PageData } from './$types';
@@ -45,6 +44,13 @@
 
 	/** Nagy modalban megnyitott kvíz. */
 	let quizModal = $state<{ title: string; questions: QuizQuestion[] } | null>(null);
+
+	/* Utoljára megnyitott lecke naplózása a Tanulás oldal Folytatás gombjához. */
+	$effect(() => {
+		const id = lessonPage.lesson.id;
+		const title = lessonPage.lesson.title;
+		if (id) markLessonOpened(id, title);
+	});
 
 	function sectionQuizCount(slug: string): number {
 		return lessonPage.quizzes
@@ -95,16 +101,28 @@
 	<meta name="description" content="{lessonPage.lesson.title} lecke." />
 </svelte:head>
 
-<div class="flex items-start gap-2 px-1">
+<div class="flex items-center gap-2 px-1">
 	<IconButton ariaLabel="Vissza" size={44} onclick={goBack}>
 		<ArrowLeft size={21} />
 	</IconButton>
-	<h1 class="font-display min-w-0 flex-1 text-[26px] leading-tight font-extrabold tracking-tight text-ink-900 dark:text-white">
-		{lessonPage.lesson.title}
-	</h1>
+	<div class="flex min-w-0 flex-1 items-center">
+		<h1 class="font-display min-w-0 flex-1 text-[26px] leading-tight font-extrabold tracking-tight text-ink-900 dark:text-white">
+			{lessonPage.lesson.title}
+		</h1>
+	</div>
+	{#if allQuestions.length > 0}
+		<IconButton
+			ariaLabel="Teljes lecke kvíz: {allQuestions.length} kérdés"
+			title="Teljes lecke kvíz"
+			size={44}
+			onclick={() => (quizModal = { title: 'Teljes lecke kvíz', questions: allQuestions })}
+		>
+			<Dices size={20} />
+		</IconButton>
+	{/if}
 </div>
 
-<div class="leardy-md mt-3 grid gap-2.5">
+<div class="leardy-md mt-3 grid min-w-0 gap-2.5">
 	{#each sections as section (section.slug)}
 		{@const count = sectionQuizCount(section.slug)}
 		{@const open = openSecs[section.slug] ?? false}
@@ -129,16 +147,15 @@
 					/>
 				</button>
 				{#if count > 0}
-					<button
-						type="button"
+					<IconButton
+						ariaLabel="Szekció kvíz: {count} kérdés"
+						title="Szekció kvíz"
+						size={36}
 						onclick={() =>
 							(quizModal = { title: `${section.title}: kvíz`, questions: sectionQuestions(section.slug) })}
-						aria-label="Szekció kvíz: {count} kérdés"
-						title="Szekció kvíz"
-						class="grid size-10 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-600 transition hover:bg-brand-100 active:scale-95 motion-reduce:transition-none dark:bg-brand-500/20 dark:text-white dark:hover:bg-brand-500/30"
 					>
-						<ListChecks size={18} aria-hidden="true" />
-					</button>
+						<Dices size={16} />
+					</IconButton>
 				{/if}
 			</div>
 			<div
@@ -154,28 +171,6 @@
 		</div>
 	{/each}
 </div>
-
-{#if allQuestions.length > 0}
-	<section aria-label="Teljes lecke kvíz" class="mt-4">
-		<Card tone="brand" pad="lg">
-			<p class="font-display text-[20px] font-extrabold">Készen állsz?</p>
-			<p class="mt-1 text-[14px] text-white/75">
-				{allQuestions.length} kérdés az egész leckéből.
-			</p>
-			<div class="mt-4">
-				<Button
-					variant="dark"
-					size="lg"
-					block
-					onclick={() => (quizModal = { title: 'Teljes lecke kvíz', questions: allQuestions })}
-				>
-					<ListChecks size={18} />
-					Teljes lecke kvíz
-				</Button>
-			</div>
-		</Card>
-	</section>
-{/if}
 
 {#if related.length > 0}
 	<section aria-label="Kártyacsomagok" class="mt-4">
