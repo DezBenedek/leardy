@@ -40,8 +40,10 @@ Böngészőben megnyitod, és már tanulhatsz is.
 
 ## Adatbázis
 
-Cloudflare D1-et használ. A táblákat a `migrations/0001_init.sql` hozza
-létre, a demo Történelem tartalom is benne van. Helyben így viszed fel:
+Cloudflare D1-et használ. Az egyetlen `migrations/0001_init.sql` fájl hozza
+létre a teljes sémát és a hét alapértelmezett tantárgyat: Angol, Német,
+Olasz, Történelem, Irodalom, Nyelvtan, Matematika. Minden más tábla üresen
+indul, szintek és demó tananyag nélkül. Helyben így inicializálod:
 
 ```bash
 pnpm cf:db:migrate:local
@@ -52,6 +54,9 @@ pnpm cf:db:migrate:local
 ```bash
 pnpm cf:db:migrate
 ```
+
+A migráció nem töröl meglévő adatokat. Teljes újraépítés előtt az adatbázis
+régi tábláit és migrációs előzményeit külön kell törölni.
 
 ## Élesítés
 
@@ -78,7 +83,7 @@ Helyi fejlesztéshez ugyanezek mehetnek a `.dev.vars` fájlba.
 - `src/routes` - az oldalak és az API végpontok,
 - `src/lib` - a megosztott kód (kvízlejátszó, kártyák, tananyag-kezelés),
 - `src/lib/server` - a szerver oldali dolgok (adatbázis, tanterem, e-mail),
-- `migrations` - az adatbázis séma plusz a demo tartalom egy fájlban,
+- `migrations` - a teljes adatbázisséma és a hét tantárgy egy init SQL-ben,
 - `static` - ikonok meg ilyesmik.
 
 ## Technológiák

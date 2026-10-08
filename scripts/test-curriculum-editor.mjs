@@ -28,12 +28,28 @@ const { splitSections, renderMarkdown } = await import(markdownUrl);
 const { parseEditableSections, serializeEditableSections } = await import(await moduleUrl('../src/lib/curriculum-editor.ts', { './markdown': markdownUrl }));
 const { cachedEditorSearch } = await import(await moduleUrl('../src/lib/editor-candidate-search.ts'));
 const schema = await readFile(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8');
-const editingSchema = await readFile(new URL('../migrations/0009_curriculum_editing.sql', import.meta.url), 'utf8');
+
+test('Az init csak a hét tantárgyat tölti fel, újrafuttatva megőrzi az adatokat', () => {
+	const sqlite = new DatabaseSync(':memory:');
+	try {
+		sqlite.exec('PRAGMA foreign_keys=ON');
+		sqlite.exec(schema);
+		assert.deepEqual(sqlite.prepare('SELECT title FROM subjects ORDER BY sort').all().map((row) => row.title),
+			['Angol', 'Német', 'Olasz', 'Történelem', 'Irodalom', 'Nyelvtan', 'Matematika']);
+		for (const { name } of sqlite.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name != 'subjects'").all()) {
+			assert.equal(sqlite.prepare(`SELECT COUNT(*) AS count FROM "${name}"`).get().count, 0, `${name}: üresen kell indulnia.`);
+		}
+		sqlite.exec("INSERT INTO levels (id, subject_id, title) VALUES ('retained-level', 'subj-angol', 'Saját szint')");
+		sqlite.exec(schema);
+		assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM subjects').get().count, 7);
+		assert.equal(sqlite.prepare("SELECT title FROM levels WHERE id = 'retained-level'").get().title, 'Saját szint');
+		assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+	} finally { sqlite.close(); }
+});
 
 function testDb() {
 	const sqlite = new DatabaseSync(':memory:');
 	sqlite.exec(schema);
-	sqlite.exec(editingSchema);
 	sqlite.exec('PRAGMA foreign_keys=ON');
 	for (const [id, email, role] of [['owner', 'owner@example.invalid', 'teacher'], ['editor', 'editor@example.invalid', 'teacher'], ['student', 'student@example.invalid', 'student']]) {
 		sqlite.prepare("INSERT INTO users (id, name, email, pass_hash, salt, created_at, role) VALUES (?, ?, ?, '', '', 0, ?)").run(id, id, email, role);
@@ -154,7 +170,8 @@ test('Idegen szintre és idegen témakörre hivatkozva sem írható át tananyag
 		await assert.rejects(mutateCurriculum(db, editor, { action: 'renameTopic', ...a, title: 'Tiltott' }), failsWith(403));
 		await assert.rejects(mutateCurriculum(db, owner, { action: 'renameTopic', levelId: a.levelId, topicId: b.topicId, title: 'Tiltott' }), failsWith(404));
 		await assert.rejects(mutateCurriculum(db, owner, { action: 'deleteLesson', levelId: a.levelId, lessonId: b.lessonId }), failsWith(404));
-		const legacyLevel = db.sqlite.prepare('SELECT id FROM levels WHERE id NOT IN (?, ?) LIMIT 1').get(a.levelId, b.levelId).id;
+		const legacyLevel = 'legacy-level';
+		db.sqlite.prepare('INSERT INTO levels (id, subject_id, title, sort) VALUES (?, ?, ?, 0)').run(legacyLevel, a.subjectId, 'Régi szint');
 		await assert.rejects(mutateCurriculum(db, owner, { action: 'updateLevel', levelId: legacyLevel, title: 'Tiltott', published: false }), failsWith(403));
 	} finally { db.sqlite.close(); }
 });
