@@ -43,7 +43,12 @@ Böngészőben megnyitod, és már tanulhatsz is.
 Cloudflare D1-et használ. Az egyetlen `migrations/0001_init.sql` fájl hozza
 létre a teljes sémát és a hét alapértelmezett tantárgyat: Angol, Német,
 Olasz, Történelem, Irodalom, Nyelvtan, Matematika. Minden más tábla üresen
-indul, szintek és demó tananyag nélkül. Helyben így inicializálod:
+indul, szintek és demó tananyag nélkül.
+
+A tantárgyazonosítók a kisbetűs angol nevek: `english`, `german`, `italian`,
+`history`, `literature`, `grammar`, `mathematics`.
+
+Helyben így inicializálod:
 
 ```bash
 pnpm cf:db:migrate:local

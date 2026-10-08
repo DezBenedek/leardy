@@ -36,10 +36,12 @@ test('Az init csak a hét tantárgyat tölti fel, újrafuttatva megőrzi az adat
 		sqlite.exec(schema);
 		assert.deepEqual(sqlite.prepare('SELECT title FROM subjects ORDER BY sort').all().map((row) => row.title),
 			['Angol', 'Német', 'Olasz', 'Történelem', 'Irodalom', 'Nyelvtan', 'Matematika']);
+		assert.deepEqual(sqlite.prepare('SELECT id FROM subjects ORDER BY sort').all().map((row) => row.id),
+			['english', 'german', 'italian', 'history', 'literature', 'grammar', 'mathematics']);
 		for (const { name } of sqlite.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name != 'subjects'").all()) {
 			assert.equal(sqlite.prepare(`SELECT COUNT(*) AS count FROM "${name}"`).get().count, 0, `${name}: üresen kell indulnia.`);
 		}
-		sqlite.exec("INSERT INTO levels (id, subject_id, title) VALUES ('retained-level', 'subj-angol', 'Saját szint')");
+		sqlite.exec("INSERT INTO levels (id, subject_id, title) VALUES ('retained-level', 'english', 'Saját szint')");
 		sqlite.exec(schema);
 		assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM subjects').get().count, 7);
 		assert.equal(sqlite.prepare("SELECT title FROM levels WHERE id = 'retained-level'").get().title, 'Saját szint');

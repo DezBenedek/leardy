@@ -663,12 +663,12 @@
 				</li>
 			{:else if visibleLevels.length === 0}
 				<li>
-					<p class="p-2 text-sm text-stone-500 dark:text-stone-400">
+					<p class="p-2 text-center text-sm text-stone-500 dark:text-stone-400">
 						{query.trim()
 							? 'Nincs ilyen találat.'
 							: onlyWithQuiz
-								? 'Nincs kvízes szint.'
-								: 'Nincs megjeleníthető szint.'}
+								? `Nincs kvízes ${levelLabel.toLowerCase()}.`
+								: `Nincs megjeleníthető ${levelLabel.toLowerCase()}.`}
 					</p>
 				</li>
 			{:else}

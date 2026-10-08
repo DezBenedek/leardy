@@ -375,10 +375,10 @@ CREATE TABLE IF NOT EXISTS notification_prefs (
 
 -- Alapadatok: csak tantárgyak, tananyag és felhasználók nélkül.
 INSERT OR IGNORE INTO subjects (id, title, icon, level_label, sort, created_at) VALUES
-	('subj-angol', 'Angol', 'languages', 'Szint', 0, unixepoch()),
-	('subj-nemet', 'Német', 'languages', 'Szint', 1, unixepoch()),
-	('subj-olasz', 'Olasz', 'languages', 'Szint', 2, unixepoch()),
-	('subj-tortenelem', 'Történelem', 'landmark', 'Évfolyam', 3, unixepoch()),
-	('subj-irodalom', 'Irodalom', 'book', 'Évfolyam', 4, unixepoch()),
-	('subj-nyelvtan', 'Nyelvtan', 'book', 'Évfolyam', 5, unixepoch()),
-	('subj-matematika', 'Matematika', 'calculator', 'Évfolyam', 6, unixepoch());
+	('english', 'Angol', 'languages', 'Szint', 0, unixepoch()),
+	('german', 'Német', 'languages', 'Szint', 1, unixepoch()),
+	('italian', 'Olasz', 'languages', 'Szint', 2, unixepoch()),
+	('history', 'Történelem', 'landmark', 'Évfolyam', 3, unixepoch()),
+	('literature', 'Irodalom', 'book', 'Évfolyam', 4, unixepoch()),
+	('grammar', 'Nyelvtan', 'book', 'Évfolyam', 5, unixepoch()),
+	('mathematics', 'Matematika', 'calculator', 'Évfolyam', 6, unixepoch());
