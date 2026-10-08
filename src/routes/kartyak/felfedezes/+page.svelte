@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { createBackNavigation } from '$lib/back-navigation';
+	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import { ArrowDownAZ, ArrowLeft, BookOpenText, Check, ChevronDown, ChevronRight, Compass, Landmark, Languages, Layers, Leaf, Plus, Shapes, SlidersHorizontal, FunnelX } from '@lucide/svelte';
@@ -244,11 +246,7 @@
 		}
 	}
 
-	function goBack() {
-		// Mindig a könyvtárba visz: a history.back() be tud bugolni
-		// (külső belépéskor, visszalépéskor rossz helyre vinne).
-		void goto('/kartyak');
-	}
+	const goBack = createBackNavigation(() => resolve('/kartyak'), { direct: true });
 
 	/* A részletező vissza-nyila ide tér vissza, ha innen nyitották meg. */
 	function markFromDiscovery() {

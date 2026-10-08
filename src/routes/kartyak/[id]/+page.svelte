@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { lessonPath } from '$lib/lesson-paths';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -406,7 +407,7 @@
 			{#if pkg.lessonId && !pkg.lessonEmpty}
 				<div class="mt-2.5 text-center">
 					<a
-						href={resolve('/lecke/[id]', { id: pkg.lessonId })}
+						href={lessonPath(pkg.lessonId)}
 						class="inline-flex items-center gap-1.5 text-[13px] font-bold text-brand-600 transition hover:text-brand-700 dark:text-brand-300 dark:hover:text-white"
 					>
 						<BookOpen size={15} /> Ugrás a leckére
@@ -449,7 +450,7 @@
 			<div class="mt-3 grid gap-1.5 text-center">
 				{#each (pkg.attachedLessons ?? [{ id: pkg.attachedLessonId ?? '', title: pkg.attachedLessonTitle ?? '' }]).filter((a) => a.id) as a (a.id)}
 					<a
-						href={resolve('/lecke/[id]', { id: a.id })}
+						href={lessonPath(a.id)}
 						class="text-[13px] font-bold text-brand-600 transition hover:text-brand-700 dark:text-brand-300 dark:hover:text-white"
 					>
 						Csatolva: {a.title || 'lecke'}
@@ -459,7 +460,7 @@
 		{:else if pkg.attachedLessonId && !pkg.lessonEmpty}
 			<div class="mt-3 text-center">
 				<a
-					href={resolve('/lecke/[id]', { id: pkg.attachedLessonId })}
+					href={lessonPath(pkg.attachedLessonId)}
 					class="text-[13px] font-bold text-brand-600 transition hover:text-brand-700 dark:text-brand-300 dark:hover:text-white"
 				>
 					Csatolva: {pkg.attachedLessonTitle || 'lecke'}

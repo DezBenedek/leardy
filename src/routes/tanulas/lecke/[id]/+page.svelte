@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { createBackNavigation } from '$lib/back-navigation';
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import { onMount, tick } from 'svelte';
 	import { ArrowLeft, ChevronDown, ChevronRight, Dices, Layers } from '@lucide/svelte';
 	import QuizModal from '$lib/components/QuizModal.svelte';
@@ -20,14 +22,19 @@
 	/** Az első szekció alapból nyitva. Zárva indul, majd az első
 		paint után nyílik le, így a lenyílás animáció látszik. */
 	let openSecs = $state<Record<string, boolean>>({});
-	let initedFor = $state('');
+	let initedFor = '';
 
 	$effect(() => {
 		const id = lessonPage.lesson.id;
-		const first = sections[0]?.slug;
-		if (!first || initedFor === id) return;
-		initedFor = id;
+		let hash = '';
+		try { hash = decodeURIComponent(page.url.hash.slice(1)); } catch { /* Hibás horgony esetén az első bekezdés nyílik. */ }
+		const target = sections.find((section) => section.slug === hash)?.slug;
+		const first = target ?? sections[0]?.slug;
+		const key = `${id}#${hash}`;
+		if (!first || initedFor === key) return;
+		initedFor = key;
 		openSecs = {};
+		let active = true;
 		// Két frame késleltetés: az első paint még csukva történik,
 		// utána a 0fr -> 1fr átmenet animálva lenyílik.
 		// (Csökkentett mozgásnál a CSS transition none, így azonnal nyílik.)
@@ -35,11 +42,13 @@
 			await tick();
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
-					if (initedFor !== id) return;
+					if (!active) return;
 					openSecs = { [first]: true };
+					if (target) document.getElementById(target)?.scrollIntoView({ block: 'start' });
 				});
 			});
 		})();
+		return () => { active = false; };
 	});
 
 	/** Nagy modalban megnyitott kvíz. */
@@ -64,10 +73,12 @@
 			.flatMap((q) => q.questions);
 	}
 
-	function goBack() {
-		if (typeof history !== 'undefined' && history.length > 1) history.back();
-		else void goto('/tanulas');
-	}
+	const goBack = createBackNavigation(() => resolve('/tanulas'), {
+		accept: (url) => url.pathname === resolve('/')
+			|| url.pathname === resolve('/tantargy/[id]', { id: lessonPage.subject.id })
+			|| url.pathname === resolve('/tanulas/szerkeszto')
+			|| url.pathname.startsWith(`${resolve('/tanterem')}/`)
+	});
 
 	async function reportProgress(score: number, total: number) {
 		try {
@@ -102,7 +113,7 @@
 </svelte:head>
 
 <div class="flex items-center gap-2 px-1">
-	<IconButton ariaLabel="Vissza" size={44} onclick={goBack}>
+	<IconButton ariaLabel="Vissza a tananyagokhoz" size={44} onclick={goBack}>
 		<ArrowLeft size={21} />
 	</IconButton>
 	<div class="flex min-w-0 flex-1 items-center">
@@ -126,7 +137,7 @@
 	{#each sections as section (section.slug)}
 		{@const count = sectionQuizCount(section.slug)}
 		{@const open = openSecs[section.slug] ?? false}
-		<div class="rounded-[20px] border border-stone-200 bg-white transition-shadow dark:border-white/10 dark:bg-stone-900 {open ? 'shadow-sm' : ''}">
+		<div id={section.slug} class="scroll-mt-4 rounded-[20px] border border-stone-200 bg-white transition-shadow dark:border-white/10 dark:bg-stone-900 {open ? 'shadow-sm' : ''}">
 			<div class="flex items-center gap-1 p-1.5">
 				<button
 					type="button"

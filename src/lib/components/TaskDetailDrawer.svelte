@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { lessonPath } from '$lib/lesson-paths';
 	import { CalendarDays, Check, ListChecks, RotateCcw, Send, Undo2 } from '@lucide/svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
@@ -326,7 +327,7 @@
 						{#each t.lessons as l (l.id)}
 							<li class="min-w-0">
 								<a
-									href="/lecke/{l.id}"
+									href={lessonPath(l.id)}
 									class="block min-w-0 truncate rounded-xl bg-stone-100 px-3 py-2 text-[13px] font-bold text-ink-700 transition hover:bg-stone-200/70 dark:bg-white/10 dark:text-stone-200 dark:hover:bg-white/15"
 								>
 									{l.title}

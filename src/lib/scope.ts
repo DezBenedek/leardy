@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 
 /* Oldal-szűrők memóriája (localStorage: leardy-scope).
-   Kártyák, Felfedezés és Tanulás megjegyzi az utolsó tantárgy/szint (/fül) választást,
+   Kártyák, Felfedezés, Tanulás és a tananyag-szerkesztő megjegyzi az utolsó tantárgy/szint (/fül) választást,
    újranyitáskor azt tölti be. Érvénytelen id esetén az elsőre esik vissza. */
 
 export interface PageScope {

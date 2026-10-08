@@ -77,6 +77,8 @@ export interface LessonPage {
 export interface LessonSection {
 	slug: string;
 	title: string;
+	/** A címsorok előtti bevezető szöveg. */
+	intro?: boolean;
 	/** A szekció nyers markdownja (cím nélkül). */
 	md: string;
 }

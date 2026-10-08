@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { createBackNavigation } from '$lib/back-navigation';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
@@ -466,6 +467,7 @@
 			saving = false;
 		}
 	}
+	const goBack = createBackNavigation(() => detailUrl);
 </script>
 
 <svelte:head>
@@ -483,11 +485,13 @@
 	<EmptyState title="Nem sikerült betölteni" description={loadError} />
 	<div class="mt-4 flex justify-center gap-2">
 		<Button variant="outline" onclick={() => void loadDeck()}>Újra</Button>
-		<Button variant="ghost" onclick={() => void goto(detailUrl)}>Vissza</Button>
+		<IconButton ariaLabel="Vissza az adatlapra" size={44} onclick={goBack}>
+			<ArrowLeft size={21} />
+		</IconButton>
 	</div>
 {:else}
 	<div class="flex items-center gap-2">
-		<IconButton ariaLabel="Vissza az adatlapra" size={44} onclick={() => void goto(detailUrl)}>
+		<IconButton ariaLabel="Vissza az adatlapra" size={44} onclick={goBack}>
 			<ArrowLeft size={21} />
 		</IconButton>
 		<div class="min-w-0 flex-1">

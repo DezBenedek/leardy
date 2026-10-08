@@ -1,20 +1,16 @@
 <script lang="ts">
-	import { ArrowLeft, BookOpenText, Check, ChevronRight, Landmark, Languages, Layers, Leaf, Shapes } from '@lucide/svelte';
+	import { createBackNavigation } from '$lib/back-navigation';
+	import { lessonPath } from '$lib/lesson-paths';
+	import { ArrowLeft, Check, ChevronRight, Layers } from '@lucide/svelte';
 	import Card from '$lib/ui/Card.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
-
-	/** DB-ben tárolt ikon-sztring → lucide-komponens; ismeretlenhez fallback. */
-	const subjectIcons: Record<string, typeof Landmark> = {
-		landmark: Landmark,
-		leaf: Leaf,
-		languages: Languages,
-		book: BookOpenText
-	};
+	const goBack = createBackNavigation(() => resolve('/tanulas'));
 
 	let tree = $derived(data.tree);
-	let Icon = $derived(subjectIcons[tree.icon] ?? Shapes);
 	let levelLow = $derived((tree.levelLabel || 'Szint').toLowerCase());
 </script>
 
@@ -23,19 +19,10 @@
 	<meta name="description" content="{tree.title}: tananyagok és leckék." />
 </svelte:head>
 
-<nav aria-label="Morzsa" class="px-1">
-	<a
-		href="/"
-		class="inline-flex items-center gap-1.5 text-[13px] font-bold text-stone-500 transition hover:text-ink-900 dark:text-stone-400 dark:hover:text-white"
-	>
-		<ArrowLeft size={15} /> Vissza a tantárgyakhoz
-	</a>
-</nav>
-
-<header class="mt-2 flex items-center gap-3 px-1">
-	<span class="grid size-14 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-500/20 dark:text-brand-300">
-		<Icon size={28} aria-hidden="true" />
-	</span>
+<header class="flex items-start gap-3">
+	<IconButton ariaLabel="Vissza a tantárgyakhoz" size={44} onclick={goBack}>
+		<ArrowLeft size={21} />
+	</IconButton>
 	<div class="min-w-0">
 		<h1 class="font-display truncate text-[26px] leading-tight font-extrabold tracking-tight text-ink-900 dark:text-white">
 			{tree.title}
@@ -72,7 +59,7 @@
 										{#each mat.lessons as lesson (lesson.id)}
 											<li>
 												<a
-													href="/lecke/{lesson.id}"
+													href={lessonPath(lesson.id)}
 													class="group flex items-center gap-2 py-2 text-[14px] font-medium text-ink-600 transition hover:text-brand-600 dark:text-stone-300 dark:hover:text-white"
 												>
 													{#if lesson.done}

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { beforeNavigate, goto } from '$app/navigation';
+	import { createBackNavigation } from '$lib/back-navigation';
+	import { beforeNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { ArrowLeft, ArrowLeftRight, ChevronDown } from '@lucide/svelte';
@@ -84,18 +85,12 @@
 	let total = $derived(questions.length);
 	let dueCount = $derived(total > 0 ? summarizeSM2(questions, progress, todayDay()).due : 0);
 
+	const returnToList = createBackNavigation(() => resolve('/'));
+
 	function goBack() {
 		// Félúton visszalépéskor az addigi válaszok mentődnek.
 		void reviews.flush();
-		try {
-			if (window.history.length > 1) {
-				window.history.back();
-				return;
-			}
-		} catch {
-			// fallback alább
-		}
-		void goto(resolve('/'));
+		returnToList();
 	}
 </script>
 

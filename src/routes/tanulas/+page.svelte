@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { lessonPath } from '$lib/lesson-paths';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { untrack } from 'svelte';
 	import { fly } from 'svelte/transition';
@@ -19,11 +21,13 @@
 		ListOrdered,
 		LoaderCircle,
 		Play,
+		Pencil,
 		Shapes,
 		SlidersHorizontal,
 		FunnelX
 	} from '@lucide/svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
+	import { auth } from '$lib/auth.svelte';
 	import QuickPractice from '$lib/components/QuickPractice.svelte';
 	import type { Package, QuizQuestion, SubjectTree } from '$lib/curriculum';
 	import { normHu } from '$lib/deck-history';
@@ -43,6 +47,8 @@
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
+	let user = $derived(auth.ready ? auth.user : data.user);
+	let canEdit = $derived(user?.role === 'teacher' || !!user?.is_admin || data.isEditor);
 
 	/* Gyorstár-ablakok: friss = nincs hálózat, öreg = mutatható + csendben frissül. */
 	const TREE_TTL = 10 * 60_000;
@@ -342,14 +348,14 @@
 		const last = loadLastLesson() ?? lastLesson;
 		if (last?.id) {
 			lastLesson = last;
-			void goto(`/lecke/${encodeURIComponent(last.id)}`);
+			void goto(lessonPath(last.id));
 			return;
 		}
 		const fallback = visibleLevels
 			.flatMap((l) => l.materials.flatMap((m) => m.lessons))
 			.find((le) => !le.done) ?? visibleLevels.flatMap((l) => l.materials.flatMap((m) => m.lessons))[0];
 		if (fallback) {
-			void goto(`/lecke/${encodeURIComponent(fallback.id)}`);
+			void goto(lessonPath(fallback.id));
 			return;
 		}
 		toast.warning('Nincs folytatható lecke', 'Nyiss meg egy leckét a listából!');
@@ -450,13 +456,13 @@
 	>
 		<div class="grid h-full w-[46px] place-items-center">
 			<IconButton
-				ariaLabel={lastLesson?.title ? `Folytatás: ${lastLesson.title}` : 'Folytatás: utolsó lecke megnyitása'}
-				title={lastLesson?.title ? `Folytatás: ${lastLesson.title}` : 'Folytatás'}
+				ariaLabel={canEdit ? 'Tananyag szerkesztése' : lastLesson?.title ? `Folytatás: ${lastLesson.title}` : 'Folytatás: utolsó lecke megnyitása'}
+				title={canEdit ? 'Tananyag szerkesztése' : lastLesson?.title ? `Folytatás: ${lastLesson.title}` : 'Folytatás'}
 				size={46}
 				disabled={searchFocus}
-				onclick={continueLastLesson}
+				onclick={canEdit ? () => { void goto(resolve(`/tanulas/szerkeszto?${new URLSearchParams({ subject: subjectId, level: levelId })}`)); } : continueLastLesson}
 			>
-				<Play size={22} />
+				{#if canEdit}<Pencil size={22} />{:else}<Play size={22} />{/if}
 			</IconButton>
 		</div>
 	</div>
@@ -532,7 +538,7 @@
 										{#each mat.lessons as le (le.id)}
 											<li>
 												<a
-													href="/lecke/{le.id}"
+													href={lessonPath(le.id)}
 													class="flex items-center gap-2 py-2 text-[14px] font-semibold text-ink-600 transition hover:text-brand-600 dark:text-stone-300 dark:hover:text-white"
 												>
 													{#if le.done}

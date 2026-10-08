@@ -2,16 +2,16 @@
 	/** Globális tananyag-választó drawer: Tantárgy, Szint, Témakör, Lecke.
 	    Alapból a tantárgy-listával nyit, de `baseSubjectId`-vel indulhat
 	    rögtön egy tantárgyról. `select` mondja meg, mi választható ki
-	    (lecke vagy témakör); `multi` esetén + / - jelölés és Kész gomb van.
+	    (lecke, témakör vagy szint); `multi` esetén + / - jelölés és Kész gomb van.
 	    `onlyWithQuiz` csak a min. 1 kvízes elemeket mutatja.
-	    Minden szinten van kereső, de az csak a kiválasztott körön belül
+	    A `searchable` kapcsolja a keresőt. Az csak a kiválasztott körön belül
 	    keres: tantárgynál és szintnél a megjelenő lista szűrődik,
 	    témakörnél csak a mostani szint, leckénél előbb a mostani témakör,
 	    ha ott nincs találat, akkor az azonos szint másik témakörei.
 	    Bárhol használható, oldalgyökérben kell betenni (Drawer). */
 
 	export interface ContentPick {
-		kind: 'lesson' | 'topic';
+		kind: 'lesson' | 'topic' | 'level';
 		subjectId: string;
 		subjectTitle: string;
 		levelId: string;
@@ -32,6 +32,8 @@
 	import {
 		BookOpen,
 		BookOpenText,
+		Check,
+		ChevronRight,
 		Landmark,
 		Languages,
 		Leaf,
@@ -50,15 +52,35 @@
 	} from '$lib/curriculum';
 	import Drawer from './Drawer.svelte';
 	import Button from '$lib/ui/Button.svelte';
-	import { getOrFetch } from '$lib/query.svelte';
+	import Skeleton from '$lib/ui/Skeleton.svelte';
+	import { getOrFetch, peek } from '$lib/query.svelte';
+	import { untrack } from 'svelte';
+	import { motionOK } from '$lib/overlay';
+	import { fly } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 
 	const COUNTS_TTL = 60 * 60_000;
+	const EDITOR_TREE_TTL = 5 * 60_000;
 
 	interface Props {
 		open: boolean;
 		subjects: Subject[];
 		baseSubjectId?: string;
-		select?: 'lesson' | 'topic';
+		/** Nyitáskor erről a tantárgyról indul, a tantárgylistára vissza lehet lépni. */
+		startSubjectId?: string;
+		select?: 'lesson' | 'topic' | 'level';
+		/** Szerkesztői használatban a piszkozatokat is tartalmazó adatforrás. */
+		loadTree?: (subjectId: string) => Promise<SubjectTree | null>;
+		/** A szerverről már betöltött fa az első nyitáskor is azonnal használható. */
+		initialTree?: SubjectTree | null;
+		/** Mentés vagy jogosultságváltozás után megváltozó érték üríti a saját gyorstárat. */
+		cacheVersion?: unknown;
+		selectedLevelId?: string;
+		selectedSubjectId?: string;
+		searchable?: boolean;
+		/** Például a szerkesztési jogosultság jelzése a szint sorában. */
+		levelNote?: (level: LevelNode) => string;
+		onCreateLevel?: (subjectId: string) => void;
 		multi?: boolean;
 		onlyWithQuiz?: boolean;
 		/** Többszöri nyitásnál megőrzött választás (multi). */
@@ -71,7 +93,16 @@
 		open,
 		subjects,
 		baseSubjectId = '',
+		startSubjectId = '',
 		select = 'lesson',
+		loadTree,
+		initialTree = null,
+		cacheVersion,
+		selectedLevelId = '',
+		selectedSubjectId = '',
+		searchable = true,
+		levelNote,
+		onCreateLevel,
 		multi = false,
 		onlyWithQuiz = false,
 		initialSelected = [],
@@ -93,6 +124,15 @@
 	let loadingSubjectCounts = $state(false);
 	let selected = $state<ContentPick[]>([]);
 	let query = $state('');
+	let direction = $state(1);
+	let animate = $state(false);
+	let treeError = $state(false);
+	let pendingSubjectId = $state('');
+	let selectionVersion = 0;
+	let treeVersion = 0;
+	let cacheOwner: unknown;
+	const treeTimes = new Map<string, number>();
+	const treeRequests = new Map<string, Promise<SubjectTree | null>>();
 
 	let step = $derived<Step>(trail.length > 0 ? trail[trail.length - 1] : 'subject');
 
@@ -101,13 +141,21 @@
 	$effect(() => {
 		if (open && !wasOpen) {
 			wasOpen = true;
-			void start();
+			void untrack(start);
 		} else if (!open && wasOpen) {
 			wasOpen = false;
+			selectionVersion++;
+			treeVersion++;
 		}
 	});
 
 	function reset() {
+		selectionVersion++;
+		treeVersion++;
+		pendingSubjectId = '';
+		animate = motionOK();
+		direction = 1;
+		treeError = false;
 		trail = [];
 		subject = null;
 		level = null;
@@ -116,19 +164,35 @@
 		loadingTree = false;
 		selected = [...initialSelected];
 		query = '';
+		const owner = cacheVersion ?? loadTree;
+		if (owner !== cacheOwner) {
+			cacheOwner = owner;
+			trees = {};
+			treeTimes.clear();
+			treeRequests.clear();
+			if (initialTree) {
+				trees = { [initialTree.id]: initialTree };
+				treeTimes.set(initialTree.id, Date.now());
+			}
+		}
 	}
 
 	async function start() {
 		reset();
-		const base =
-			baseSubjectId !== '' ? (subjects.find((s) => s.id === baseSubjectId) ?? null) : null;
+		const initialSubjectId = baseSubjectId || startSubjectId;
+		const base = subjects.find((s) => s.id === initialSubjectId) ?? null;
 		if (base) {
+			if (!baseSubjectId) trail = ['subject'];
 			subject = base;
+			const cached = cachedTree(base.id);
+			if (cached) { pushFirstStep(cached); return; }
+			if (select === 'level') trail = [...trail, 'level'];
 			starting = true;
+			const version = selectionVersion;
 			const t = await ensureTree(base.id);
+			if (!open || version !== selectionVersion) return;
 			starting = false;
-			if (!open || subject?.id !== base.id) return;
-			pushFirstStep(t);
+			if (select !== 'level') pushFirstStep(t);
 		} else {
 			subject = null;
 			trail = ['subject'];
@@ -172,11 +236,39 @@
 		}
 	}
 
+	function cachedTree(id: string): SubjectTree | null {
+		if (trees[id] && Date.now() - (treeTimes.get(id) ?? 0) < (loadTree ? EDITOR_TREE_TTL : COUNTS_TTL)) return trees[id];
+		if (loadTree) return null;
+		const cached = peek<{ tree: SubjectTree; counts?: Record<string, number> }>(`counts:tree:${id}`, COUNTS_TTL);
+		if (!cached) return null;
+		trees = { ...trees, [id]: cached.tree };
+		treeTimes.set(id, Date.now());
+		if (cached.counts) quizCounts = { ...quizCounts, [id]: cached.counts };
+		return cached.tree;
+	}
+
 	async function ensureTree(id: string): Promise<SubjectTree | null> {
-		const cached = trees[id];
-		if (cached) return cached;
+		const version = ++treeVersion;
+		treeError = false;
+		const cached = cachedTree(id);
+		if (cached) { loadingTree = false; return cached; }
 		loadingTree = true;
 		try {
+			if (loadTree) {
+				let request = treeRequests.get(id);
+				if (!request) {
+					request = loadTree(id);
+					treeRequests.set(id, request);
+				}
+				let loaded: SubjectTree | null;
+				try { loaded = await request; }
+				finally { if (treeRequests.get(id) === request) treeRequests.delete(id); }
+				if (loaded && version === treeVersion) {
+					trees = { ...trees, [id]: loaded };
+					treeTimes.set(id, Date.now());
+				}
+				return loaded;
+			}
 			const got = await getOrFetch<{ tree: SubjectTree; counts?: Record<string, number> }>(
 				`counts:tree:${id}`,
 				async () => {
@@ -189,15 +281,17 @@
 				},
 				COUNTS_TTL
 			);
-			trees = { ...trees, [id]: got.tree };
-			if (got.counts) {
-				quizCounts = { ...quizCounts, [id]: got.counts };
+			if (version === treeVersion) {
+				trees = { ...trees, [id]: got.tree };
+				treeTimes.set(id, Date.now());
+				if (got.counts) quizCounts = { ...quizCounts, [id]: got.counts };
 			}
 			return got.tree;
 		} catch {
+			if (version === treeVersion) treeError = true;
 			return null;
 		} finally {
-			loadingTree = false;
+			if (version === treeVersion) loadingTree = false;
 		}
 	}
 
@@ -253,6 +347,7 @@
 	let levelLabel = $derived(subject?.levelLabel || 'Szint');
 
 	function pushFirstStep(t: SubjectTree | null) {
+		if (select === 'level') { trail = [...trail, 'level']; return; }
 		if (!t || t.levels.length === 0) return;
 		const levels = t.levels.filter((l) => levelPass(l));
 		if (levels.length === 1) chooseLevel(levels[0]);
@@ -260,19 +355,34 @@
 	}
 
 	async function chooseSubject(s: Subject) {
+		const version = ++selectionVersion;
+		direction = 1;
+		pendingSubjectId = s.id;
 		subject = s;
 		level = null;
 		topic = null;
 		query = '';
+		starting = false;
 		trail = [...trail, 'level'];
-		const t = await ensureTree(s.id);
-		if (!open || subject?.id !== s.id) return;
+		const t = cachedTree(s.id) ?? await ensureTree(s.id);
+		if (!open || version !== selectionVersion) return;
+		pendingSubjectId = '';
+		if (select === 'level') return;
 		// Egyszintes fa: a szint-lépést átugorjuk.
 		const levels = (t?.levels ?? []).filter((l) => levelPass(l));
 		if (t && levels.length === 1) chooseLevel(levels[0]);
 	}
 
 	function chooseLevel(l: LevelNode) {
+		if (select === 'level' && subject) {
+			onPick([{
+				kind: 'level', subjectId: subject.id, subjectTitle: subject.title,
+				levelId: l.id, levelTitle: l.title, levelLabel: subject.levelLabel || 'Szint',
+				topicId: '', topicTitle: '', lessonId: '', lessonTitle: '', quizCount: 0,
+				crumb: `${subject.title} - ${l.title}`
+			}]);
+			return;
+		}
 		level = l;
 		topic = null;
 		query = '';
@@ -291,6 +401,11 @@
 	}
 
 	function goBack() {
+		selectionVersion++;
+		treeVersion++;
+		pendingSubjectId = '';
+		loadingTree = false;
+		direction = -1;
 		const cur = trail[trail.length - 1];
 		trail = trail.slice(0, -1);
 		query = '';
@@ -428,6 +543,21 @@
 		].join(' ');
 </script>
 
+{#snippet skeletonRows(count = 3)}
+	{#each Array.from({ length: count }, (_, index) => index) as row (row)}
+		<li>
+			{#if row === 0}<span class="sr-only" role="status">Tananyag betöltése…</span>{/if}
+			<div aria-hidden="true" class="flex items-center gap-2.5 rounded-2xl p-2.5">
+				<Skeleton cls="size-9 shrink-0 rounded-xl" />
+				<div class="min-w-0 flex-1 space-y-2">
+					<Skeleton cls={row % 2 === 0 ? 'h-4 w-2/3 rounded-md' : 'h-4 w-1/2 rounded-md'} />
+					<Skeleton cls="h-3 w-1/3 rounded-md" />
+				</div>
+			</div>
+		</li>
+	{/each}
+{/snippet}
+
 {#snippet searchBox()}
 	<div class="relative mt-2">
 		<Search
@@ -459,24 +589,25 @@
 <Drawer
 	{open}
 	label="Tananyag választása"
-	title={step === 'level' ? levelLabel : stepTitles[step]}
+	title={step === 'level' ? (select === 'level' ? subject?.title ?? levelLabel : levelLabel) : stepTitles[step]}
 	onBack={trail.length > 1 ? goBack : undefined}
 	{onClose}
 	wide
+	animateHeight={select === 'level'}
 >
-	{#if crumbSoFar()}
+	{#if select !== 'level' && crumbSoFar()}
 		<p class="mt-1 truncate text-[12px] font-semibold text-stone-400 dark:text-stone-500">
 			{crumbSoFar()}
 		</p>
 	{/if}
 
 	{#if starting}
-		<p class="mt-3 p-2 text-sm text-stone-500 dark:text-stone-400">Töltés…</p>
+		<ul aria-busy="true" class="-mx-1 mt-2 space-y-0.5">{@render skeletonRows()}</ul>
 	{:else if step === 'subject'}
-		{@render searchBox()}
-		<ul class="-mx-1 mt-2 space-y-0.5">
+		{#if searchable}{@render searchBox()}{/if}
+		<ul in:fly={{ x: direction * 24, duration: select === 'level' && animate ? 220 : 0, easing: cubicOut }} class="-mx-1 mt-2 space-y-0.5">
 			{#if onlyWithQuiz && loadingSubjectCounts}
-				<li><p class="p-2 text-sm text-stone-500 dark:text-stone-400">Töltés…</p></li>
+				{@render skeletonRows()}
 			{:else if visibleSubjects.length === 0}
 				<li>
 					<p class="p-2 text-sm text-stone-500 dark:text-stone-400">
@@ -490,13 +621,17 @@
 			{:else}
 				{#each visibleSubjects as s (s.id)}
 					{@const SIcon = subjectIcons[s.icon] ?? Shapes}
+					{@const current = select === 'level' && s.id === selectedSubjectId}
 					<li>
 						<button
 							type="button"
 							onclick={() => void chooseSubject(s)}
-							class="flex w-full items-center gap-2.5 rounded-2xl p-2.5 text-left transition hover:bg-stone-100 active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 dark:hover:bg-white/5"
+							aria-busy={loadingTree && pendingSubjectId === s.id}
+							disabled={loadingTree && pendingSubjectId === s.id}
+							aria-pressed={select === 'level' ? current : undefined}
+							class={['flex w-full items-center gap-2.5 rounded-2xl p-2.5 text-left transition active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100', current ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
 						>
-							<span class={rowTile}>
+							<span class={current ? rowTileSel : rowTile}>
 								<SIcon size={18} aria-hidden="true" />
 							</span>
 							<span class="min-w-0 flex-1">
@@ -504,19 +639,28 @@
 									{s.title}
 								</span>
 								<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">
-									{s.lessonCount} lecke
+									{select === 'level' ? `${s.levelCount} ${(s.levelLabel || 'Szint').toLowerCase()}` : `${s.lessonCount} lecke`}
 								</span>
 							</span>
+							{#if select === 'level'}
+								{#if current}<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
+								{:else}<ChevronRight size={17} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />{/if}
+							{/if}
 						</button>
 					</li>
 				{/each}
 			{/if}
 		</ul>
 	{:else if step === 'level'}
-		{@render searchBox()}
-		<ul class="-mx-1 mt-2 space-y-0.5">
+		{#if searchable}{@render searchBox()}{/if}
+		<ul in:fly={{ x: direction * 24, duration: select === 'level' && animate ? 220 : 0, easing: cubicOut }} class="-mx-1 mt-2 space-y-0.5">
 			{#if loadingTree && !tree}
-				<li><p class="p-2 text-sm text-stone-500 dark:text-stone-400">Töltés…</p></li>
+				{@render skeletonRows()}
+			{:else if treeError}
+				<li class="p-2 text-sm text-stone-500 dark:text-stone-400">
+					<p>Nem sikerült betölteni a szinteket.</p>
+					<button type="button" onclick={() => { if (subject) void ensureTree(subject.id); }} class="mt-2 rounded-xl px-3 py-2 font-semibold text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-white/5">Újrapróbálás</button>
+				</li>
 			{:else if visibleLevels.length === 0}
 				<li>
 					<p class="p-2 text-sm text-stone-500 dark:text-stone-400">
@@ -529,13 +673,15 @@
 				</li>
 			{:else}
 				{#each visibleLevels as l (l.id)}
+					{@const current = select === 'level' && l.id === selectedLevelId}
 					<li>
 						<button
 							type="button"
 							onclick={() => chooseLevel(l)}
-							class="flex w-full items-center gap-2.5 rounded-2xl p-2.5 text-left transition hover:bg-stone-100 active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 dark:hover:bg-white/5"
+							aria-pressed={select === 'level' ? current : undefined}
+							class={['flex w-full items-center gap-2.5 rounded-2xl p-2.5 text-left transition active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100', current ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
 						>
-							<span class={[rowTile, 'text-[15px] font-extrabold'].join(' ')}>
+							<span class={[current ? rowTileSel : rowTile, 'text-[15px] font-extrabold'].join(' ')}>
 								{l.title.trim().charAt(0).toUpperCase()}
 							</span>
 							<span class="min-w-0 flex-1">
@@ -544,15 +690,25 @@
 								</span>
 								<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">
 									{l.materials.length} témakör
+									{#if levelNote} · {levelNote(l)}{/if}
 								</span>
 							</span>
+							{#if current}<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />{/if}
 						</button>
 					</li>
 				{/each}
 			{/if}
+			{#if onCreateLevel && subject && !loadingTree}
+				<li>
+					<button type="button" onclick={() => onCreateLevel?.(subject!.id)} class="flex w-full items-center gap-2.5 rounded-2xl p-2.5 text-left transition hover:bg-stone-100 active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 dark:hover:bg-white/5">
+						<span class={rowTile}><Plus size={18} /></span>
+						<span class="min-w-0 flex-1"><span class="block text-[15px] font-extrabold text-ink-900 dark:text-white">Új {levelLabel.toLowerCase()}</span><span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">Saját tananyag létrehozása</span></span>
+					</button>
+				</li>
+			{/if}
 		</ul>
 	{:else if step === 'topic'}
-		{@render searchBox()}
+		{#if searchable}{@render searchBox()}{/if}
 		<ul class="-mx-1 mt-2 space-y-0.5">
 			{#if topicResults.length === 0}
 				<li>
@@ -597,7 +753,7 @@
 			{/if}
 		</ul>
 	{:else}
-		{@render searchBox()}
+		{#if searchable}{@render searchBox()}{/if}
 		<ul class="-mx-1 mt-2 space-y-0.5">
 			{#if lessonResults.length === 0}
 				<li>

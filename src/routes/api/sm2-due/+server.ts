@@ -1,6 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { getDb, requireUser } from '$lib/server/db';
 import { ensureCurriculumSchema, getCardProgress } from '$lib/server/curriculum';
+import { publishedLevelSql } from '$lib/server/curriculum-publication';
 import { isLanguageSubject, todayDay } from '$lib/sm2';
 
 /** SM-2 esedékesség nyelvenként a főoldalhoz.
@@ -73,7 +74,7 @@ export const GET: RequestHandler = async (event) => {
 					 FROM lesson_card_packs p
 					 JOIN lessons le ON le.id = p.lesson_id
 					 JOIN materials m ON m.id = le.material_id
-					 JOIN levels l ON l.id = m.level_id
+					 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 					 JOIN subjects s ON s.id = l.subject_id
 					 WHERE p.id IN (${uniq.map(() => '?').join(', ')}) LIMIT 200`
 				)
@@ -103,7 +104,7 @@ export const GET: RequestHandler = async (event) => {
 						COALESCE(s.icon, 'book') AS icon
 					 FROM lessons le
 					 JOIN materials m ON m.id = le.material_id
-					 JOIN levels l ON l.id = m.level_id
+					 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 					 JOIN subjects s ON s.id = l.subject_id
 					 WHERE le.id IN (${uniq.map(() => '?').join(', ')}) LIMIT 100`
 				)

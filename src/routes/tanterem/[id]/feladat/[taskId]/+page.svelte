@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { createBackNavigation } from '$lib/back-navigation';
+	import { lessonPath } from '$lib/lesson-paths';
+	import { resolve } from '$app/paths';
 	import { ArrowLeft, CalendarDays, Check, Settings } from '@lucide/svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import { toast } from '$lib/toast.svelte';
@@ -28,10 +30,7 @@
 	let savingEdit = $state(false);
 	let editError = $state<string | null>(null);
 
-	function goBack() {
-		if (typeof history !== 'undefined' && history.length > 1) history.back();
-		else void goto(`/tanterem/${room.id}`);
-	}
+	const goBack = createBackNavigation(() => resolve('/tanterem/[id]', { id: room.id }));
 
 	function fmtDate(ts: number): string {
 		try {
@@ -272,7 +271,7 @@
 			{#each lessons as l (l.id)}
 				<li class="min-w-0">
 					<a
-						href="/lecke/{l.id}"
+						href={lessonPath(l.id)}
 						class="block min-w-0 truncate rounded-2xl border border-stone-200 bg-white px-3.5 py-2.5 text-[14px] font-bold text-ink-700 transition hover:bg-stone-50 dark:border-white/10 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-white/5"
 					>
 						{l.title}

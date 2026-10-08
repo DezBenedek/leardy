@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { createBackNavigation } from '$lib/back-navigation';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import {
 		ArrowLeft,
 		CalendarDays,
@@ -57,10 +59,7 @@
 	let deleteOpen = $state(false);
 	let deleting = $state(false);
 
-	function goBack() {
-		if (typeof history !== 'undefined' && history.length > 1) history.back();
-		else void goto(`/tanterem/${room.id}`);
-	}
+	const goBack = createBackNavigation(() => resolve('/tanterem/[id]', { id: room.id }));
 
 	function fmtDate(ts: number): string {
 		try {

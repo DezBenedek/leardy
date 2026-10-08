@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { createBackNavigation } from '$lib/back-navigation';
+	import { lessonPath } from '$lib/lesson-paths';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 import {
 	ArrowLeft,
 	BookMarked,
@@ -463,10 +466,7 @@ import {
 		assignmentError = null;
 	}
 
-	function goBack() {
-		if (typeof history !== 'undefined' && history.length > 1) history.back();
-		else void goto('/tanterem');
-	}
+	const goBack = createBackNavigation(() => resolve('/tanterem'));
 
 	// ---------- Osztálybeállítások (egyetlen fogaskerék, drawer) ----------
 
@@ -684,7 +684,7 @@ import {
 	function attachHrefFor(t: string | null, id: string | null): string | null {
 		if (!t || !id) return null;
 		if (t === 'subject') return '/tanulas';
-		if (t === 'lesson' || t === 'quiz') return `/lecke/${id}`;
+		if (t === 'lesson' || t === 'quiz') return lessonPath(id);
 		if (t === 'deck') {
 			if (id.startsWith('deck:')) return `/kartyak/${id.slice(5)}`;
 			return '/kartyak/felfedezes';
@@ -1450,7 +1450,7 @@ import {
 </svelte:head>
 
 <div class="flex items-center gap-2 px-1">
-	<IconButton ariaLabel="Vissza" size={44} onclick={goBack}>
+	<IconButton ariaLabel="Vissza az osztályokhoz" size={44} onclick={goBack}>
 		<ArrowLeft size={21} />
 	</IconButton>
 	<div class="min-w-0 flex-1">
@@ -2162,7 +2162,7 @@ import {
 						{#each lessons as l (l.id)}
 							<li class="min-w-0">
 								<a
-									href="/lecke/{l.id}"
+									href={lessonPath(l.id)}
 									class="block min-w-0 truncate rounded-xl bg-stone-100 px-3 py-2 text-[13px] font-bold text-ink-700 transition hover:bg-stone-200/70 dark:bg-white/10 dark:text-stone-200 dark:hover:bg-white/15"
 								>
 									{l.title}

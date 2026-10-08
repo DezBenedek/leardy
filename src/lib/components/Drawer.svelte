@@ -9,6 +9,8 @@
 		label: string;
 		/** Fejléc-cím helyes arányokkal (cím + X egy sorban). Ha nincs, a tartalom hozza. */
 		title?: string;
+		/** Egyedi fejléc, például mezőcímke és mentés gomb főcím nélkül. */
+		header?: Snippet;
 		/** Ha adott, a cím bal oldalán vissza-nyíl jelenik meg (alnezetekhez). */
 		onBack?: () => void;
 		/** Ha adott, az X-től balra ceruza ikon jelenik meg (szerkesztéshez). */
@@ -22,7 +24,7 @@
 		animateHeight?: boolean;
 	}
 
-	let { open, label, title, onBack, onEdit, editLabel = 'Szerkesztés', onClose, children, wide = false, animateHeight = false }: Props = $props();
+	let { open, label, title, header, onBack, onEdit, editLabel = 'Szerkesztés', onClose, children, wide = false, animateHeight = false }: Props = $props();
 
 	let panel: HTMLElement | null = $state(null);
 	let scroller: HTMLElement | null = $state(null);
@@ -206,7 +208,7 @@
 					? `transform: translateY(${dragY}px); transition: none;`
 					: undefined}
 			>
-				{#if !title}
+				{#if !title && !header}
 					<button
 						type="button"
 						onclick={beginClose}
@@ -235,7 +237,7 @@
 					class={['min-h-0 overflow-y-auto overscroll-contain', animateHeight && 'overflow-x-hidden [scrollbar-gutter:stable]']}
 				>
 					<div {@attach trackContentHeight} class="px-5 pt-2 pb-5 sm:px-6 sm:pb-6">
-						{#if title}
+						{#if title || header}
 							<div class={['flex items-center gap-2', animateHeight && 'min-h-9']}>
 								{#if onBack}
 									<button
@@ -247,9 +249,13 @@
 										<ArrowLeft size={19} />
 									</button>
 								{/if}
-								<h2 class="font-display min-w-0 flex-1 text-[20px] leading-snug font-extrabold tracking-tight text-ink-900 dark:text-white">
-									{title}
-								</h2>
+								{#if header}
+									{@render header()}
+								{:else}
+									<h2 class="font-display min-w-0 flex-1 text-[20px] leading-snug font-extrabold tracking-tight text-ink-900 dark:text-white">
+										{title}
+									</h2>
+								{/if}
 								{#if onEdit}
 									<button
 										type="button"

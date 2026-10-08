@@ -28,27 +28,43 @@ export function slugify(text: string): string {
 
 /** ## H2-címsorok mentén vág; a cím előtti intro a 'bevezetes' szekció. */
 export function splitSections(md: string): LessonSection[] {
-	const lines = md.split('\n');
+	const lines = md.split(/\r?\n/);
 	const sections: LessonSection[] = [];
+	const usedSlugs = new Set<string>();
 	let title: string | null = null;
+	let stableSlug: string | null = null;
 	let buf: string[] = [];
+
+	function uniqueSlug(base: string): string {
+		let slug = base;
+		let suffix = 2;
+		while (usedSlugs.has(slug)) slug = `${base}-${suffix++}`;
+		usedSlugs.add(slug);
+		return slug;
+	}
 
 	function flush() {
 		const body = buf.join('\n').trim();
 		if (title === null) {
-			if (body) sections.push({ slug: 'bevezetes', title: 'Bevezetés', md: body });
+			if (body) sections.push({ slug: uniqueSlug('bevezetes'), title: 'Bevezetés', md: body, intro: true });
 		} else {
-			sections.push({ slug: slugify(title), title, md: body });
+			sections.push({ slug: uniqueSlug(stableSlug ?? (slugify(title) || 'bekezdes')), title, md: body, intro: false });
 		}
 		buf = [];
 	}
 
 	for (const line of lines) {
-		const m = line.match(/^##\s+(.*)$/);
+		const m = line.match(/^##[ \t]+(.*)$/);
 		if (m) {
 			flush();
 			title = m[1].trim();
+			stableSlug = null;
 		} else {
+			const marker = line.match(/^<!-- section:([a-z0-9][a-z0-9-]*) -->$/);
+			if (title !== null && marker && buf.every((part) => !part.trim())) {
+				stableSlug = marker[1];
+				continue;
+			}
 			buf.push(line);
 		}
 	}
@@ -109,6 +125,7 @@ export function renderMarkdown(md: string): string {
 
 	for (const raw of lines) {
 		const line = raw.trim();
+		if (/^<!-- section:[a-z0-9][a-z0-9-]* -->$/.test(line)) continue;
 		if (!line) {
 			flushPara();
 			flushList();

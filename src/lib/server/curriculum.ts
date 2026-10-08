@@ -3,6 +3,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { RequestEvent } from '@sveltejs/kit';
 import { getDb } from './db';
+import { publishedLevelSql } from './curriculum-publication';
 import type {
 	HomeStats,
 	LessonPage,
@@ -181,6 +182,18 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 				PRIMARY KEY (user_id, quiz_id)
 			)`
 		),
+		db.prepare(`CREATE TABLE IF NOT EXISTS level_settings (
+			level_id TEXT PRIMARY KEY REFERENCES levels(id) ON DELETE CASCADE,
+			owner_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+			published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0, 1))
+		)`),
+		db.prepare(`CREATE TABLE IF NOT EXISTS level_editors (
+			level_id TEXT NOT NULL REFERENCES levels(id) ON DELETE CASCADE,
+			email TEXT NOT NULL COLLATE NOCASE,
+			PRIMARY KEY (level_id, email)
+		)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_level_editors_email ON level_editors(email)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_level_settings_owner ON level_settings(owner_id)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_levels_subject ON levels(subject_id, sort)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_materials_level ON materials(level_id, sort)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_lessons_material ON lessons(material_id, sort)`),
@@ -561,13 +574,13 @@ export async function listSubjects(dbOrEvent: DbOrEvent): Promise<Subject[]> {
 				FROM subjects
 				ORDER BY sort, title`
 		),
-		db.prepare(`SELECT subject_id AS id, COUNT(*) AS n FROM levels GROUP BY subject_id`),
+		db.prepare(`SELECT subject_id AS id, COUNT(*) AS n FROM levels l WHERE ${publishedLevelSql('l')} GROUP BY subject_id`),
 		// Leckeszám: csak a tartalmas leckék (szöveg vagy kvíz). Az üres
 		// szókártya-hordozók nem számítanak bele, hogy a szám őszinte maradjon.
 		db.prepare(
 			`SELECT l.subject_id AS id, COUNT(DISTINCT le.id) AS n FROM lessons le
 				 JOIN materials m ON m.id = le.material_id
-				 JOIN levels l ON l.id = m.level_id
+				 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 				 LEFT JOIN quizzes q ON q.lesson_id = le.id
 				 WHERE TRIM(COALESCE(le.body_md, '')) != '' OR q.id IS NOT NULL
 				 GROUP BY l.subject_id`
@@ -577,7 +590,7 @@ export async function listSubjects(dbOrEvent: DbOrEvent): Promise<Subject[]> {
 			`SELECT s.id AS id, COUNT(DISTINCT p.id) AS n FROM lesson_card_packs p
 				 JOIN lessons le ON le.id = p.lesson_id
 				 JOIN materials m ON m.id = le.material_id
-				 JOIN levels l ON l.id = m.level_id
+				 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 				 JOIN subjects s ON s.id = l.subject_id
 				 JOIN lesson_cards c ON c.pack_id = p.id
 				 GROUP BY s.id`
@@ -616,12 +629,11 @@ export async function countQuizzesByLesson(
 ): Promise<Record<string, number>> {
 	const db = resolveDb(dbOrEvent);
 	if (!db) return {};
-	const base = `SELECT q.lesson_id AS id, COUNT(*) AS n FROM quizzes q`;
-	const scoped = `${base}
+	const base = `SELECT q.lesson_id AS id, COUNT(*) AS n FROM quizzes q
 		JOIN lessons le ON le.id = q.lesson_id
 		JOIN materials m ON m.id = le.material_id
-		JOIN levels l ON l.id = m.level_id
-		WHERE l.subject_id = ? GROUP BY q.lesson_id`;
+		JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}`;
+	const scoped = `${base} WHERE l.subject_id = ? GROUP BY q.lesson_id`;
 	const res = subjectId
 		? await db.prepare(scoped).bind(subjectId).all<{ id: string; n: number }>()
 		: await db.prepare(`${base} GROUP BY q.lesson_id`).all<{ id: string; n: number }>();
@@ -639,7 +651,7 @@ export async function countQuizzesBySubject(dbOrEvent: DbOrEvent): Promise<Recor
 			`SELECT l.subject_id AS id, COUNT(*) AS n FROM quizzes q
 			 JOIN lessons le ON le.id = q.lesson_id
 			 JOIN materials m ON m.id = le.material_id
-			 JOIN levels l ON l.id = m.level_id
+			 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 			 GROUP BY l.subject_id`
 		)
 		.all<{ id: string; n: number }>();
@@ -685,13 +697,13 @@ export async function getSubjectTree(
 			.bind(subjectId),
 		db
 			.prepare(
-				`SELECT id, title, COALESCE(sort, 0) AS sort FROM levels WHERE subject_id = ? ORDER BY sort, title`
+				`SELECT id, title, COALESCE(sort, 0) AS sort FROM levels l WHERE subject_id = ? AND ${publishedLevelSql('l')} ORDER BY sort, title`
 			)
 			.bind(subjectId),
 		db
 			.prepare(
 				`SELECT m.id, m.level_id, m.title, COALESCE(m.sort, 0) AS sort
-				 FROM materials m JOIN levels l ON l.id = m.level_id
+				 FROM materials m JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 				 WHERE l.subject_id = ? ORDER BY m.sort, m.title`
 			)
 			.bind(subjectId),
@@ -701,7 +713,7 @@ export async function getSubjectTree(
 					LENGTH(TRIM(COALESCE(le.body_md, ''))) AS bodyLen
 				 FROM lessons le
 				 JOIN materials m ON m.id = le.material_id
-				 JOIN levels l ON l.id = m.level_id
+				 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 				 WHERE l.subject_id = ? ORDER BY le.sort, le.title`
 			)
 			.bind(subjectId),
@@ -710,7 +722,7 @@ export async function getSubjectTree(
 				`SELECT q.lesson_id AS id, COUNT(*) AS n FROM quizzes q
 				 JOIN lessons le ON le.id = q.lesson_id
 				 JOIN materials m ON m.id = le.material_id
-				 JOIN levels l ON l.id = m.level_id
+				 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 				 WHERE l.subject_id = ? GROUP BY q.lesson_id`
 			)
 			.bind(subjectId),
@@ -719,7 +731,7 @@ export async function getSubjectTree(
 				`SELECT COUNT(DISTINCT p.id) AS n FROM lesson_card_packs p
 				 JOIN lessons le ON le.id = p.lesson_id
 				 JOIN materials m ON m.id = le.material_id
-				 JOIN levels l ON l.id = m.level_id
+				 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 				 JOIN lesson_cards c ON c.pack_id = p.id
 				 WHERE l.subject_id = ?`
 			)
@@ -752,7 +764,7 @@ export async function getSubjectTree(
 					`SELECT p.lesson_id AS id FROM lesson_progress p
 					 JOIN lessons le ON le.id = p.lesson_id
 					 JOIN materials m ON m.id = le.material_id
-					 JOIN levels l ON l.id = m.level_id
+					 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 					 WHERE p.user_id = ? AND p.done = 1 AND l.subject_id = ?`
 				)
 				.bind(userId, subjectId)
@@ -863,7 +875,7 @@ export async function getLessonPage(
 				s.id AS subject_id, s.title AS subject_title
 			 FROM lessons le
 			 JOIN materials m ON m.id = le.material_id
-			 JOIN levels l ON l.id = m.level_id
+			 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 			 JOIN subjects s ON s.id = l.subject_id
 			 WHERE le.id = ?`
 			)
@@ -1015,7 +1027,7 @@ export async function getSuggestions(
 			`SELECT le.id AS lessonId, le.title AS title, s.title AS subjectTitle
 			 FROM lessons le
 			 JOIN materials m ON m.id = le.material_id
-			 JOIN levels l ON l.id = m.level_id
+			 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 			 JOIN subjects s ON s.id = l.subject_id
 			 WHERE NOT EXISTS (
 				SELECT 1 FROM lesson_progress p
@@ -1067,7 +1079,7 @@ export async function listScopedPackages(
 			 FROM quizzes q
 			 JOIN lessons le ON le.id = q.lesson_id
 			 JOIN materials m ON m.id = le.material_id
-			 JOIN levels l ON l.id = m.level_id
+			 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 			 JOIN subjects s ON s.id = l.subject_id
 			 ${where}
 			 ORDER BY s.sort, s.title, l.sort, l.title, m.sort, m.title, le.sort, le.title, q.sort, q.title`
@@ -1204,7 +1216,7 @@ async function fetchCardPacks(
 			 FROM lesson_card_packs p
 			 JOIN lessons le ON le.id = p.lesson_id
 			 JOIN materials m ON m.id = le.material_id
-			 JOIN levels l ON l.id = m.level_id
+			 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 			 JOIN subjects s ON s.id = l.subject_id
 			 ${where}
 			 ORDER BY s.sort, s.title, l.sort, l.title, m.sort, m.title, le.sort, le.title,
@@ -1396,7 +1408,7 @@ export async function getOfficialCardPack(
 			 FROM lesson_cards lc
 			 JOIN lessons le ON le.id = lc.lesson_id
 			 JOIN materials m ON m.id = le.material_id
-			 JOIN levels l ON l.id = m.level_id
+			 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 			 JOIN subjects s ON s.id = l.subject_id
 			 WHERE lc.lesson_id = ? AND lc.pack_id IS NULL
 			 ORDER BY lc.sort, lc.id`
@@ -1774,7 +1786,7 @@ export async function getScopedQuizPackage(
 			 FROM quizzes q
 			 JOIN lessons le ON le.id = q.lesson_id
 			 JOIN materials m ON m.id = le.material_id
-			 JOIN levels l ON l.id = m.level_id
+			 JOIN levels l ON l.id = m.level_id AND ${publishedLevelSql('l')}
 			 JOIN subjects s ON s.id = l.subject_id
 			 WHERE q.id = ?`
 		)
