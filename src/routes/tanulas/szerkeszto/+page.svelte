@@ -16,7 +16,7 @@
 	import { editCurriculum } from '$lib/curriculum-edit-api';
 	import { cachedEditorSearch, type EditorSearchResult } from '$lib/editor-candidate-search';
 	import { normHu } from '$lib/deck-history';
-	import { loadScope, saveScope } from '$lib/scope';
+	import { findEditableEditorScope, loadEditorScopes, rememberEditorScope } from '$lib/editor-scope';
 	import { toast } from '$lib/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
@@ -26,7 +26,6 @@
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
-	const scopeKey = 'tanulas-szerkeszto';
 	let scopeRestoreVersion = 0;
 	let level = $derived(data.levels.find((item) => item.id === data.levelId));
 	let subject = $derived(data.subjects.find((item) => item.id === data.subjectId));
@@ -80,19 +79,20 @@
 
 	afterNavigate(async ({ to }) => {
 		const version = ++scopeRestoreVersion;
-		if (data.subjectId && data.levelId) {
-			saveScope(scopeKey, { subject: data.subjectId, level: data.levelId });
+		if (level?.canEdit && data.subjectId) {
+			rememberEditorScope(data.subjectId, level.id);
 			return;
 		}
 		// A konkrét tananyagot megadó link mindig elsőbbséget kap.
 		if (!to || to.url.searchParams.get('level')) return;
-		const saved = loadScope(scopeKey);
 		const requestedSubject = to.url.searchParams.get('subject');
-		if (!saved.subject || !saved.level || (requestedSubject && requestedSubject !== saved.subject)) return;
 		try {
 			// A mentett tananyagot is a jelenlegi szerkesztési jogosultságokkal ellenőrizzük.
-			const levels = data.subjectId === saved.subject ? data.levels : (await loadEditorTree(saved.subject))?.levels;
-			if (version !== scopeRestoreVersion || !levels?.some((item) => item.id === saved.level)) return;
+			const candidates = loadEditorScopes().filter((scope) => !requestedSubject || scope.subject === requestedSubject);
+			const saved = await findEditableEditorScope(candidates,
+				async (subjectId) => data.subjectId === subjectId ? data.levels : (await loadEditorTree(subjectId))?.levels ?? [],
+				() => version === scopeRestoreVersion);
+			if (!saved || version !== scopeRestoreVersion) return;
 			await goto(resolve(editorUrl(saved.subject, saved.level)), { replaceState: true, keepFocus: true, noScroll: true });
 		} catch {
 			// Sikertelen visszaállításkor a tananyagválasztó továbbra is használható.
@@ -153,7 +153,7 @@
 		finally { navigating = false; }
 	}
 
-	async function loadEditorTree(subjectId: string): Promise<SubjectTree | null> {
+	async function loadEditorTree(subjectId: string): Promise<(Omit<SubjectTree, 'levels'> & { levels: EditorLevel[] }) | null> {
 		const selected = data.subjects.find((item) => item.id === subjectId);
 		if (!selected) return null;
 		const response = await fetch(`/api/curriculum?${new URLSearchParams({ subject: subjectId })}`, { cache: 'no-store' });

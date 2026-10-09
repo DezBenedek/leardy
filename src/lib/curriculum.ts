@@ -92,6 +92,9 @@ export interface Suggestion {
 export interface HomeStats {
 	streak: number;
 	todayDone: number;
+	today: string;
+	todayActive: boolean;
+	week: { date: string; active: boolean }[];
 }
 
 /** Kártyacsomag típusa: Szókártya és Tanulókártya, mindkettő kártyás gyakorlással. */

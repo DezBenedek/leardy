@@ -41,19 +41,25 @@ export function parseEditableSections(md: string): EditableSection[] {
 	}));
 }
 
-export function serializeEditableSections(sections: EditableSection[]): string {
+/** A mentett hivatkozások rögzítése a mezők azonosítójának és tartalmának cseréje nélkül. */
+export function withEditableSectionSlugs(sections: EditableSection[]): EditableSection[] {
 	const used = new Set(sections.flatMap((section) => section.slug ? [section.slug] : []));
 	return sections.map((section) => {
+		if (section.intro || section.slug) return section;
+		const base = slugify(section.title) || 'bekezdes';
+		let slug = base;
+		let suffix = 2;
+		while (used.has(slug)) slug = `${base}-${suffix++}`;
+		used.add(slug);
+		return { ...section, slug };
+	});
+}
+
+export function serializeEditableSections(sections: EditableSection[]): string {
+	return withEditableSectionSlugs(sections).map((section) => {
 		const body = section.md.trim();
 		if (section.intro) return body;
-		let slug = section.slug;
-		if (!slug) {
-			const base = slugify(section.title) || 'bekezdes';
-			slug = base;
-			let suffix = 2;
-			while (used.has(slug)) slug = `${base}-${suffix++}`;
-			used.add(slug);
-		}
+		const slug = section.slug;
 		return `## ${section.title.trim()}\n<!-- section:${slug} -->\n\n${body}`;
 	}).join('\n\n');
 }

@@ -15,17 +15,18 @@ async function moduleUrl(path, replacements = {}) {
 const dbUrl = await moduleUrl('../src/lib/server/db.ts');
 const publicationUrl = await moduleUrl('../src/lib/server/curriculum-publication.ts');
 const sm2Url = await moduleUrl('../src/lib/sm2.ts');
+const activityUrl = await moduleUrl('../src/lib/learning-activity.ts');
 const editorUrl = await moduleUrl('../src/lib/server/curriculum-editor.ts', {
 	'@sveltejs/kit': import.meta.resolve('@sveltejs/kit'), './db': dbUrl, './curriculum-publication': publicationUrl
 });
 const curriculumUrl = await moduleUrl('../src/lib/server/curriculum.ts', {
-	'./db': dbUrl, './curriculum-publication': publicationUrl, '$lib/sm2': sm2Url
+	'./db': dbUrl, './curriculum-publication': publicationUrl, '$lib/sm2': sm2Url, '$lib/learning-activity': activityUrl
 });
 const { mutateCurriculum, getEditorLevels, getEditorLesson, canEnterEditor, countEditorLevelsBySubject, searchEditorCandidates } = await import(editorUrl);
 const { listSubjects, getSubjectTree, getLessonPage, countQuizzesByLesson, listScopedPackages } = await import(curriculumUrl);
 const markdownUrl = await moduleUrl('../src/lib/markdown.ts');
 const { splitSections, renderMarkdown } = await import(markdownUrl);
-const { parseEditableSections, serializeEditableSections } = await import(await moduleUrl('../src/lib/curriculum-editor.ts', { './markdown': markdownUrl }));
+const { parseEditableSections, serializeEditableSections, withEditableSectionSlugs } = await import(await moduleUrl('../src/lib/curriculum-editor.ts', { './markdown': markdownUrl }));
 const { cachedEditorSearch } = await import(await moduleUrl('../src/lib/editor-candidate-search.ts'));
 const schema = await readFile(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8');
 
@@ -325,6 +326,29 @@ test('Azonos és üres slugot adó címek is egyedi bekezdésazonosítót kapnak
 	assert.equal(sections[0].intro, true);
 	assert.equal(sections[1].intro, false);
 	assert.equal(sections[3].md, 'Harmadik');
+});
+
+test('Mentés után megmaradnak a szerkesztő mezőazonosítói és a nyers tartalom', () => {
+	const existing = parseEditableSections('Bevezető\n\n## Első cím\n\nTartalom');
+	const sections = [
+		...existing,
+		{ id: 'editor-new-0', title: ' Első cím ', md: '  Új tartalom\n\n', intro: false },
+		{ id: 'editor-new-1', title: 'Első cím', md: '', intro: false }
+	];
+	const before = structuredClone(sections);
+	const saved = withEditableSectionSlugs(sections);
+	assert.deepEqual(sections, before);
+	assert.deepEqual(saved.map(({ slug, ...fields }) => fields), before.map(({ slug, ...fields }) => fields));
+	assert.equal(saved[0], existing[0]);
+	assert.equal(saved[1], existing[1]);
+	assert.deepEqual(saved.map((section) => section.slug), ['bevezetes', 'elso-cim', 'elso-cim-2', 'elso-cim-3']);
+	assert.equal(serializeEditableSections(saved), serializeEditableSections(sections));
+	saved[2].title = 'Átnevezett cím';
+	saved.reverse();
+	const next = withEditableSectionSlugs(saved);
+	assert.deepEqual(next.map((section) => section.id), saved.map((section) => section.id));
+	assert.equal(next.find((section) => section.id === 'editor-new-0').slug, 'elso-cim-2');
+	assert.equal(serializeEditableSections(parseEditableSections(serializeEditableSections(next))), serializeEditableSections(next));
 });
 
 test('Átnevezés és sorrendváltás után is megmarad a kvíz bekezdéskapcsolata', async () => {

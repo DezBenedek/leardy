@@ -17,6 +17,7 @@ import type {
 	Suggestion
 } from '$lib/curriculum';
 import { gradeSM2, todayDay } from '$lib/sm2';
+import { learningDay, summarizeActivity } from '$lib/learning-activity';
 
 /** A lekérdezők D1Database-et vagy RequestEvent-et fogadnak első paramként;
  *  event esetén getDb-vel (./db) oldják fel az adatbázist. */
@@ -122,6 +123,11 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 				PRIMARY KEY (user_id, lesson_id)
 			)`
 		),
+		db.prepare(`CREATE TABLE IF NOT EXISTS learning_days (
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			day TEXT NOT NULL,
+			PRIMARY KEY (user_id, day)
+		)`),
 		db.prepare(
 			`CREATE TABLE IF NOT EXISTS decks (
 				id TEXT PRIMARY KEY,
@@ -953,33 +959,16 @@ export async function saveLessonProgress(
 ): Promise<void> {
 	// Nincs ensure: a sémát a migrációk biztosítják (a DDL minden írásnál
 	// több tucat felesleges D1-művelet lenne).
-	await db
-		.prepare(
+	const now = Date.now();
+	await db.batch([
+		db.prepare(
 			`INSERT OR REPLACE INTO lesson_progress (user_id, lesson_id, done, score, total, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?)`
 		)
-		.bind(userId, lessonId, done ? 1 : 0, score, total, Math.floor(Date.now() / 1000))
-		.run();
-}
-
-/** Europe/Budapest szerinti naptári nap (YYYY-MM-DD) egy időbélyeghez. */
-function budapestDay(timestampMs: number): string {
-	return new Intl.DateTimeFormat('en-CA', {
-		timeZone: 'Europe/Budapest',
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit'
-	}).format(new Date(timestampMs));
-}
-
-/** Naptári nap mínusz n nap (YYYY-MM-DD aritmetika, DST-biztos). */
-function prevCalendarDay(ymd: string): string {
-	const [y, m, d] = ymd.split('-').map(Number);
-	const t = Date.UTC(y, m - 1, d) - 86400000;
-	const dt = new Date(t);
-	const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
-	const dd = String(dt.getUTCDate()).padStart(2, '0');
-	return `${dt.getUTCFullYear()}-${mm}-${dd}`;
+		.bind(userId, lessonId, done ? 1 : 0, score, total, Math.floor(now / 1000)),
+		db.prepare(`INSERT OR IGNORE INTO learning_days (user_id, day) VALUES (?, ?)`)
+			.bind(userId, learningDay(now))
+	]);
 }
 
 /** Az updated_at lehet unix másodperc (új) vagy ms (régi adat), mindkettőt kezeljük. */
@@ -992,29 +981,38 @@ export async function getHomeStats(
 	userId: string | number
 ): Promise<HomeStats> {
 	const db = resolveDb(dbOrEvent);
-	// D1-optimalizálás: csak a szükséges 2 oszlop, felső korláttal.
-	// A streakhez az elmúlt ~2 év napjai elégnek, a nagyon régi sorokat nem olvassuk.
-	const res = await db
-		.prepare(`SELECT done, updated_at FROM lesson_progress WHERE user_id = ? LIMIT 5000`)
-		.bind(userId)
-		.all<{ done: number; updated_at: number }>();
-	const rows = res.results ?? [];
-	const today = budapestDay(Date.now());
+	const now = Date.now();
+	const today = learningDay(now);
+	const [lessons, cards, history] = await Promise.all([
+		db.prepare(`SELECT done, updated_at FROM lesson_progress WHERE user_id = ?`)
+			.bind(userId).all<{ done: number; updated_at: number }>(),
+		db.prepare(`SELECT DISTINCT updated_at FROM card_progress WHERE user_id = ? AND seen > 0`)
+			.bind(userId).all<{ updated_at: string }>(),
+		db.prepare(`SELECT day FROM learning_days WHERE user_id = ?`)
+			.bind(userId).all<{ day: string }>()
+	]);
 	const activeDays = new Set<string>();
 	let todayDone = 0;
-	for (const r of rows) {
-		const day = budapestDay(progressToMs(Number(r.updated_at)));
+	for (const r of lessons.results ?? []) {
+		const timestamp = progressToMs(Number(r.updated_at));
+		if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp > now) continue;
+		const day = learningDay(timestamp);
 		activeDays.add(day);
 		if (Number(r.done) === 1 && day === today) todayDone++;
 	}
-	// A streak ma vagy tegnap indul (ha ma még nincs aktivitás, a tegnap számít).
-	let cursor = activeDays.has(today) ? today : prevCalendarDay(today);
-	let streak = 0;
-	while (activeDays.has(cursor)) {
-		streak++;
-		cursor = prevCalendarDay(cursor);
+	for (const r of cards.results ?? []) {
+		const timestamp = Date.parse(r.updated_at);
+		if (Number.isFinite(timestamp) && timestamp > 0 && timestamp <= now) activeDays.add(learningDay(timestamp));
 	}
-	return { streak, todayDone };
+	const storedDays = new Set((history.results ?? []).map((r) => r.day));
+	// A régi haladási adatokból visszanyerhető napokat egyszer megőrizzük.
+	const recovered = [...activeDays].filter((day) => !storedDays.has(day));
+	for (let offset = 0; offset < recovered.length; offset += 80) {
+		await db.batch(recovered.slice(offset, offset + 80).map((day) =>
+			db.prepare(`INSERT OR IGNORE INTO learning_days (user_id, day) VALUES (?, ?)`).bind(userId, day)
+		));
+	}
+	return { ...summarizeActivity([...activeDays, ...storedDays], now), todayDone };
 }
 
 export async function getSuggestions(
@@ -1940,7 +1938,8 @@ export async function saveCardProgress(
 	if (rows.length === 0) return;
 	const trimmed = rows.slice(0, 500);
 	const today = todayDay();
-	const now = new Date().toISOString();
+	const timestamp = Date.now();
+	const now = new Date(timestamp).toISOString();
 	// Meglévő állapot egy körben, hogy az SM-2 számítás pontos legyen.
 	const keys = [...new Set(trimmed.map((r) => r.key))];
 	const current = new Map<string, CardMark>();
@@ -1976,8 +1975,8 @@ export async function saveCardProgress(
 			});
 		}
 	}
-	await db.batch(
-		trimmed.map((r) => {
+	await db.batch([
+		...trimmed.map((r) => {
 			const next = gradeSM2(current.get(r.key), r.known, today);
 			// A láncban többször szereplő kártya is helyesen halmoz: frissítjük a gyorstárat.
 			current.set(r.key, next);
@@ -1995,6 +1994,8 @@ export async function saveCardProgress(
 						due_day = excluded.due_day`
 				)
 				.bind(userId, r.key, next.known, next.seen, now, next.repetitions, next.ease, next.intervalDays, next.dueDay);
-		})
-	);
+		}),
+		db.prepare(`INSERT OR IGNORE INTO learning_days (user_id, day) VALUES (?, ?)`)
+			.bind(userId, learningDay(timestamp))
+	]);
 }

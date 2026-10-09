@@ -47,6 +47,7 @@ export class CardReviewSession {
 				if (!res.ok) throw new Error('Nem sikerült menteni.');
 				this.pending.splice(0, marks.length);
 				invalidate('sm2-due');
+				invalidate('home');
 				invalidate('subject-words:');
 				invalidate('package:');
 			} catch {

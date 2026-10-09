@@ -2,8 +2,10 @@
 	import { createBackNavigation } from '$lib/back-navigation';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { tick, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { slide } from 'svelte/transition';
+	import { cubicInOut } from 'svelte/easing';
+	import { rememberEditorScope } from '$lib/editor-scope';
 	import { motionOK } from '$lib/overlay';
 	import ExpandableTextarea from '$lib/ui/ExpandableTextarea.svelte';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
@@ -12,7 +14,7 @@
 	import Drawer from './Drawer.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import { editCurriculum } from '$lib/curriculum-edit-api';
-	import { parseEditableSections, serializeEditableSections, type EditorLesson } from '$lib/curriculum-editor';
+	import { parseEditableSections, serializeEditableSections, withEditableSectionSlugs, type EditorLesson } from '$lib/curriculum-editor';
 	import { toast } from '$lib/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
@@ -34,6 +36,7 @@
 	let formError = $state('');
 	const fieldClass = 'w-full rounded-xl border border-stone-300 bg-white px-3 py-3 text-ink-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:opacity-60 dark:border-white/15 dark:bg-white/5 dark:text-white';
 	let backUrl = $derived(`/tanulas/szerkeszto?${new URLSearchParams({ subject: lesson.subjectId, level: lesson.levelId })}` as const);
+	onMount(() => { rememberEditorScope(lesson.subjectId, lesson.levelId); });
 
 	beforeNavigate((navigation) => {
 		if (!dirty) return;
@@ -63,6 +66,7 @@
 		}
 		busy = true;
 		formError = '';
+		const nextSections = withEditableSectionSlugs(sections);
 		const nextBody = body === savedSections ? originalBody : body;
 		try {
 			const result = await editCurriculum<{ title: string; body_md: string }>({
@@ -72,7 +76,7 @@
 			title = result.title;
 			originalTitle = result.title;
 			originalBody = result.body_md;
-			sections = parseEditableSections(result.body_md);
+			sections = nextSections;
 			savedSections = body;
 			renameOpen = false;
 			toast.success('A lecke mentve');
@@ -139,32 +143,36 @@
 	<div class="mt-5 flex items-center justify-between gap-3">
 		<h2 class="font-extrabold text-ink-900 dark:text-white">Bekezdések</h2>
 	</div>
-	<div class="mt-3 space-y-4">
+	<div class="mt-3">
 		{#each sections as section, index (section.id)}
-			<section id={`${editorId}-card-${section.id}`} in:slide={{ duration: motionOK() ? 260 : 0 }} class="rounded-3xl border border-stone-200 bg-white p-4 sm:p-5 dark:border-white/10 dark:bg-stone-900">
-				<div class="mb-4 flex items-end gap-2">
-					{#if section.intro}
-						<span class="flex min-h-11 min-w-0 flex-1 items-center text-sm font-bold text-ink-900 dark:text-white">Bevezetés</span>
-					{:else}
-						<label class="block min-w-0 flex-1 text-sm font-bold text-ink-900 dark:text-white">Bekezdés címe<input id={`${editorId}-section-${section.id}`} class="{fieldClass} mt-1" bind:value={section.title} maxlength={160} disabled={busy} /></label>
-					{/if}
-					<ActionMenu compact menuIconsOnly label="Bekezdés műveletei: {section.title}" disabled={busy} actions={[
-						{ id: 'down', label: 'Le', icon: ArrowDown, disabled: section.intro || index === sections.length - 1, onclick: () => move(index, 1) },
-						{ id: 'up', label: 'Fel', icon: ArrowUp, disabled: section.intro || index === 0 || sections[index - 1]?.intro, onclick: () => move(index, -1) },
-						{ id: 'delete', label: 'Törlés', icon: Trash2, tone: 'danger', onclick: () => { sections = sections.filter((item) => item.id !== section.id); } }
-					]} />
-				</div>
-				<ExpandableTextarea bind:value={section.md} disabled={busy} />
-			</section>
+			<div id={`${editorId}-card-${section.id}`} transition:slide={{ duration: motionOK() ? 260 : 0, easing: cubicInOut }} class="pb-4">
+				<section class="rounded-3xl border border-stone-200 bg-white p-4 sm:p-5 dark:border-white/10 dark:bg-stone-900">
+					<div class="mb-4 flex items-end gap-2">
+						{#if section.intro}
+							<span class="flex min-h-11 min-w-0 flex-1 items-center text-sm font-bold text-ink-900 dark:text-white">Bevezetés</span>
+						{:else}
+							<label class="block min-w-0 flex-1 text-sm font-bold text-ink-900 dark:text-white">Bekezdés címe<input id={`${editorId}-section-${section.id}`} class="{fieldClass} mt-1" bind:value={section.title} maxlength={160} disabled={busy} /></label>
+						{/if}
+						<ActionMenu compact menuIconsOnly label="Bekezdés műveletei: {section.title}" disabled={busy} actions={[
+							{ id: 'down', label: 'Le', icon: ArrowDown, disabled: section.intro || index === sections.length - 1, onclick: () => move(index, 1) },
+							{ id: 'up', label: 'Fel', icon: ArrowUp, disabled: section.intro || index === 0 || sections[index - 1]?.intro, onclick: () => move(index, -1) },
+							{ id: 'delete', label: 'Törlés', icon: Trash2, tone: 'danger', onclick: () => { sections = sections.filter((item) => item.id !== section.id); } }
+						]} />
+					</div>
+					<ExpandableTextarea bind:value={section.md} disabled={busy} />
+				</section>
+			</div>
 		{:else}
-			<div class="rounded-3xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500 dark:border-white/15 dark:text-stone-400">Még nincs bekezdés. Adj hozzá egyet a lecke megírásához.</div>
+			<div transition:slide={{ duration: motionOK() ? 260 : 0, easing: cubicInOut }} class="pb-4">
+				<div class="rounded-3xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500 dark:border-white/15 dark:text-stone-400">Még nincs bekezdés. Adj hozzá egyet a lecke megírásához.</div>
+			</div>
 		{/each}
 	</div>
 	<button
 		type="button"
 		disabled={busy}
 		onclick={() => { void addSection(); }}
-		class="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-stone-200 py-4 text-sm font-extrabold text-stone-400 transition hover:border-brand-300 hover:text-brand-600 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100 dark:border-white/10 dark:text-stone-500 dark:hover:border-brand-500/50 dark:hover:text-white"
+		class="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-stone-200 py-4 text-sm font-extrabold text-stone-400 transition hover:border-brand-300 hover:text-brand-600 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100 dark:border-white/10 dark:text-stone-500 dark:hover:border-brand-500/50 dark:hover:text-white"
 	>
 		<Plus size={18} strokeWidth={2.75} aria-hidden="true" />
 		Bekezdés hozzáadása

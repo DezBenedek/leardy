@@ -1,4 +1,4 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { listSubjects } from '$lib/server/curriculum';
 import { canCreateLevel, canEnterEditor, countEditorLevelsBySubject, editorContext, getEditorLevels } from '$lib/server/curriculum-editor';
 import type { PageServerLoad } from './$types';
@@ -14,6 +14,8 @@ export const load: PageServerLoad = async (event) => {
 	const levels = (await getEditorLevels(db, user, subjectId)).filter((level) => level.canEdit);
 	const requestedLevel = event.url.searchParams.get('level');
 	const levelId = levels.find((level) => level.id === requestedLevel)?.id ?? '';
-	const invalidLevel = !!requestedLevel && !levelId;
-	return { subjects, subjectId: invalidLevel ? '' : subjectId, levels: invalidLevel ? [] : levels, levelId, canCreate: canCreateLevel(user) };
+	if ((requestedSubject && !subjectId) || (requestedLevel && !levelId)) {
+		redirect(307, '/tanulas/szerkeszto');
+	}
+	return { subjects, subjectId, levels, levelId, canCreate: canCreateLevel(user) };
 };

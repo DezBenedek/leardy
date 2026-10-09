@@ -125,6 +125,7 @@ async function importSource(source) {
 }
 
 const sm2Url = new URL('../src/lib/sm2.ts', import.meta.url).href;
+const activityUrl = new URL('../src/lib/learning-activity.ts', import.meta.url).href;
 const reviewSource = (await readFile(new URL('../src/lib/card-review.svelte.ts', import.meta.url), 'utf8'))
 	.replace("from './sm2'", `from '${sm2Url}'`)
 	.replace("import { invalidate } from './query.svelte';", 'const invalidate = () => {};');
@@ -189,7 +190,7 @@ test('A háttérből érkező régi adat nem írja felül a helyi válaszokat', 
 
 const curriculumSource = await readFile(new URL('../src/lib/server/curriculum.ts', import.meta.url), 'utf8');
 const saveSource = curriculumSource.slice(curriculumSource.indexOf('export async function saveCardProgress('));
-const { saveCardProgress } = await importSource(`import { gradeSM2, todayDay } from '${sm2Url}'; const resolveDb = (db) => db; ${saveSource}`);
+const { saveCardProgress } = await importSource(`import { gradeSM2, todayDay } from '${sm2Url}'; import { learningDay } from '${activityUrl}'; const resolveDb = (db) => db; ${saveSource}`);
 
 function testDb() {
 	const sqlite = new DatabaseSync(':memory:');
@@ -197,6 +198,7 @@ function testDb() {
 		user_id TEXT, card_key TEXT, known INTEGER, seen INTEGER, updated_at TEXT,
 		repetitions INTEGER, ease REAL, interval_days INTEGER, due_day INTEGER,
 		PRIMARY KEY (user_id, card_key))`);
+	sqlite.exec(`CREATE TABLE learning_days (user_id TEXT, day TEXT, PRIMARY KEY (user_id, day))`);
 	return {
 		sqlite,
 		prepare(sql) {
