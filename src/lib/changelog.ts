@@ -26,42 +26,24 @@ export interface ChangeEntry {
 
 export const CHANGES: ChangeEntry[] = [
 	{
-		version: '0.0.2',
-		title: 'Javított értesítések',
-		items: [
-			{
-				title: 'Megérkeznek a push üzenetek',
-				desc: 'Javított titkosítással az üzenetek, feladatok és jegyek zárt appnál is megjönnek.'
-			},
-			{
-				title: 'Böngészőengedély egy gombbal',
-				desc: 'A Beállítások / Értesítések alatt kérhető az engedély, enélkül a jelzések néma maradnak.'
-			},
-			{
-				title: 'Pontosabb napi jelzés',
-				desc: 'Az emlékeztető már nem csak a pontos percben szól, késés után is pótolja az aznapi jelzést.'
-			}
-		]
-	},
-	{
-		version: '0.0.1-beta',
-		title: 'Megjelent az első beta',
+		version: '1.0.0',
+		title: 'Első stabil kiadás',
 		items: [
 			{
 				title: 'Tanulás egy helyen',
-				desc: 'Leckék, kvízek és szókártyák haladás mentéssel, minden eszközön.'
+				desc: 'Leckék, kvízek és szókártyák haladás mentéssel, offline is.'
 			},
 			{
 				title: 'Tanterem osztályokkal',
 				desc: 'Határidős kvízek és beadandók, tanári értékeléssel és értesítésekkel.'
 			},
 			{
-				title: 'Könyvtár és saját csomagok',
-				desc: 'Tantárgyak szerinti gyűjtemény, saját kártyacsomagok leckékhez csatolva.'
+				title: 'Megbízható értesítések',
+				desc: 'Push üzenetek zárt appnál is, egygombos engedélykéréssel a Beállítások alatt.'
 			},
 			{
-				title: 'Emlékeztetők és újdonságok',
-				desc: 'Napi emlékeztető, tantermi jelzések és frissítési felugró az újdonságokról.'
+				title: 'Pontosabb leckeoldal',
+				desc: 'A nem létező lecke külön üzenetet kap, nem offline hibát mutat.'
 			}
 		]
 	}
