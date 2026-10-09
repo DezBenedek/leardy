@@ -46,9 +46,11 @@ function harness(network = async () => new Response('network')) {
 			handlers.get('activate')({ waitUntil(promise) { pending = promise; } });
 			await pending;
 		},
-		async fetch(path) {
+		async fetch(path, navigate = false) {
 			let response;
-			handlers.get('fetch')({ request: new Request(new URL(path, origin)), respondWith(promise) { response = promise; } });
+			const request = new Request(new URL(path, origin));
+			if (navigate) Object.defineProperty(request, 'mode', { value: 'navigate' });
+			handlers.get('fetch')({ request, respondWith(promise) { response = promise; } });
 			return response;
 		}
 	};
@@ -80,9 +82,23 @@ test('Változó URL-ről nem tér vissza korábbi kiadás elavult adata', async 
 	const h = harness();
 	const previous = await h.caches.open('leardy-static-previous');
 	await previous.put('/_app/version.json', new Response('old version'));
-	await previous.put('/offline/__data.json', new Response('old data'));
+	await previous.put('/tanulas/__data.json', new Response('old data'));
 	assert.equal(await (await h.fetch('/_app/version.json')).text(), 'network');
-	assert.equal(await (await h.fetch('/offline/__data.json')).text(), 'network');
+	assert.equal(await (await h.fetch('/tanulas/__data.json')).text(), 'network');
+});
+
+test('Offline újratöltéskor a Tanulás és a lecke saját URL-jén az alkalmazásváz töltődik be', async () => {
+	const h = harness(async () => { throw new TypeError('Nincs hálózat.'); });
+	await (await h.caches.open(currentCache)).put('/tanulas', new Response('learning shell'));
+	for (const path of ['/tanulas', '/tanulas?kereses=honfoglalás', '/tanulas/lecke/lesson#szakasz', '/tanulas/lecke/lesson/']) {
+		const response = await h.fetch(path, true);
+		assert.equal(response.status, 200);
+		assert.equal(response.headers.get('location'), null);
+		assert.equal(await response.text(), 'learning shell');
+	}
+	assert.equal((await h.fetch('/tanulas/szerkeszto', true)).type, 'error');
+	const home = await h.fetch('/', true);
+	assert.equal(home.headers.get('location'), `${origin}/tanulas`);
 });
 
 test('Tiltott vagy sérült Cache Storage mellett az online alkalmazás betöltődik', async () => {

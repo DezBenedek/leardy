@@ -116,7 +116,7 @@
 	type Step = 'subject' | 'level' | 'topic' | 'lesson';
 
 	let liveSubjects = $state<Subject[] | null>(null);
-	let availableSubjects = $derived(liveSubjects ?? subjects);
+	let availableSubjects = $derived(loadTree ? subjects : liveSubjects ?? subjects);
 	let trail = $state<Step[]>([]);
 	let subject = $state<Subject | null>(null);
 	let level = $state<LevelNode | null>(null);
@@ -152,6 +152,12 @@
 			selectionVersion++;
 			treeVersion++;
 		}
+	});
+
+	// Kapcsolatváltáskor a már nyitott választó is az új adatforrásból indul.
+	$effect(() => {
+		const owner = cacheVersion ?? loadTree;
+		if (open && owner !== cacheOwner) void untrack(start);
 	});
 
 	$effect(() => {
@@ -197,6 +203,7 @@
 		const owner = cacheVersion ?? loadTree;
 		if (owner !== cacheOwner) {
 			cacheOwner = owner;
+			liveSubjects = null;
 			trees = {};
 			treeTimes.clear();
 			treeRequests.clear();
@@ -246,6 +253,7 @@
 
 	async function ensureSubjectCounts(cacheOnly = false) {
 		if (loadingSubjectCounts) return;
+		const version = selectionVersion;
 		loadingSubjectCounts = true;
 		try {
 			// Megosztott gyorstár: a számlálók ritkán változnak, oldalak között is élnek.
@@ -259,6 +267,7 @@
 				},
 				COUNTS_TTL, 0, true
 			);
+			if (!open || loadTree || version !== selectionVersion) return;
 			subjectQuizCounts = counts.quizCountsBySubject;
 			liveSubjects = counts.subjects;
 			if (subject) {

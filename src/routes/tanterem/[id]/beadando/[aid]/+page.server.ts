@@ -1,6 +1,6 @@
 import { error, redirect, type NumericRange } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getDb, getSessionUser, type PublicUser } from '$lib/server/db';
+import { getDb, getSessionUser } from '$lib/server/db';
 import type { AssignmentUpload, ClassAssignment } from '$lib/server/classroom';
 
 export interface AssignmentResultRow {
@@ -20,14 +20,7 @@ export interface AssignmentResultRow {
 export const load: PageServerLoad = async (event) => {
 	const db = getDb(event);
 	if (!db) throw error(503 as NumericRange<400, 599>, 'Az adatbázis most nem elérhető.');
-	let user: PublicUser | null = null;
-	try {
-		const parent = await event.parent();
-		user = (parent?.user as PublicUser | null) ?? null;
-	} catch {
-		user = null;
-	}
-	if (!user) user = await getSessionUser(event, db);
+	const user = await getSessionUser(event, db);
 	if (!user) throw error(401 as NumericRange<400, 599>, 'Jelentkezz be!');
 	const roomId = event.params.id;
 	const aid = event.params.aid;

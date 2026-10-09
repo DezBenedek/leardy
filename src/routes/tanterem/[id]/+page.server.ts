@@ -1,6 +1,6 @@
 import { error, type NumericRange } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getDb, getSessionUser, type PublicUser } from '$lib/server/db';
+import { getDb, getSessionUser } from '$lib/server/db';
 import {
 	getMessageRefs,
 	isTeacher,
@@ -14,16 +14,7 @@ export const load: PageServerLoad = async (event) => {
 	const db = getDb(event);
 	if (!db) throw error(503 as NumericRange<400, 599>, 'Az adatbázis most nem elérhető.');
 	// Nincs ensure*: az olvasást nem blokkoljuk DDL-körökkel.
-	// D1-optimalizálás: a user elsődlegesen a layout-betöltésből jön (parent),
-	// csak ha az üres, kérdezzük le a sessiont.
-	let user: PublicUser | null = null;
-	try {
-		const parent = await event.parent();
-		user = (parent?.user as PublicUser | null) ?? null;
-	} catch {
-		user = null;
-	}
-	if (!user) user = await getSessionUser(event, db);
+	const user = await getSessionUser(event, db);
 	if (!user) throw error(401 as NumericRange<400, 599>, 'Jelentkezz be!');
 	const id = event.params.id;
 

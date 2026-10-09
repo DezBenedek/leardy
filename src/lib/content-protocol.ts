@@ -23,10 +23,6 @@ export function isContentUrl(url: URL): boolean {
 	return url.pathname === '/api/browse' || url.pathname === '/api/packages' || /^\/api\/lessons\/[^/]+$/.test(url.pathname);
 }
 
-export function offlineUrl(target: URL): string {
-	const lesson = /^\/tanulas\/lecke\/([^/]+)\/?$/.exec(target.pathname);
-	const params = new URLSearchParams();
-	if (lesson) params.set('lesson', decodeURIComponent(lesson[1]));
-	if (target.hash) params.set('section', target.hash.slice(1));
-	return `/offline${params.size ? `?${params}` : ''}`;
+export function isLearningPath(pathname: string): boolean {
+	return /^\/tanulas(?:\/lecke\/[^/]+)?\/?$/.test(pathname);
 }

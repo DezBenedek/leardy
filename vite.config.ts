@@ -22,8 +22,8 @@ export default defineConfig({
 			filename: 'service-worker.ts',
 			registerType: 'autoUpdate',
 			injectManifest: {
-				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2}', 'client/icons/*.png', 'prerendered/pages/offline.html', 'prerendered/dependencies/offline/__data.json'],
-				// Csak a nyilvános olvasófelület kerül HTML-ként a precache-be.
+				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2}', 'client/icons/*.png', 'prerendered/pages/tanulas.html'],
+				// Személyes adat nélküli Tanulás-alkalmazásváz az offline induláshoz.
 			},
 			manifest: {
 				name: 'Leardy: Tanulj okosan',

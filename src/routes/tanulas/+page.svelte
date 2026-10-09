@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { contentFetch, subscribeContent } from '$lib/content-client';
+	import { contentFetch, offlineIdentity, subscribeContent } from '$lib/content-client';
+	import { buildOfflineCatalog, readOfflineCatalog } from '$lib/offline-content';
+	import { pendingProgress, outbox } from '$lib/progress-outbox.svelte';
 	import { lessonPath } from '$lib/lesson-paths';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -45,7 +47,38 @@
 
 	let { data }: { data: PageData } = $props();
 	let user = $derived(auth.ready ? auth.user : data.user);
-	let canEdit = $derived(user?.role === 'teacher' || !!user?.is_admin || data.isEditor);
+	let connected = $state(true);
+	let localMode = $state(false);
+	let offlineCatalog = $state.raw(buildOfflineCatalog([]));
+	let offlineLoading = $state(true);
+	let canEdit = $derived(!localMode && (user?.role === 'teacher' || !!user?.is_admin || data.isEditor));
+	let catalogVersion = 0;
+	async function refreshOfflineCatalog() {
+		const version = ++catalogVersion;
+		try {
+			const catalog = await readOfflineCatalog(offlineIdentity()?.id);
+			const pending = await pendingProgress().catch(() => []);
+			const done = new Set(pending.filter((event) => !event.status).map((event) => event.lessonId));
+			for (const tree of Object.values(catalog.trees)) for (const level of tree.levels) for (const material of level.materials) for (const lesson of material.lessons) {
+				if (done.has(lesson.id)) lesson.done = true;
+			}
+			if (version === catalogVersion) offlineCatalog = catalog;
+		} catch {
+			if (version === catalogVersion) offlineCatalog = buildOfflineCatalog([]);
+		} finally {
+			if (version === catalogVersion) offlineLoading = false;
+		}
+	}
+	function goOffline() {
+		connected = false;
+		localMode = true;
+		void refreshOfflineCatalog();
+	}
+	function goOnline() {
+		connected = true;
+		localMode = false;
+	}
+	const loadOfflineTree = async (id: string) => offlineCatalog.trees[id] ?? null;
 
 	/* A memóriában őrzött adat azonnal látszik, megnyitáskor újraellenőrizzük. */
 	const TREE_TTL = 10 * 60_000;
@@ -58,10 +91,11 @@
 	let levelId = $state(savedScope.level);
 	const treeQ = new Query<SubjectTree | null>();
 	const subjectsQ = new Query<Subject[]>();
-	let subjects = $derived(subjectsQ.data ?? data.subjects);
+	let subjects = $derived(localMode ? offlineCatalog.subjects : subjectsQ.data ?? []);
 	$effect(() => {
 		subjectsQ.load('subjects', async (cached) => {
 			const response = await contentFetch('/api/browse', cached);
+			if (!connected || response.headers.get('x-content-offline') === 'true') localMode = true;
 			if (!response.ok) throw new Error(`http ${response.status}`);
 			return (await response.json()).subjects;
 		});
@@ -76,13 +110,15 @@
 	$effect(() => {
 		if (!subjectId || !subjects.some((s) => s.id === subjectId)) {
 			if (subjects[0]) subjectId = subjects[0].id;
+			else if (localMode && !offlineLoading) subjectId = '';
 		}
 	});
 
 	let qpOpen = $state(false);
 	let qpicks = $state<QuizQuestion[]>([]);
 
-	let levels = $derived(treeQ.data?.levels ?? []);
+	let activeTree = $derived(localMode ? offlineCatalog.trees[subjectId] : treeQ.data);
+	let levels = $derived(activeTree?.levels ?? []);
 	let activeSubject = $derived(subjects.find((s) => s.id === subjectId) ?? null);
 	let activeLevelTitle = $derived(
 		levelId ? (levels.find((l) => l.id === levelId)?.title ?? 'Tananyag') : 'Minden tananyag'
@@ -115,6 +151,7 @@
 
 	async function fetchTreeRaw(id: string, cacheOnly = false): Promise<SubjectTree | null> {
 		const res = await contentFetch(`/api/browse?subject=${encodeURIComponent(id)}`, cacheOnly);
+		if (!connected || res.headers.get('x-content-offline') === 'true') localMode = true;
 		if (!res.ok) throw new Error(`http ${res.status}`);
 		const j = await res.json();
 		return res.ok ? (j.tree ?? null) : null;
@@ -124,14 +161,14 @@
 	$effect(() => {
 		if (prevSubject !== null && prevSubject !== subjectId) levelId = '';
 		prevSubject = subjectId;
-		treeQ.load(subjectId ? `tree:${subjectId}` : null, (cached) => fetchTreeRaw(subjectId, cached), TREE_TTL, TREE_STALE);
+		treeQ.load(!localMode && subjectId ? `tree:${subjectId}` : null, (cached) => fetchTreeRaw(subjectId, cached), TREE_TTL, TREE_STALE);
 	});
 
 	// Mentett tananyag érvényesítése, de csak kész fához: tantárgyváltáskor
 	// a régi fa még látszhat töltés alatt, az nem érvénytelenítheti az új tananyagot.
 	$effect(() => {
-		if (treeQ.loading) return;
-		const ls = treeQ.data?.levels;
+		if (localMode ? offlineLoading : treeQ.loading) return;
+		const ls = activeTree?.levels;
 		if (ls && levelId && !ls.some((l) => l.id === levelId)) levelId = '';
 	});
 
@@ -243,6 +280,14 @@
 	}
 
 	async function fetchPackagesRaw(cacheOnly = false): Promise<Package[]> {
+		if (localMode) return offlineCatalog.lessons
+			.filter(({ lessonPage }) => lessonPage.subject.id === subjectId && (!levelId || lessonPage.level.id === levelId))
+			.flatMap(({ lessonPage }) => lessonPage.quizzes.map((quiz) => ({
+				quizId: quiz.id, title: quiz.title, sectionSlug: quiz.section_slug,
+				lessonId: lessonPage.lesson.id, lessonTitle: lessonPage.lesson.title,
+				materialTitle: lessonPage.material.title, subjectTitle: lessonPage.subject.title,
+				levelTitle: lessonPage.level.title, questionCount: quiz.questions.length, questions: quiz.questions
+			})));
 		const params = new URLSearchParams();
 		if (subjectId) params.set('subject', subjectId);
 		if (levelId) params.set('level', levelId);
@@ -260,17 +305,29 @@
 	let lastLesson = $state<{ id: string; title: string } | null>(null);
 
 	onMount(() => {
+		connected = navigator.onLine;
+		localMode = !connected || data.offline;
+		void refreshOfflineCatalog();
 		scopeIconReady = true;
 		lastLesson = loadLastLesson();
 		return subscribeContent((message) => {
+			if (message.type === 'content-status') {
+				if (message.url && new URL(message.url).pathname === '/api/browse') {
+					localMode = !connected || !!message.offline;
+				}
+			} else void refreshOfflineCatalog();
 			if (message.type === 'content-deleted') lastLesson = loadLastLesson();
 		});
+	});
+	$effect(() => {
+		void outbox.pending;
+		void refreshOfflineCatalog();
 	});
 
 	/** Folytatás: az utolsó lecke megnyitása, előzmény nélkül az első lecke. */
 	function continueLastLesson() {
 		const last = loadLastLesson();
-		if (last?.id) {
+		if (last?.id && (!localMode || offlineCatalog.lessons.some((document) => document.lessonPage.lesson.id === last.id))) {
 			lastLesson = last;
 			void goto(lessonPath(last.id));
 			return;
@@ -317,6 +374,8 @@
 	const chevronBtn =
 		'grid size-9 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-stone-100 hover:text-ink-900 active:scale-95 motion-reduce:transition-none dark:text-stone-500 dark:hover:bg-white/10 dark:hover:text-white';
 </script>
+
+<svelte:window onoffline={goOffline} ononline={goOnline} />
 
 <svelte:head>
 	<title>Tanulás | Leardy</title>
@@ -392,8 +451,14 @@
 	</div>
 </div>
 
+{#if localMode}
+	<p role="status" class="mt-3 rounded-xl bg-stone-100 px-3 py-2 text-sm text-stone-600 dark:bg-white/5 dark:text-stone-300">
+		Offline vagy. Csak az ezen az eszközön tárolt leckék láthatók. A keresés és a szűrők helyben működnek.
+	</p>
+{/if}
+
 <div class="mt-4">
-	{#if treeQ.loading}
+	{#if localMode ? offlineLoading : treeQ.loading || subjectsQ.loading}
 		<div role="status" aria-label="Betöltés" class="grid gap-2.5">
 			{#each [0, 1] as i (i)}
 				<Card>
@@ -407,12 +472,14 @@
 			{/each}
 			<span class="sr-only">Betöltés…</span>
 		</div>
-	{:else if !treeQ.data || visibleLevels.length === 0}
-		{#if treeQ.data && (query.trim() !== '' || status !== 'all')}
+	{:else if !activeTree || visibleLevels.length === 0}
+		{#if activeTree && (query.trim() !== '' || status !== 'all')}
 			<EmptyState
 				title="Nincs találat"
 				description="Próbálj másik keresést, vagy állíts a szűrőkön."
 			/>
+		{:else if localMode && offlineCatalog.lessons.length === 0}
+			<EmptyState title="Még nincs mentett lecke" description="Nyiss meg leckéket internetkapcsolattal! Ezután itt, a Tanulás oldalon internet nélkül is megtalálod őket." />
 		{:else}
 			<EmptyState
 				title="Nincs tananyag"
@@ -493,7 +560,9 @@
 	startSubjectId={levelId ? subjectId : ''}
 	selectedSubjectId={subjectId}
 	selectedLevelId={levelId}
-	initialTree={treeQ.data}
+	initialTree={activeTree}
+	loadTree={localMode ? loadOfflineTree : undefined}
+	cacheVersion={localMode ? offlineCatalog : undefined}
 	includeAllLevels
 	onPick={pickScope}
 	onClose={() => (scopeOpen = false)}

@@ -6,11 +6,10 @@
 	import { page } from '$app/state';
 	import { fade } from 'svelte/transition';
 	import { onMount } from 'svelte';
-	import { resolve } from '$app/paths';
-	import { beforeNavigate, goto } from '$app/navigation';
-	import { offlineUrl } from '$lib/content-protocol';
-	import { startContentSync, invalidateContent } from '$lib/content-client';
-	import { startProgressSync, syncProgress } from '$lib/progress-outbox.svelte';
+	import { invalidate } from '$app/navigation';
+	import { isLearningPath } from '$lib/content-protocol';
+	import { startContentSync, invalidateContent, offlineIdentity } from '$lib/content-client';
+	import { startProgressSync, syncProgress, outbox, dismissProgress } from '$lib/progress-outbox.svelte';
 	import { startPwaUpdates } from '$lib/pwa-client';
 	import { pwaInfo } from 'virtual:pwa-info';
 	import { auth } from '$lib/auth.svelte';
@@ -29,16 +28,18 @@
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
-	let offlinePage = $derived(page.url.pathname === '/offline');
+	let connected = $state(true);
+	let learningPage = $derived(isLearningPath(page.url.pathname));
+	let offlineLearning = $derived(learningPage && (!connected || data.offline));
+	function reconnect() {
+		connected = true;
+		void invalidate('app:session');
+	}
 	onMount(() => {
+		connected = navigator.onLine;
 		const stopContent = startContentSync();
 		const stopProgress = startProgressSync();
 		return () => { stopContent(); stopProgress(); };
-	});
-	beforeNavigate(({ to, cancel }) => {
-		if (to && !navigator.onLine && (/^\/tanulas\/lecke\/[^/]+\/?$/.test(to.url.pathname) || to.url.pathname === '/tanulas')) {
-			cancel(); void goto(resolve('/offline') + offlineUrl(to.url).slice('/offline'.length));
-		}
 	});
 
 	$effect(() => {
@@ -64,7 +65,12 @@
 	// SSR alatt es az elso kliens paintkor meg nincs ready auth,
 	// ilyenkor a szerveres layout-adat a forras, igy nincs login-villanas.
 	// Kesz auth utan a kliens store az igazsag (login/logout azonnal latszik).
-	let user = $derived(auth.ready ? auth.user : (data.user ?? null));
+	let user = $derived.by(() => {
+		const current = auth.ready ? auth.user : data.user;
+		if (current || !offlineLearning) return current;
+		const remembered = offlineIdentity();
+		return remembered ? { ...remembered, email: '' } : null;
+	});
 
 	// PWA: a web manifest link a head-be, a service worker regisztracio kliensoldalon.
 	// Nelkuluk a bongeszo nem kinalja fel a "Telepites" gombot.
@@ -112,7 +118,7 @@
 	// Kliens indulaskor azonnal szinkronizalunk, hogy a gyerekek
 	// (Sidebar, fooldal) mar az elso paintkor latjak a usert.
 	// svelte-ignore state_referenced_locally: szandekosan csak a kezdeti ertek kell.
-	if (browser && !auth.ready && !offlinePage) auth.seed(data.user ?? null);
+	if (browser && !auth.ready && !data.offline) auth.seed(data.user ?? null);
 
 	$effect(() => {
 		if (!user) return;
@@ -126,7 +132,7 @@
 	// A session szerverről jön: paint előtt beáll, splash nincs.
 	// Kliensoldali navigációnál a friss layout-adat szinkronizál.
 	$effect.pre(() => {
-		if (!offlinePage) auth.seed(data.user ?? null);
+		if (!data.offline) auth.seed(data.user ?? null);
 	});
 	$effect(() => { if (user?.id) void syncProgress(); });
 
@@ -168,13 +174,32 @@
 	}
 </script>
 
+<svelte:window onoffline={() => connected = false} ononline={reconnect} />
+
 <svelte:head>
 	<title>Leardy: Tanulj okosan</title>
 	{@html webManifestLink}
 </svelte:head>
 
-{#if offlinePage}
-	<main class="mx-auto min-h-dvh w-full max-w-3xl px-4 py-5 sm:px-6">{@render children()}</main>
+{#snippet progressNotices()}
+	{#if learningPage && outbox.pending > 0}
+		<p role="status" class="mb-3 text-sm text-stone-500">{outbox.pending} eredmény mentésre vár.</p>
+	{/if}
+	{#if learningPage}
+		{#each outbox.rejected as result (result.eventId)}
+			<div role="status" class="mb-3 rounded-xl border border-amber-300 p-3 text-sm">
+				A korábbi eredményed: {result.score}/{result.total}. {result.status === 'deleted' ? 'A leckét törölték.' : 'A kérdéssor megváltozott, új kitöltés szükséges.'}
+				<button class="ml-2 font-bold underline" onclick={() => void dismissProgress(result.eventId)}>Rendben</button>
+			</div>
+		{/each}
+	{/if}
+{/snippet}
+
+{#if offlineLearning && !user}
+	<main class="mx-auto min-h-dvh w-full max-w-3xl px-4 py-5 sm:px-6">
+		{@render progressNotices()}
+		{@render children()}
+	</main>
 {:else if !user}
 	<!-- Auth-gate: be nem lépve az app nem használható, csak Google belépés -->
 	<div class="mx-auto grid min-h-dvh w-full max-w-md place-items-center px-6">
@@ -200,6 +225,7 @@
 					in:fade={fadeParams()}
 					class="mx-auto w-full max-w-3xl px-4 pt-5 pb-36 sm:px-6 lg:px-8 lg:pt-8 lg:pb-12"
 				>
+						{@render progressNotices()}
 					{@render children()}
 				</main>
 			{/key}

@@ -59,7 +59,7 @@ export function startContentSync(): () => void {
 	};
 	const identityChanged = (event: StorageEvent) => {
 		if (event.key === IDENTITY_KEY && event.oldValue !== event.newValue) {
-			if (navigator.onLine) location.reload(); else location.replace('/offline');
+			location.reload();
 		}
 	};
 	navigator.serviceWorker?.addEventListener('message', receive);

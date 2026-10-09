@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { CONTENT_CACHE, PRIVATE_CACHE_PREFIX, contentUrl, isContentUrl, offlineUrl, type ContentMessage } from './lib/content-protocol';
+import { CONTENT_CACHE, PRIVATE_CACHE_PREFIX, contentUrl, isContentUrl, isLearningPath, type ContentMessage } from './lib/content-protocol';
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: { url: string; revision: string | null }[] };
 declare const __APP_BUILD_TIME__: string;
@@ -284,7 +284,7 @@ self.addEventListener('fetch', (event) => {
 					?? volatile.get(`${CONTENT_CACHE}:${key}`)?.response.clone()
 					?? await shared.match(key, { ignoreVary: true });
 				if (hit) currentRevision(key, hit);
-				if (req.headers.get('x-content-read') === 'cached') { complete(); return hit ? stamped(hit, false) : failure(); }
+				if (req.headers.get('x-content-read') === 'cached' || !self.navigator.onLine) { complete(); return hit ? stamped(hit, !self.navigator.onLine) : failure(); }
 				const update = refresh(req, key, hit?.clone(), owner);
 				void update.finally(complete).catch(() => undefined);
 				return hit ? stamped(hit, !self.navigator.onLine) : update;
@@ -294,8 +294,8 @@ self.addEventListener('fetch', (event) => {
 	}
 	if (req.mode === 'navigate') {
 		event.respondWith(fetch(req).catch(async () => {
-			if (url.pathname === '/offline') return (await (await caches.open(CACHE)).match('/offline')) ?? Response.error();
-			if (url.pathname === '/' || url.pathname === '/tanulas' || /^\/tanulas\/lecke\/[^/]+\/?$/.test(url.pathname)) return Response.redirect(new URL(offlineUrl(url), self.location.origin));
+			if (isLearningPath(url.pathname)) return (await (await caches.open(CACHE)).match('/tanulas')) ?? Response.error();
+			if (url.pathname === '/') return Response.redirect(new URL('/tanulas', self.location.origin));
 			return Response.error();
 		}));
 		return;
@@ -303,7 +303,7 @@ self.addEventListener('fetch', (event) => {
 	if (url.pathname.startsWith('/api/')) return;
 	event.respondWith((async () => {
 		try {
-			const hit = await (await caches.open(CACHE)).match(req, { ignoreSearch: url.pathname === '/offline/__data.json' });
+			const hit = await (await caches.open(CACHE)).match(req);
 			if (hit) return hit;
 			// Régi kódot csak tartalomazonosítós fájlnévhez adunk vissza.
 			if (url.pathname.startsWith('/_app/immutable/')) {

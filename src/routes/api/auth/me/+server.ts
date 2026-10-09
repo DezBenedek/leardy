@@ -1,4 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
+import { canEnterEditor } from '$lib/server/curriculum-editor';
 import {
 	getDb,
 	ensureAuthSchema,
@@ -14,7 +15,8 @@ export const GET: RequestHandler = async (event) => {
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
 	const user = await getSessionUser(event, db);
 	if (!user) return json({ error: 'Nincs bejelentkezve.' }, { status: 401, headers: { 'cache-control': 'no-store' } });
-	return json({ user }, { headers: { 'cache-control': 'no-store' } });
+	const isEditor = await canEnterEditor(db, user).catch(() => false);
+	return json({ user, isEditor }, { headers: { 'cache-control': 'no-store' } });
 };
 
 export const PATCH: RequestHandler = async (event) => {

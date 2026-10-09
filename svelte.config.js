@@ -5,6 +5,8 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 const config = {
 	preprocess: vitePreprocess(),
 	kit: {
+		// Az offline alkalmazásváz a lecke mélyebb URL-jén is ugyanazokat a fájlokat tölti be.
+		paths: { relative: false },
 		serviceWorker: { register: false },
 		adapter: adapter({
 			routes: {

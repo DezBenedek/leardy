@@ -17,7 +17,11 @@ A böngésző az elmentett adatot azonnal megjeleníti, majd megnyitáskor, vál
 
 ## Offline eredmények
 
-A `/offline` előre generált olvasó a korábban megnyitott leckeszöveget és kvízt is betölti. A kvízeredmény IndexedDB-ben, fiókazonosítóval, egyedi eseményazonosítóval, kérdéssorverzióval és a kitöltés idejével marad meg.
+A Tanulás oldal és a leckeoldal a saját URL-jén működik internet nélkül is. A `/tanulas` előre generált, személyes adat nélküli alkalmazásvázát a worker újratöltéskor a lecke URL-jén is kiszolgálja. A két útvonal nem igényel szerveres oldaladatot; a munkamenet ellenőrzése univerzális layout-betöltésben történik. Offline induláskor a korábbi fiókazonosító megmarad, és nem jelentkeztetjük ki a felhasználót.
+
+Az offline tantárgy-, tananyag- és témakörlista kizárólag a tartósan tárolt leckedokumentumokból épül. A teljes katalógusban szereplő, de még meg nem nyitott lecke nem kerül bele. A tárolt tantárgyfa csak a sorrendet, az ikonokat és a jelenlegi fiók teljesítési állapotát egészíti ki; nélküle is helyreáll a hierarchia. A globális ContentPicker helyi adatforrást kap. A keresés, a teljesítési szűrő, a rendezés és a Folytatás gomb helyben működik. Kapcsolatváltáskor az oldal a megfelelő adatkészletre vált.
+
+A kvízeredmény IndexedDB-ben, fiókazonosítóval, egyedi eseményazonosítóval, kérdéssorverzióval és a kitöltés idejével marad meg. A helyben várakozó eredmények a teljesítési szűrőben is látszanak. A tárolás a böngésző rendelkezésre álló tárhelyétől függ; a cache törlése után a leckéket újra meg kell nyitni online.
 
 Visszacsatlakozáskor a kliens előbb ellenőrzi a bejelentkezett fiókot, majd sorrendben küldi az eredményeket. Átmeneti hibánál növekvő késleltetéssel próbálkozik újra. A D1-nyugta, a haladás és az aktivitási nap egy tranzakció: az ismételt küldés nem dupláz, a régebbi eredmény nem írja felül az újabbat. Az aktivitási nap a kitöltés budapesti dátuma. Megváltozott kérdéssor vagy törölt lecke esetén az eredmény helyben megmarad, és új kitöltést kérünk.
 
@@ -30,7 +34,7 @@ Ellenőrzések:
 ```sh
 pnpm check
 pnpm build
-node --test scripts/test-content-cache.mjs scripts/test-pwa-lifecycle.mjs scripts/test-query-reactivity.mjs scripts/test-home-activity.mjs scripts/test-curriculum-editor.mjs scripts/test-sm2.mjs scripts/test-back-navigation.mjs
+node --test scripts/test-content-cache.mjs scripts/test-pwa-lifecycle.mjs scripts/test-offline-learning.mjs scripts/test-query-reactivity.mjs scripts/test-home-activity.mjs scripts/test-curriculum-editor.mjs scripts/test-sm2.mjs scripts/test-back-navigation.mjs
 ```
 
 Böngészős próba: lecke megnyitása online, hálózat kikapcsolása, újratöltés, kvíz kitöltése, újratöltés, majd visszacsatlakozás. Az eredménynek meg kell maradnia, és egyszer szinkronizálódnia. Másik ablakban végzett módosítás vagy törlés után a nyitott listának, választónak és olvasónak át kell vennie a változást. A nyitott kvíz kérdései a kitöltés alatt nem változhatnak meg.
