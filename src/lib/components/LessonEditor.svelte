@@ -3,6 +3,10 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { tick, untrack } from 'svelte';
+	import { slide } from 'svelte/transition';
+	import { motionOK } from '$lib/overlay';
+	import ExpandableTextarea from '$lib/ui/ExpandableTextarea.svelte';
+	import ScrollableText from '$lib/ui/ScrollableText.svelte';
 	import { ArrowDown, ArrowLeft, ArrowUp, Pencil, Plus, Save, Trash2 } from '@lucide/svelte';
 	import ActionMenu from '$lib/ui/ActionMenu.svelte';
 	import Drawer from './Drawer.svelte';
@@ -111,10 +115,7 @@
 		} while (sections.some((section) => section.id === id));
 		sections.push({ id, title: 'Új bekezdés', md: '', intro: false });
 		await tick();
-		const field = document.getElementById(`${editorId}-section-${id}`) as HTMLInputElement | null;
-		field?.focus({ preventScroll: true });
-		field?.select();
-		field?.scrollIntoView({ block: 'center', behavior: 'instant' });
+		document.getElementById(`${editorId}-card-${id}`)?.scrollIntoView({ block: 'nearest', behavior: motionOK() ? 'smooth' : 'instant' });
 	}
 </script>
 
@@ -125,7 +126,7 @@
 	<header class="flex items-start gap-3">
 		<IconButton ariaLabel="Vissza a tananyag-szerkesztőhöz" size={44} disabled={busy} onclick={goBack}><ArrowLeft size={21} /></IconButton>
 		<div class="min-w-0 flex-1">
-			<h1 class="font-display break-words text-xl font-extrabold tracking-tight text-ink-900 dark:text-white">{title}</h1>
+			<h1 class="font-display break-words text-xl font-extrabold tracking-tight text-ink-900 dark:text-white"><ScrollableText text={title} lines={2} /></h1>
 			<p class="truncate text-xs text-stone-500 dark:text-stone-400">{lesson.levelTitle} · {lesson.materialTitle}</p>
 		</div>
 		<ActionMenu label="Lecke műveletei" disabled={busy} actions={[
@@ -140,20 +141,20 @@
 	</div>
 	<div class="mt-3 space-y-4">
 		{#each sections as section, index (section.id)}
-			<section class="rounded-3xl border border-stone-200 bg-white p-4 sm:p-5 dark:border-white/10 dark:bg-stone-900">
+			<section id={`${editorId}-card-${section.id}`} in:slide={{ duration: motionOK() ? 260 : 0 }} class="rounded-3xl border border-stone-200 bg-white p-4 sm:p-5 dark:border-white/10 dark:bg-stone-900">
 				<div class="mb-4 flex items-end gap-2">
 					{#if section.intro}
 						<span class="flex min-h-11 min-w-0 flex-1 items-center text-sm font-bold text-ink-900 dark:text-white">Bevezetés</span>
 					{:else}
 						<label class="block min-w-0 flex-1 text-sm font-bold text-ink-900 dark:text-white">Bekezdés címe<input id={`${editorId}-section-${section.id}`} class="{fieldClass} mt-1" bind:value={section.title} maxlength={160} disabled={busy} /></label>
 					{/if}
-					<ActionMenu compact label="Bekezdés műveletei: {section.title}" disabled={busy} actions={[
+					<ActionMenu compact menuIconsOnly label="Bekezdés műveletei: {section.title}" disabled={busy} actions={[
 						{ id: 'down', label: 'Le', icon: ArrowDown, disabled: section.intro || index === sections.length - 1, onclick: () => move(index, 1) },
 						{ id: 'up', label: 'Fel', icon: ArrowUp, disabled: section.intro || index === 0 || sections[index - 1]?.intro, onclick: () => move(index, -1) },
 						{ id: 'delete', label: 'Törlés', icon: Trash2, tone: 'danger', onclick: () => { sections = sections.filter((item) => item.id !== section.id); } }
 					]} />
 				</div>
-				<label class="block text-sm font-bold text-ink-900 dark:text-white">Tartalom<textarea class="{fieldClass} mt-1 min-h-48 resize-y text-sm leading-relaxed font-normal" bind:value={section.md} disabled={busy} placeholder="Írd ide a bekezdés tartalmát…" spellcheck="true"></textarea></label>
+				<ExpandableTextarea bind:value={section.md} disabled={busy} />
 			</section>
 		{:else}
 			<div class="rounded-3xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500 dark:border-white/15 dark:text-stone-400">Még nincs bekezdés. Adj hozzá egyet a lecke megírásához.</div>

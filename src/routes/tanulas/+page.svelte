@@ -4,8 +4,6 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { untrack } from 'svelte';
-	import { fly } from 'svelte/transition';
-	import { cubicOut } from 'svelte/easing';
 	import {
 		ArrowDownAZ,
 		BookOpenText,
@@ -16,10 +14,8 @@
 		Gauge,
 		Landmark,
 		Languages,
-		Layers,
 		Leaf,
 		ListOrdered,
-		LoaderCircle,
 		Play,
 		Pencil,
 		Shapes,
@@ -27,6 +23,7 @@
 		FunnelX
 	} from '@lucide/svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
+	import ContentPicker, { type ContentPick } from '$lib/components/ContentPicker.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import QuickPractice from '$lib/components/QuickPractice.svelte';
 	import type { Package, QuizQuestion, SubjectTree } from '$lib/curriculum';
@@ -36,7 +33,6 @@
 	import { loadScope, saveScope } from '$lib/scope';
 	import { loadSettings } from '$lib/settings';
 	import { toast } from '$lib/toast.svelte';
-	import { motionOK } from '$lib/overlay';
 	import Card from '$lib/ui/Card.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
@@ -79,7 +75,7 @@
 	let levels = $derived(treeQ.data?.levels ?? []);
 	let activeSubject = $derived(data.subjects.find((s) => s.id === subjectId) ?? null);
 	let activeLevelTitle = $derived(
-		levelId ? (levels.find((l) => l.id === levelId)?.title ?? 'Szint') : 'Minden szint'
+		levelId ? (levels.find((l) => l.id === levelId)?.title ?? 'Tananyag') : 'Minden tananyag'
 	);
 
 	const subjectIcons: Record<string, typeof Landmark> = {
@@ -95,95 +91,16 @@
 		subjectIcons[(scopeIconReady ? activeSubject : data.subjects[0])?.icon ?? ''] ?? Shapes
 	);
 
-	/* Tantárgy és szint választó drawer: előbb a tantárgy-lista, rákattintva
-	   a szint-lista, onnan vissza-nyíllal vissza. A választás a szintre
-	   koppintva lép életbe és zárja a drawert. */
 	let scopeOpen = $state(false);
-	let scopeStep = $state<'subject' | 'level'>('subject');
-	let scopeDirection = $state(1);
-	let scopeMotion = $state(true);
-	let pendingSubjectId = $state('');
-	let pendingTree = $state<SubjectTree | null>(null);
-	let pendingLevels = $derived(pendingTree?.levels ?? []);
-	let pendingLoading = $state(false);
-	let pendingError = $state(false);
-	let scopeGen = 0;
-
-	let pendingSubject = $derived(data.subjects.find((s) => s.id === pendingSubjectId) ?? null);
-	let pendingLevelLabelLow = $derived((pendingSubject?.levelLabel || 'Szint').toLowerCase());
-
-	function openScope() {
-		scopeGen++;
-		scopeMotion = motionOK();
-		scopeDirection = 1;
-		scopeStep = 'subject';
-		pendingSubjectId = '';
-		pendingTree = null;
-		pendingLoading = false;
-		pendingError = false;
-		scopeOpen = true;
-	}
-
-	function closeScope() {
-		scopeGen++;
-		scopeOpen = false;
-	}
-
-	function backToSubjects() {
-		scopeGen++;
-		scopeDirection = -1;
-		scopeStep = 'subject';
-		pendingSubjectId = '';
-		pendingLoading = false;
-	}
-
-	async function goSubject(id: string) {
-		pendingSubjectId = id;
-		scopeDirection = 1;
-		const gen = ++scopeGen;
-		pendingError = false;
-		// A listaoldallal közös gyorstár: ismételt választáskor nincs töltőállapot.
-		pendingTree = peek<SubjectTree | null>(`tree:${id}`, TREE_STALE) ??
-			(id === subjectId && !treeQ.loading ? treeQ.data ?? null : null);
-		pendingLoading = false;
-		if (pendingTree) {
-			scopeStep = 'level';
-			return;
-		}
-		pendingLoading = true;
-		try {
-			const tree = await getOrFetch<SubjectTree>(`tree:${id}`, async () => {
-				const tree = await fetchTreeRaw(id);
-				if (!tree) throw new Error('A tananyag betöltése sikertelen.');
-				return tree;
-			}, TREE_TTL);
-			if (gen !== scopeGen) return;
-			if (!tree) throw new Error('A tananyag betöltése sikertelen.');
-			pendingTree = tree;
-			scopeStep = 'level';
-		} catch {
-			if (gen === scopeGen) {
-				pendingError = true;
-				scopeStep = 'level';
-			}
-		} finally {
-			if (gen === scopeGen) pendingLoading = false;
-		}
-	}
-
-	/* Drawer-ből választva a szint őr nem nullázhat: a váltás előtt
-	   átállítjuk az előzőt, így az effect nem érzékel tantárgyváltást. */
 	let prevSubject = $state<string | null>(null);
-
-	function pickLevel(lid: string) {
-		if (pendingLoading || pendingError || !pendingTree) return;
-		const sid = pendingSubjectId;
-		prevSubject = sid;
-		subjectId = sid;
-		levelId = lid;
-		// A kiválasztott fa már betöltődött a Drawer-ben, az oldal azonnal átveheti.
-		treeQ.prime(`tree:${sid}`, TREE_STALE);
-		closeScope();
+	function openScope() { scopeOpen = true; }
+	function pickScope(picks: ContentPick[]) {
+		const pick = picks[0];
+		if (!pick) return;
+		prevSubject = pick.subjectId;
+		subjectId = pick.subjectId;
+		levelId = pick.levelId;
+		scopeOpen = false;
 	}
 
 	async function fetchTreeRaw(id: string): Promise<SubjectTree | null> {
@@ -196,15 +113,15 @@
 		}
 	}
 
-	// Visszatöltött szintet az első betöltés nem nullázza, váltáskor igen.
+	// Visszatöltött tananyagot az első betöltés nem nullázza, váltáskor igen.
 	$effect(() => {
 		if (prevSubject !== null && prevSubject !== subjectId) levelId = '';
 		prevSubject = subjectId;
 		treeQ.load(subjectId ? `tree:${subjectId}` : null, () => fetchTreeRaw(subjectId), TREE_TTL, TREE_STALE);
 	});
 
-	// Mentett szint érvényesítése, de csak kész fához: tantárgyváltáskor
-	// a régi fa még látszhat töltés alatt, az nem érvénytelenítheti az új szintet.
+	// Mentett tananyag érvényesítése, de csak kész fához: tantárgyváltáskor
+	// a régi fa még látszhat töltés alatt, az nem érvénytelenítheti az új tananyagot.
 	$effect(() => {
 		if (treeQ.loading) return;
 		const ls = treeQ.data?.levels;
@@ -257,8 +174,8 @@
 		}
 	});
 
-	/* Látható szintek: szintszűrés, állapot, keresés, rendezés. Üres témakör
-	   és üres szint nem rajzolódik ki. */
+	/* Látható tananyagok: szintszűrés, állapot, keresés, rendezés. Üres témakör
+	   és üres tananyag nem rajzolódik ki. */
 	let visibleLevels = $derived.by(() => {
 		const q = normHu(query.trim());
 		let ls = levels.filter((l) => (levelId ? l.id === levelId : true));
@@ -396,7 +313,7 @@
 
 <svelte:head>
 	<title>Tanulás | Leardy</title>
-	<meta name="description" content="Tantárgyak, szintek és leckék böngészése." />
+	<meta name="description" content="Tantárgyak, tananyagok és leckék böngészése." />
 </svelte:head>
 
 <div class="flex items-stretch {searchFocus ? 'gap-0' : 'gap-2'}">
@@ -407,7 +324,7 @@
 	>
 		<div class="grid h-full w-[46px] place-items-center">
 			<IconButton
-				ariaLabel="Tantárgy és szint: {activeSubject?.title ?? 'Választás'}, {activeLevelTitle}"
+				ariaLabel="Tantárgy és tananyag: {activeSubject?.title ?? 'Választás'}, {activeLevelTitle}"
 				size={46}
 				disabled={searchFocus}
 				onclick={openScope}
@@ -510,7 +427,7 @@
 							{@const matOpen = isMatOpen(mat.id)}
 							<Card>
 								<div class="flex items-center gap-1.5">
-									<p class="min-w-0 flex-1 text-[15px] font-extrabold text-ink-900 dark:text-white">{mat.title}</p>
+									<p class="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-[15px] font-extrabold text-ink-900 dark:text-white">{mat.title}</p>
 									<IconButton
 										ariaLabel="Véletlen kvíz: {mat.title}"
 										title="Véletlen kvíz: {mat.title}"
@@ -546,7 +463,7 @@
 															<Check size={13} strokeWidth={3.5} aria-hidden="true" />
 														</span>
 													{/if}
-													<span class="min-w-0 flex-1 truncate">{le.title}</span>
+													<span class="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{le.title}</span>
 													<ChevronRight size={16} class="shrink-0 text-stone-300 dark:text-stone-600" />
 												</a>
 											</li>
@@ -562,139 +479,18 @@
 	{/if}
 </div>
 
-<Drawer
+<ContentPicker
 	open={scopeOpen}
-	label="Tantárgy és szint választása"
-	title={scopeStep === 'level' ? (pendingSubject?.title ?? 'Szint') : 'Tantárgy'}
-	onBack={scopeStep === 'level' ? backToSubjects : undefined}
-	onClose={closeScope}
-	animateHeight
-	wide
->
-	{#if scopeStep === 'subject'}
-		<ul
-			in:fly={{ x: scopeDirection * 24, duration: scopeMotion ? 220 : 0, easing: cubicOut }}
-			class="-mx-1 mt-2 space-y-0.5"
-		>
-			{#if data.subjects.length === 0}
-				<li>
-					<p class="p-2 text-sm text-stone-500 dark:text-stone-400">Nincs megjeleníthető tantárgy.</p>
-				</li>
-			{:else}
-				{#each data.subjects as s (s.id)}
-					{@const SIcon = subjectIcons[s.icon] ?? Shapes}
-					{@const selected = s.id === subjectId}
-					<li>
-						<button
-							type="button"
-							aria-pressed={selected}
-							aria-busy={pendingLoading && pendingSubjectId === s.id}
-							disabled={pendingLoading && pendingSubjectId === s.id}
-							onclick={() => void goSubject(s.id)}
-							class={[optRowBtn, selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
-						>
-							<span class={optTile(selected)}>
-								<SIcon size={18} aria-hidden="true" />
-							</span>
-							<span class="min-w-0 flex-1">
-								<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{s.title}</span>
-								<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">
-									{s.lessonCount} lecke
-								</span>
-							</span>
-							{#if pendingLoading && pendingSubjectId === s.id}
-								<LoaderCircle size={18} class="shrink-0 animate-spin text-brand-600 motion-reduce:animate-none dark:text-white" aria-hidden="true" />
-								<span class="sr-only" role="status">Szintek betöltése…</span>
-							{:else if selected}
-								<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
-							{:else}
-								<ChevronRight size={17} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
-							{/if}
-						</button>
-					</li>
-				{/each}
-			{/if}
-		</ul>
-	{:else}
-		<ul
-			in:fly={{ x: scopeDirection * 24, duration: scopeMotion ? 220 : 0, easing: cubicOut }}
-			class="-mx-1 mt-2 space-y-0.5"
-		>
-			{#if pendingLoading}
-				<li role="status" class="flex items-center gap-2 p-2 text-sm text-stone-500 dark:text-stone-400">
-					<LoaderCircle size={18} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-					Szintek betöltése…
-				</li>
-			{:else if pendingError}
-				<li class="p-2 text-sm text-stone-500 dark:text-stone-400">
-					<p>Nem sikerült betölteni a szinteket.</p>
-					<button
-						type="button"
-						onclick={() => void goSubject(pendingSubjectId)}
-						class="mt-2 rounded-xl px-3 py-2 font-semibold text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-white/5"
-					>
-						Újrapróbálás
-					</button>
-				</li>
-			{:else}
-				{@const allSelected = pendingSubjectId === subjectId && levelId === ''}
-				<li>
-					<button
-						type="button"
-						aria-pressed={allSelected}
-						onclick={() => pickLevel('')}
-						class={[optRowBtn, allSelected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
-					>
-						<span class={optTile(allSelected)}>
-							<Layers size={18} aria-hidden="true" />
-						</span>
-						<span class="min-w-0 flex-1">
-							<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">
-								Minden {pendingLevelLabelLow}
-							</span>
-							<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">
-								A teljes tantárgy
-							</span>
-						</span>
-						{#if allSelected}
-							<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
-						{/if}
-					</button>
-				</li>
-				{#if pendingLevels.length === 0}
-					<li>
-						<p class="p-2 text-sm text-stone-500 dark:text-stone-400">Nincs megjeleníthető szint.</p>
-					</li>
-				{:else}
-					{#each pendingLevels as l (l.id)}
-						{@const selected = pendingSubjectId === subjectId && l.id === levelId}
-						<li>
-							<button
-								type="button"
-								aria-pressed={selected}
-								onclick={() => pickLevel(l.id)}
-								class={[optRowBtn, selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
-							>
-								<span class={[optTile(selected), 'text-[15px] font-extrabold'].join(' ')}>
-									{l.title.trim().charAt(0).toUpperCase()}
-								</span>
-								<span class="min-w-0 flex-1">
-									<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{l.title}</span>
-									<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">
-										{l.materials.length} témakör
-									</span>
-								</span>
-								{#if selected}
-									<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
-								{/if}
-							</button>
-						</li>
-					{/each}
-				{/if}
-			{/if}
-		</ul>
-	{/if}
-</Drawer>
+	subjects={data.subjects}
+	select="level"
+	startSubjectId={levelId ? subjectId : ''}
+	selectedSubjectId={subjectId}
+	selectedLevelId={levelId}
+	initialTree={treeQ.data}
+	includeAllLevels
+	onPick={pickScope}
+	onClose={() => (scopeOpen = false)}
+/>
 
 <Sheet open={filterOpen} label="Szűrők és rendezés" onClose={() => (filterOpen = false)}>
 	<div class="mt-1 flex items-center gap-2">

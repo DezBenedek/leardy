@@ -2,7 +2,9 @@
 	import { browser } from '$app/environment';
 	import { ArrowLeft, Pencil, X } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
-	import { lockBody, motionOK } from '$lib/overlay';
+	import { isTopOverlay, lockBody, motionOK } from '$lib/overlay';
+	import ScrollableText from '$lib/ui/ScrollableText.svelte';
+	import { fitOverlayViewport } from '$lib/overlay-viewport';
 
 	interface Props {
 		open: boolean;
@@ -11,6 +13,7 @@
 		title?: string;
 		/** Egyedi fejléc, például mezőcímke és mentés gomb főcím nélkül. */
 		header?: Snippet;
+		actions?: Snippet;
 		/** Ha adott, a cím bal oldalán vissza-nyíl jelenik meg (alnezetekhez). */
 		onBack?: () => void;
 		/** Ha adott, az X-től balra ceruza ikon jelenik meg (szerkesztéshez). */
@@ -24,7 +27,7 @@
 		animateHeight?: boolean;
 	}
 
-	let { open, label, title, header, onBack, onEdit, editLabel = 'Szerkesztés', onClose, children, wide = false, animateHeight = false }: Props = $props();
+	let { open, label, title, header, actions, onBack, onEdit, editLabel = 'Szerkesztés', onClose, children, wide = false, animateHeight = false }: Props = $props();
 
 	let panel: HTMLElement | null = $state(null);
 	let scroller: HTMLElement | null = $state(null);
@@ -112,6 +115,7 @@
 	}
 
 	function onKey(e: KeyboardEvent) {
+		if (!isTopOverlay(panel)) return;
 		if (e.key === 'Escape') beginClose();
 	}
 
@@ -147,7 +151,7 @@
 		if (swipeId !== null) return;
 		const target = e.target as HTMLElement | null;
 		// Beviteli mezőből induló mozdulatot nem értelmezünk zárásként.
-		if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+		if (target?.closest?.('input, textarea, select, [contenteditable="true"], [data-scrollable-text]')) return;
 		const t = e.changedTouches[0];
 		swipeId = t.identifier;
 		swipeY = t.clientY;
@@ -175,7 +179,7 @@
 <svelte:window onkeydown={render ? onKey : undefined} />
 
 {#if render}
-	<div class="fixed inset-0 z-[70]" role="presentation">
+	<div {@attach fitOverlayViewport} class="overlay-viewport fixed inset-0 z-[70]" role="presentation">
 		<button
 			type="button"
 			tabindex="-1"
@@ -195,7 +199,7 @@
 				aria-modal="true"
 				aria-label={label}
 				class={[
-					'pointer-events-auto relative flex max-h-[92dvh] w-full flex-col bg-white shadow-2xl transition-all outline-none dark:bg-stone-900',
+					'pointer-events-auto relative flex max-h-[92%] w-full flex-col bg-white shadow-2xl transition-all outline-none dark:bg-stone-900',
 					wide ? 'sm:max-w-xl' : 'sm:max-w-md',
 					'rounded-t-(--radius-sheet) sm:rounded-(--radius-sheet)',
 					anim,
@@ -231,6 +235,7 @@
 				</div>
 				<div
 					bind:this={scroller}
+					data-overlay-scroller
 					role="presentation"
 					ontouchstart={contentTouchStart}
 					ontouchend={contentTouchEnd}
@@ -253,9 +258,10 @@
 									{@render header()}
 								{:else}
 									<h2 class="font-display min-w-0 flex-1 text-[20px] leading-snug font-extrabold tracking-tight text-ink-900 dark:text-white">
-										{title}
+										<ScrollableText text={title ?? ''} lines={2} />
 									</h2>
 								{/if}
+								{@render actions?.()}
 								{#if onEdit}
 									<button
 										type="button"
@@ -284,3 +290,8 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	:global(.overlay-viewport[data-keyboard='true']) [role='dialog'] { max-height: calc(100% - 12px); }
+	:global(.overlay-viewport[data-keyboard='true']) [data-overlay-scroller] { scroll-padding-block: 16px; }
+</style>

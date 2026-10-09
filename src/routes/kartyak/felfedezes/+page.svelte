@@ -105,7 +105,7 @@
 	let filterSubjectTitle = $derived(
 		subjectId ? (subjects.find((s) => s.id === subjectId)?.title ?? 'Összes') : 'Összes'
 	);
-	let filterLevelLabel = $derived(subjects.find((s) => s.id === subjectId)?.levelLabel || 'Szint');
+	const filterLevelLabel = 'Tananyag';
 	let filterLevelTitle = $derived(
 		levelId ? (levels.find((l) => l.id === levelId)?.title ?? 'Mindegyik') : 'Mindegyik'
 	);
@@ -197,7 +197,7 @@
 		}
 	}
 
-	/* Leírás sor: ami szűrőként ki van választva (tantárgy/szint), az nem
+	/* Leírás sor: ami szűrőként ki van választva (tantárgy/tananyag), az nem
 	   ismétlődik minden sorban; a lecke sem, ha a cím már tartalmazza
 	   (a hivatalos csomag címe `{leckecím} – kártyák`). */
 	function describe(p: Package): string {
@@ -468,7 +468,7 @@
 		</button>
 		<button type="button" onclick={() => (fPicker = 'level')} disabled={!subjectId} aria-haspopup="dialog" class={pickRowBtn}>
 			<span class="min-w-0 flex-1">
-				<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">{subjectId ? filterLevelLabel : 'Szint'}</span>
+				<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">{subjectId ? filterLevelLabel : 'Tananyag'}</span>
 				<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
 					{subjectId ? filterLevelTitle : 'Előbb válassz tantárgyat'}
 				</span>

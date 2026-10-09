@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureClassContentSchema, type AssignmentSubmission, type AssignmentUpload } from '$lib/server/classroom';
+import { getDb, requireUser } from '$lib/server/db';
+import { type AssignmentSubmission, type AssignmentUpload } from '$lib/server/classroom';
 
 async function checkAccess(db: NonNullable<ReturnType<typeof getDb>>, classroomId: string, userId: string) {
 	const room = await db
@@ -32,8 +32,6 @@ async function uploadsFor(db: NonNullable<ReturnType<typeof getDb>>, assignmentI
 export const GET: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
-	await ensureAuthSchema(db);
-	await ensureClassContentSchema(db);
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	const classroomId = event.params.id ?? '';
@@ -116,8 +114,6 @@ export const GET: RequestHandler = async (event) => {
 export const POST: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
-	await ensureAuthSchema(db);
-	await ensureClassContentSchema(db);
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	const classroomId = event.params.id ?? '';

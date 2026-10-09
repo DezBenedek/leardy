@@ -3,7 +3,7 @@
 	import type { LevelNode, Subject } from '$lib/curriculum';
 	import Sheet from '$lib/ui/Sheet.svelte';
 
-	/* Tantárgy + Szint választó: két vékony kártya egymás mellett,
+	/* Tantárgy + Tananyag választó: két vékony kártya egymás mellett,
 	   Sheet-tel nyíló opciólistával. (Tanulás és Kártyák oldalon közös.) */
 
 	interface Props {
@@ -34,8 +34,8 @@
 
 	let activeSubject = $derived(subjects.find((s) => s.id === subjectId) ?? subjects[0] ?? null);
 	let showAllSubjects = $derived(!!subjectAllLabel && !subjectId);
-	/** A szint-választó címkéje a választott tantárgytól függ ("Szint", "Évfolyam", ...). */
-	let levelLabel = $derived(showAllSubjects ? 'Szint' : activeSubject?.levelLabel || 'Szint');
+	/** A tananyagválasztó egységes címkéje. */
+	const levelLabel = 'Tananyag';
 	let levelLabelLow = $derived(levelLabel.toLowerCase());
 	let activeLevelTitle = $derived(
 		levelId ? (levels.find((l) => l.id === levelId)?.title ?? levelLabel) : `Minden ${levelLabelLow}`

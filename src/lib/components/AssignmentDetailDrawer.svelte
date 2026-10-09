@@ -15,7 +15,7 @@
 		id: string;
 		classroomId: string;
 		title: string;
-		dueDate: number;
+		dueDate: number | null;
 		roomName: string;
 		own: boolean;
 		description: string;
@@ -83,6 +83,7 @@
 	let preview = $state<AssignmentUpload | null>(null);
 
 	function onGradeSaved(userId: string, grade: number | null, feedback: string) {
+		onChanged?.();
 		results = results.map((r) =>
 			r.user_id === userId ? { ...r, grade, feedback, graded_at: grade !== null || feedback !== '' ? Date.now() : null } : r
 		);
@@ -100,7 +101,7 @@
 	}
 
 	let submitted = $derived((mine?.submitted ?? 0) === 1);
-	let pastDue = $derived(assignment !== null && Date.now() > assignment.dueDate);
+	let pastDue = $derived(assignment?.dueDate != null && Date.now() > assignment.dueDate);
 	let images = $derived(uploads.filter((u) => u.kind === 'image'));
 	let audios = $derived(uploads.filter((u) => u.kind === 'audio'));
 	let files = $derived(uploads.filter((u) => u.kind === 'file'));
@@ -282,7 +283,7 @@
 	async function saveText() {
 		const a = assignment;
 		if (!a || saving || a.own) return;
-		if (Date.now() > a.dueDate && (mine?.submitted ?? 0) !== 1) return;
+		if (a.dueDate != null && Date.now() > a.dueDate && (mine?.submitted ?? 0) !== 1) return;
 		saving = true;
 		try {
 			const res = await fetch(`/api/classrooms/${a.classroomId}/assignments/${a.id}/submissions`, {
@@ -342,14 +343,14 @@
 >
 	{#if assignment}
 		{@const a = assignment}
-		{@const late = a.dueDate < Date.now()}
+		{@const late = a.dueDate != null && a.dueDate < Date.now()}
 		<div class="mt-3 grid min-w-0 gap-3 overflow-hidden">
 			{#if a.description}
 				<p class="text-sm leading-relaxed break-words whitespace-pre-line text-stone-600 dark:text-stone-300">{a.description}</p>
 			{/if}
 			<p class="flex items-center gap-1.5 text-[13px] font-bold {late ? 'text-red-600 dark:text-red-300' : 'text-stone-500 dark:text-stone-400'}">
 				<CalendarDays size={14} />
-				{late ? 'Lejárt: ' : 'Határidő: '}{fmtDate(a.dueDate)}
+				{#if a.dueDate != null}{late ? 'Lejárt: ' : 'Határidő: '}{fmtDate(a.dueDate)}{:else}Nincs határidő{/if}
 			</p>
 			{#if loading}
 				<p class="text-[13px] text-stone-400 dark:text-stone-500">Betöltés…</p>

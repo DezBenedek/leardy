@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		Bell,
+		BookOpen,
 		BellOff,
 		BellRing,
 		ChevronRight,
@@ -44,7 +45,7 @@
 
 	let { data }: { data: PageData } = $props();
 
-	type Sheet = null | 'account' | 'notif' | 'theme' | 'cards' | 'storage' | 'about';
+	type Sheet = null | 'account' | 'notif' | 'theme' | 'learning' | 'cards' | 'storage' | 'about';
 	type AccountEdit = null | 'name';
 
 	// Szerveradat a forras az elso paintkor, igy nincs profil-villanas.
@@ -95,6 +96,7 @@
 		account: 'Fiók',
 		notif: 'Értesítések',
 		theme: 'Megjelenés',
+		learning: 'Tanulás',
 		cards: 'Gyakorlás',
 		storage: 'Tárhely',
 		about: 'Névjegy'
@@ -490,6 +492,15 @@
 		</span>
 		<ChevronRight size={19} class="shrink-0 text-stone-300 dark:text-stone-600" />
 	</button>
+	<button type="button" onclick={() => (sheet = 'learning')} class="flex w-full items-center gap-3.5 p-4 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:active:bg-white/10 dark:hover:bg-white/5">
+		<span class={tile}><BookOpen size={22} /></span>
+		<span class="min-w-0 flex-1">
+			<span class="block text-[15px] font-bold text-ink-900 dark:text-white">Tanulás</span>
+			<span class="block text-[13px] text-stone-500 dark:text-stone-400">Bekezdések és szerkesztő</span>
+		</span>
+		<ChevronRight size={18} class="shrink-0 text-stone-400" />
+	</button>
+
 	<button
 		onclick={() => (sheet = 'cards')}
 		class="flex w-full items-center gap-3.5 p-4 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:active:bg-white/10 dark:hover:bg-white/5"
@@ -807,6 +818,25 @@
 					<Toggle bind:checked={settings.compactList} label="Kompakt lista" />
 				</li>
 			</ul>
+		{:else if sheet === 'learning'}
+			<div class="mt-3 divide-y divide-stone-100 dark:divide-white/5">
+				<div class="flex items-center gap-3 py-3">
+					<div class="min-w-0 flex-1">
+						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Minden bekezdés kinyitása</p>
+						<p class="mt-1 text-[13px] text-stone-500 dark:text-stone-400">Kikapcsolva az első bekezdés nyílik ki, és a lecke megjegyzi a választásaidat.</p>
+					</div>
+					<Toggle bind:checked={settings.openAllLessonSections} label="Minden bekezdés kinyitása" />
+				</div>
+				{#if user?.role === 'teacher' || user?.is_admin}
+					<div class="flex items-center gap-3 py-3">
+						<div class="min-w-0 flex-1">
+							<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Szerkesztőmezők teljes magasságban</p>
+							<p class="mt-1 text-[13px] text-stone-500 dark:text-stone-400">A bekezdések teljes tartalma látszik. A mezők külön is összecsukhatók.</p>
+						</div>
+						<Toggle bind:checked={settings.expandEditorTextareas} label="Szerkesztőmezők teljes magasságban" />
+					</div>
+				{/if}
+			</div>
 		{:else if sheet === 'cards'}
 			<ul class="mt-1 divide-y divide-stone-100 dark:divide-white/5">
 				<li class="flex items-center gap-3 py-3">

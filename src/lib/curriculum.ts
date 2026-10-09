@@ -1,4 +1,4 @@
-/* Tanterv-típusok: Tantárgy → Szint → Tananyag → Lecke, szekcióhoz kötött kvízekkel.
+/* Tanterv-típusok: Tantárgy → Tananyag → Témakör → Lecke, szekcióhoz kötött kvízekkel.
    Szerződés a server-oldal (server/curriculum.ts) és a felület között. */
 
 export interface Subject {
@@ -10,7 +10,7 @@ export interface Subject {
 	lessonCount: number;
 	/** Hivatalos kártyacsomagok száma a tantárgyban (kártyaválasztókhoz). */
 	packCount: number;
-	/** A szint-választó címkéje ennél a tantárgynál ("Szint", "Évfolyam", ...). */
+	/** A tananyagválasztó egységes címkéje: Tananyag. */
 	levelLabel: string;
 }
 

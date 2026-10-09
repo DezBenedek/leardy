@@ -22,7 +22,7 @@ async function userIdOf(event: RequestEvent): Promise<string | number | null> {
 /**
  * Böngésző-végpont a Tanulás oldalnak.
  * ?subject= nélkül: tantárgy-lista; ?subject=id esetén a tantárgy fája
- * (?level=id-tel a szintekre szűrve).
+ * (?level=id-tel a tananyagokra szűrve).
  * ?quizcounts=1 esetén kvízszámok is jönnek: tantárgy-listánál
  * quizCountsBySubject, fánál quizCounts (leckénként).
  *

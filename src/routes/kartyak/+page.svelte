@@ -73,10 +73,10 @@
 	let levels = $derived(levelsQ.data ?? []);
 	let library = $derived(libraryQ.data ?? []);
 	let loading = $derived(libraryQ.loading);
-	/** Az új csomag űrlapján a szint-címke a választott tantárgytól függ. */
-	let dLevelLabel = $derived(subjects.find((s) => s.id === dSubject)?.levelLabel || 'Szint');
+	/** Az új csomag űrlapján a tananyag-címke a választott tantárgytól függ. */
+	const dLevelLabel = 'Tananyag';
 
-	/** A lenyílókban csak olyan tantárgy/szint szerepel, amihez van könyvtári csomag. */
+	/** A lenyílókban csak olyan tantárgy/tananyag szerepel, amihez van könyvtári csomag. */
 	let libSubjects = $derived(subjects.filter((s) => library.some((p) => p.subjectId === s.id)));
 	let libLevels = $derived(
 		levels.filter((l) =>
@@ -111,7 +111,7 @@
 	let filterSubjectTitle = $derived(
 		subjectId ? (libSubjects.find((s) => s.id === subjectId)?.title ?? 'Összes') : 'Összes'
 	);
-	let filterLevelLabel = $derived(subjects.find((s) => s.id === subjectId)?.levelLabel || 'Szint');
+	const filterLevelLabel = 'Tananyag';
 	let filterLevelTitle = $derived(
 		levelId ? (libLevels.find((l) => l.id === levelId)?.title ?? 'Mindegyik') : 'Mindegyik'
 	);
@@ -122,7 +122,7 @@
 		(subjectId ? 1 : 0) + (levelId ? 1 : 0) + (origin !== 'all' ? 1 : 0) + (sortId !== 'recent' ? 1 : 0)
 	);
 
-	/** Csomagszám tantárgyanként és szintenként a szűrő-drawer felirataihoz. */
+	/** Csomagszám tantárgyanként és tananyagonként a szűrő-drawer felirataihoz. */
 	let libCountBySubject = $derived.by(() => {
 		const m = new Map<string, number>();
 		for (const p of library) {
@@ -188,7 +188,7 @@
 		return list;
 	});
 
-	/** Leírás sor: ami szűrőként ki van választva (tantárgy/szint), az nem
+	/** Leírás sor: ami szűrőként ki van választva (tantárgy/tananyag), az nem
 	   ismétlődik minden sorban; a csatolt lecke sem, ha a cím már tartalmazza. */
 	function describe(p: Package): string {
 		const kindLabel = deckCardKindLabel(p.cardKind);
@@ -401,7 +401,7 @@
 		}
 	});
 
-	// Visszatöltött szintet az első betöltés nem nullázza, váltáskor igen.
+	// Visszatöltött tananyagot az első betöltés nem nullázza, váltáskor igen.
 	let prevSubject = $state<string | null>(null);
 
 	$effect(() => {
@@ -411,7 +411,7 @@
 		levelsQ.load(id ? `levels:${id}` : null, () => fetchLevelsRaw(id), LEVELS_TTL, LEVELS_STALE);
 	});
 
-	// Mentett szint érvényesítése (csak kártyás szint maradhat).
+	// Mentett tananyag érvényesítése (csak kártyás tananyag maradhat).
 	$effect(() => {
 		if (!libraryQ.data) return;
 		if (levelId && !libLevels.some((l) => l.id === levelId)) levelId = '';

@@ -110,8 +110,8 @@
 
 	let subjectTitle = $derived(subjects.find((s) => s.id === subjectId)?.title ?? '');
 	let levelTitle = $derived(levels.find((l) => l.id === levelId)?.title ?? '');
-	/** A szint-címke a választott tantárgytól függ ("Szint", "Évfolyam", ...). */
-	let levelLabel = $derived(subjects.find((s) => s.id === subjectId)?.levelLabel || 'Szint');
+	/** A tananyagválasztó egységes címkéje. */
+	const levelLabel = 'Tananyag';
 	let levelLabelLow = $derived(levelLabel.toLowerCase());
 
 	let materials = $derived(levels.find((l) => l.id === levelId)?.materials ?? []);
@@ -216,7 +216,7 @@
 					subjectTitle: '',
 					levelId: levelId,
 					levelTitle: '',
-					levelLabel: 'Szint',
+					levelLabel: 'Tananyag',
 					topicId: materialId,
 					topicTitle: '',
 					lessonId: id,

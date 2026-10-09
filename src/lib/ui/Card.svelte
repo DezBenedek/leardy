@@ -26,7 +26,7 @@
 
 	let cls = $derived(
 		[
-			'block rounded-(--radius-card) border transition motion-reduce:transition-none',
+			'block min-w-0 max-w-full rounded-(--radius-card) border transition motion-reduce:transition-none',
 			tones[tone],
 			pads[pad],
 			interactive ? 'hover:bg-stone-50 active:scale-[0.995] dark:hover:bg-white/5 cursor-pointer' : ''

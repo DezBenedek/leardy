@@ -31,10 +31,12 @@
 	let wordsLoading = $derived(wordsQ.data == null && !wordsQ.error);
 
 	type DueQuiz = TaskDetail & { kind: 'quiz' };
-	type DueAssignment = AssignmentDetail & { kind: 'assignment' };
+	type DueAssignment = AssignmentDetail & { dueDate: number } & { kind: 'assignment' };
 	type DueItem = DueQuiz | DueAssignment;
 
-	let tasksQ = new Query<{ tasks: DueItem[] }>();
+	type GradingItem = AssignmentDetail & { kind: 'assignment'; pendingCount: number };
+	let tasksQ = new Query<{ tasks: DueItem[]; grading: GradingItem[] }>();
+	let grading = $derived(tasksQ.data?.grading ?? []);
 
 	let streak = $derived(homeQ.data?.streak ?? null);
 
@@ -43,7 +45,7 @@
 	let tasksFailed = $derived(tasksQ.error);
 
 	let openQuiz = $state<DueQuiz | null>(null);
-	let openAssignment = $state<DueAssignment | null>(null);
+	let openAssignment = $state<AssignmentDetail | null>(null);
 
 	function openDue(t: DueItem) {
 		if (t.kind === 'quiz') openQuiz = t;
@@ -90,7 +92,7 @@
 				const res = await fetch('/api/home/tasks');
 				if (!res.ok) throw new Error('home tasks failed');
 				const j = await res.json();
-				return { tasks: j.tasks ?? [] };
+				return { tasks: j.tasks ?? [], grading: j.grading ?? [] };
 			},
 			HOME_TTL,
 			HOME_STALE
@@ -261,5 +263,24 @@
 	</div>
 </section>
 
-<TaskDetailDrawer task={openQuiz} onClose={() => (openQuiz = null)} onChanged={loadDueTasks} />
-<AssignmentDetailDrawer assignment={openAssignment} onClose={() => (openAssignment = null)} onChanged={loadDueTasks} />
+{#if grading.length > 0}
+	<section aria-label="Értékelendő" class="mt-5">
+		<h2 class="font-display px-1 text-[19px] font-extrabold tracking-tight text-ink-900 dark:text-white">Értékelendő</h2>
+		<div class="mt-2.5 grid gap-2.5">
+			{#each grading as assignment (assignment.id)}
+				<Card onclick={() => (openAssignment = assignment)} ariaLabel={`Értékelendő: ${assignment.title}`}>
+					<span class="flex min-w-0 items-center gap-3">
+						<span class="min-w-0 flex-1">
+							<span class="block break-words [overflow-wrap:anywhere] text-[16px] font-extrabold text-ink-900 dark:text-white">{assignment.title}</span>
+							<span class="mt-1 block break-words text-[13px] text-stone-500 dark:text-stone-400">{assignment.roomName} · {assignment.pendingCount} értékelendő beadás</span>
+						</span>
+						<ChevronRight size={19} class="shrink-0 text-stone-300 dark:text-stone-600" />
+					</span>
+				</Card>
+			{/each}
+		</div>
+	</section>
+{/if}
+
+<TaskDetailDrawer task={openQuiz} onClose={() => (openQuiz = null)} onChanged={() => tasksQ.touch()} />
+<AssignmentDetailDrawer assignment={openAssignment} onClose={() => (openAssignment = null)} onChanged={() => tasksQ.touch()} />

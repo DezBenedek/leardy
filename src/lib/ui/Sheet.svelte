@@ -2,7 +2,8 @@
 	import { browser } from '$app/environment';
 	import { X } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
-	import { lockBody, motionOK } from '$lib/overlay';
+	import { isTopOverlay, lockBody, motionOK } from '$lib/overlay';
+	import { fitOverlayViewport } from '$lib/overlay-viewport';
 
 	interface Props {
 		open: boolean;
@@ -88,6 +89,7 @@
 	}
 
 	function onKey(e: KeyboardEvent) {
+		if (!isTopOverlay(panel)) return;
 		if (e.key === 'Escape') {
 			e.preventDefault();
 			beginClose();
@@ -142,7 +144,7 @@
 		if (swipeId !== null) return;
 		const target = e.target as HTMLElement | null;
 		// Beviteli mezőből induló mozdulatot nem értelmezünk zárásként.
-		if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+		if (target?.closest?.('input, textarea, select, [contenteditable="true"], [data-scrollable-text]')) return;
 		const t = e.changedTouches[0];
 		swipeId = t.identifier;
 		swipeY = t.clientY;
@@ -168,7 +170,7 @@
 </script>
 
 {#if render}
-	<div class="fixed inset-0 z-[70]" role="presentation" onkeydown={onKey}>
+	<div {@attach fitOverlayViewport} class="overlay-viewport fixed inset-0 z-[70]" role="presentation" onkeydown={onKey}>
 		<button
 			type="button"
 			tabindex="-1"
@@ -189,7 +191,7 @@
 				aria-label={title ? undefined : label}
 				aria-labelledby={title ? titleId : undefined}
 				class={[
-					'pointer-events-auto relative flex max-h-[92dvh] w-full flex-col bg-white shadow-2xl outline-none dark:bg-stone-900',
+					'pointer-events-auto relative flex max-h-[92%] w-full flex-col bg-white shadow-2xl outline-none dark:bg-stone-900',
 					wide ? 'sm:max-w-xl' : 'sm:max-w-md',
 					'rounded-t-(--radius-sheet) sm:rounded-(--radius-sheet)',
 					anim,
@@ -214,6 +216,7 @@
 				</div>
 				<div
 					bind:this={scroller}
+					data-overlay-scroller
 					role="presentation"
 					ontouchstart={contentTouchStart}
 					ontouchend={contentTouchEnd}
@@ -248,3 +251,8 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	:global(.overlay-viewport[data-keyboard='true']) [role='dialog'] { max-height: calc(100% - 12px); }
+	:global(.overlay-viewport[data-keyboard='true']) [data-overlay-scroller] { scroll-padding-block: 16px; }
+</style>

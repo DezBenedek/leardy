@@ -1,13 +1,13 @@
 <script lang="ts" module>
-	/** Globális tananyag-választó drawer: Tantárgy, Szint, Témakör, Lecke.
+	/** Globális tananyag-választó drawer: Tantárgy, Tananyag, Témakör, Lecke.
 	    Alapból a tantárgy-listával nyit, de `baseSubjectId`-vel indulhat
 	    rögtön egy tantárgyról. `select` mondja meg, mi választható ki
-	    (lecke, témakör vagy szint); `multi` esetén + / - jelölés és Kész gomb van.
+	    (lecke, témakör vagy tananyag); `multi` esetén + / - jelölés és Kész gomb van.
 	    `onlyWithQuiz` csak a min. 1 kvízes elemeket mutatja.
 	    A `searchable` kapcsolja a keresőt. Az csak a kiválasztott körön belül
-	    keres: tantárgynál és szintnél a megjelenő lista szűrődik,
-	    témakörnél csak a mostani szint, leckénél előbb a mostani témakör,
-	    ha ott nincs találat, akkor az azonos szint másik témakörei.
+	    keres: tantárgynál és tananyagnál a megjelenő lista szűrődik,
+	    témakörnél csak a mostani tananyag, leckénél előbb a mostani témakör,
+	    ha ott nincs találat, akkor az azonos tananyag másik témakörei.
 	    Bárhol használható, oldalgyökérben kell betenni (Drawer). */
 
 	export interface ContentPick {
@@ -76,9 +76,10 @@
 		/** Mentés vagy jogosultságváltozás után megváltozó érték üríti a saját gyorstárat. */
 		cacheVersion?: unknown;
 		selectedLevelId?: string;
+		includeAllLevels?: boolean;
 		selectedSubjectId?: string;
 		searchable?: boolean;
-		/** Például a szerkesztési jogosultság jelzése a szint sorában. */
+		/** Például a szerkesztési jogosultság jelzése a tananyag sorában. */
 		levelNote?: (level: LevelNode) => string;
 		onCreateLevel?: (subjectId: string) => void;
 		multi?: boolean;
@@ -99,6 +100,7 @@
 		initialTree = null,
 		cacheVersion,
 		selectedLevelId = '',
+		includeAllLevels = false,
 		selectedSubjectId = '',
 		searchable = true,
 		levelNote,
@@ -170,10 +172,10 @@
 			trees = {};
 			treeTimes.clear();
 			treeRequests.clear();
-			if (initialTree) {
-				trees = { [initialTree.id]: initialTree };
-				treeTimes.set(initialTree.id, Date.now());
-			}
+		}
+		if (initialTree) {
+			trees = { ...trees, [initialTree.id]: initialTree };
+			treeTimes.set(initialTree.id, Date.now());
 		}
 	}
 
@@ -319,14 +321,14 @@
 	let visibleLevels = $derived(
 		(tree?.levels ?? []).filter((l) => levelPass(l) && matches(l.title))
 	);
-	/** Témakör-találatok: csak a kiválasztott szinten belül. */
+	/** Témakör-találatok: csak a kiválasztott tananyagon belül. */
 	let topicResults = $derived.by<{ m: MaterialNode; l: LevelNode }[]>(() => {
 		return (level?.materials ?? [])
 			.filter((m) => topicPass(m) && matches(m.title))
 			.map((m) => ({ m, l: level as LevelNode }));
 	});
 	/** Lecke-találatok: előbb a mostani témakörben, ha ott nincs, akkor
-	    az azonos szint másik témaköreiben. Másik szintben sosem keres. */
+	    az azonos tananyag másik témaköreiben. Másik tananyagban sosem keres. */
 	let lessonResults = $derived.by<{ le: LessonRef; m: MaterialNode; l: LevelNode; global: boolean }[]>(() => {
 		const inScope = (topic?.lessons ?? []).filter(
 			(le) => (!onlyWithQuiz || quizCountOf(le.id) > 0) && matches(le.title)
@@ -344,7 +346,7 @@
 		}
 		return out;
 	});
-	let levelLabel = $derived(subject?.levelLabel || 'Szint');
+	const levelLabel = 'Tananyag';
 
 	function pushFirstStep(t: SubjectTree | null) {
 		if (select === 'level') { trail = [...trail, 'level']; return; }
@@ -368,16 +370,24 @@
 		if (!open || version !== selectionVersion) return;
 		pendingSubjectId = '';
 		if (select === 'level') return;
-		// Egyszintes fa: a szint-lépést átugorjuk.
+		// Egyszintes fa: a tananyag-lépést átugorjuk.
 		const levels = (t?.levels ?? []).filter((l) => levelPass(l));
 		if (t && levels.length === 1) chooseLevel(levels[0]);
+	}
+
+	function chooseAllLevels() {
+		if (!subject) return;
+		onPick([{ kind: 'level', subjectId: subject.id, subjectTitle: subject.title,
+			levelId: '', levelTitle: 'Minden tananyag', levelLabel: 'Tananyag',
+			topicId: '', topicTitle: '', lessonId: '', lessonTitle: '', quizCount: 0,
+			crumb: subject.title }]);
 	}
 
 	function chooseLevel(l: LevelNode) {
 		if (select === 'level' && subject) {
 			onPick([{
 				kind: 'level', subjectId: subject.id, subjectTitle: subject.title,
-				levelId: l.id, levelTitle: l.title, levelLabel: subject.levelLabel || 'Szint',
+				levelId: l.id, levelTitle: l.title, levelLabel: 'Tananyag',
 				topicId: '', topicTitle: '', lessonId: '', lessonTitle: '', quizCount: 0,
 				crumb: `${subject.title} - ${l.title}`
 			}]);
@@ -387,7 +397,7 @@
 		topic = null;
 		query = '';
 		const mats = l.materials.filter((m) => topicPass(m));
-		// Egytémakörös szint lecke-módban: egyből a leckék.
+		// Egytémakörös tananyag lecke-módban: egyből a leckék.
 		if (select === 'lesson' && mats.length === 1) chooseTopic(l, mats[0], true);
 		else trail = [...trail, 'topic'];
 	}
@@ -442,7 +452,7 @@
 				subjectTitle: subject.title,
 				levelId: l.id,
 				levelTitle: l.title,
-				levelLabel: subject.levelLabel || 'Szint',
+				levelLabel: 'Tananyag',
 				topicId: m.id,
 				topicTitle: m.title,
 				lessonId: '',
@@ -458,7 +468,7 @@
 			subjectTitle: subject.title,
 			levelId: l.id,
 			levelTitle: l.title,
-			levelLabel: subject.levelLabel || 'Szint',
+			levelLabel: 'Tananyag',
 			topicId: m.id,
 			topicTitle: m.title,
 			lessonId: le.id,
@@ -512,7 +522,7 @@
 
 	const stepTitles: Record<Step, string> = {
 		subject: 'Tantárgy',
-		level: 'Szint',
+		level: 'Tananyag',
 		topic: 'Témakör',
 		lesson: 'Lecke'
 	};
@@ -576,6 +586,7 @@
 		{#if query}
 			<button
 				type="button"
+				onpointerdown={(event) => event.preventDefault()}
 				onclick={() => (query = '')}
 				aria-label="Keresés törlése"
 				class="absolute top-1/2 right-2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-stone-400 transition hover:bg-black/5 hover:text-ink-900 dark:hover:bg-white/10 dark:hover:text-white"
@@ -639,7 +650,7 @@
 									{s.title}
 								</span>
 								<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">
-									{select === 'level' ? `${s.levelCount} ${(s.levelLabel || 'Szint').toLowerCase()}` : `${s.lessonCount} lecke`}
+									{select === 'level' ? `${s.levelCount} tananyag` : `${s.lessonCount} lecke`}
 								</span>
 							</span>
 							{#if select === 'level'}
@@ -654,11 +665,21 @@
 	{:else if step === 'level'}
 		{#if searchable}{@render searchBox()}{/if}
 		<ul in:fly={{ x: direction * 24, duration: select === 'level' && animate ? 220 : 0, easing: cubicOut }} class="-mx-1 mt-2 space-y-0.5">
+			{#if includeAllLevels && select === 'level' && subject && !loadingTree}
+				<li class={pillRow(selectedSubjectId === subject.id && selectedLevelId === '')}>
+					<button type="button" onclick={chooseAllLevels} class={rowBtn} aria-pressed={selectedSubjectId === subject.id && selectedLevelId === ''}>
+						<span class={rowTile}><BookOpen size={18} /></span>
+						<span class="min-w-0 flex-1"><span class="block text-[15px] font-extrabold text-ink-900 dark:text-white">Minden tananyag</span><span class="block text-[12px] text-stone-500 dark:text-stone-400">A teljes tantárgy</span></span>
+						{#if selectedSubjectId === subject.id && selectedLevelId === ''}<Check size={18} class="shrink-0 text-brand-600" />{/if}
+					</button>
+				</li>
+			{/if}
+
 			{#if loadingTree && !tree}
 				{@render skeletonRows()}
 			{:else if treeError}
 				<li class="p-2 text-sm text-stone-500 dark:text-stone-400">
-					<p>Nem sikerült betölteni a szinteket.</p>
+					<p>Nem sikerült betölteni a tananyagokat.</p>
 					<button type="button" onclick={() => { if (subject) void ensureTree(subject.id); }} class="mt-2 rounded-xl px-3 py-2 font-semibold text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-white/5">Újrapróbálás</button>
 				</li>
 			{:else if visibleLevels.length === 0}

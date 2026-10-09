@@ -95,7 +95,8 @@
 				{#if query}
 					<button
 						type="button"
-						onclick={() => (query = '')}
+						onpointerdown={(event) => event.preventDefault()}
+				onclick={() => (query = '')}
 						aria-label="Keresés törlése"
 						class="absolute top-1/2 right-2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-stone-400 transition hover:bg-black/5 hover:text-ink-900 dark:hover:bg-white/10 dark:hover:text-white"
 					>

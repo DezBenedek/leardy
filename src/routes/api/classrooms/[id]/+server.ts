@@ -1,13 +1,10 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureClassContentSchema } from '$lib/server/classroom';
+import { getDb, requireUser } from '$lib/server/db';
 
 /* Osztálybeállítások: csak a saját tanár. PATCH { name?, subject?, description? }, DELETE. */
 export const PATCH: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
-	await ensureAuthSchema(db);
-	await ensureClassContentSchema(db);
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	const id = event.params.id ?? '';
@@ -53,8 +50,6 @@ export const PATCH: RequestHandler = async (event) => {
 export const DELETE: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
-	await ensureAuthSchema(db);
-	await ensureClassContentSchema(db);
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	const id = event.params.id ?? '';

@@ -267,6 +267,51 @@ test('A lecke törlése a kapcsolt hivatalos kvízeket is eltávolítja', async 
 	} finally { db.sqlite.close(); }
 });
 
+test('A témakör törlése minden leckéjét és kapcsolt tartalmát törli, a többi témakört megőrzi', async () => {
+	const db = testDb();
+	try {
+		const fixture = await createFixture(db);
+		const other = await createFixture(db);
+		const { id: siblingTopic } = await mutateCurriculum(db, owner, { action: 'createTopic', ...fixture, title: 'Megmaradó témakör' });
+		const { id: siblingLesson } = await mutateCurriculum(db, owner, { action: 'createLesson', ...fixture, topicId: siblingTopic, title: 'Megmaradó lecke' });
+		await mutateCurriculum(db, owner, { action: 'createLesson', ...fixture, title: 'Második törlendő lecke' });
+		db.sqlite.prepare("INSERT INTO quizzes (id, lesson_id, title) VALUES ('topic-quiz', ?, 'Kvíz')").run(fixture.lessonId);
+		db.sqlite.prepare("INSERT INTO quiz_questions (id, quiz_id, question_text) VALUES ('topic-question', 'topic-quiz', 'Kérdés')").run();
+		db.sqlite.prepare("INSERT INTO lesson_cards (id, lesson_id, front, back) VALUES ('topic-card', ?, 'Kérdés', 'Válasz')").run(fixture.lessonId);
+		db.sqlite.prepare("INSERT INTO lesson_card_packs (id, lesson_id, title) VALUES ('topic-pack', ?, 'Csomag')").run(fixture.lessonId);
+		await mutateCurriculum(db, owner, { action: 'deleteTopic', levelId: fixture.levelId, topicId: fixture.topicId });
+		assert.equal(db.sqlite.prepare('SELECT id FROM materials WHERE id = ?').get(fixture.topicId), undefined);
+		assert.deepEqual(db.sqlite.prepare('SELECT id FROM lessons WHERE material_id = ?').all(fixture.topicId), []);
+		for (const [table, id] of [['quizzes', 'topic-quiz'], ['quiz_questions', 'topic-question'], ['lesson_cards', 'topic-card'], ['lesson_card_packs', 'topic-pack']]) {
+			assert.equal(db.sqlite.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(id), undefined);
+		}
+		assert.equal((await getEditorLesson(db, owner, siblingLesson)).id, siblingLesson);
+		assert.equal((await getEditorLesson(db, owner, other.lessonId)).id, other.lessonId);
+		const level = (await getEditorLevels(db, owner, fixture.subjectId)).find((item) => item.id === fixture.levelId);
+		assert.deepEqual(level.materials.map((item) => item.id), [siblingTopic]);
+		assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+	} finally { db.sqlite.close(); }
+});
+
+test('Témakört csak az adott tananyag szerkesztője törölhet, idegen és hiányzó azonosító elutasítva', async () => {
+	const db = testDb();
+	try {
+		const a = await createFixture(db);
+		const b = await createFixture(db);
+		await assert.rejects(mutateCurriculum(db, editor, { action: 'deleteTopic', ...a }), failsWith(403));
+		await assert.rejects(mutateCurriculum(db, student, { action: 'deleteTopic', ...a }), failsWith(403));
+		await assert.rejects(mutateCurriculum(db, owner, { action: 'deleteTopic', levelId: a.levelId, topicId: b.topicId }), failsWith(404));
+		await assert.rejects(mutateCurriculum(db, owner, { action: 'deleteTopic', levelId: a.levelId, topicId: 'missing-topic' }), failsWith(404));
+		await assert.rejects(mutateCurriculum(db, owner, { action: 'deleteTopic', levelId: a.levelId }), failsWith(400));
+		assert.equal((await getEditorLesson(db, owner, a.lessonId)).id, a.lessonId);
+		assert.equal((await getEditorLesson(db, owner, b.lessonId)).id, b.lessonId);
+		await mutateCurriculum(db, owner, { action: 'addEditor', ...a, email: editor.email });
+		await mutateCurriculum(db, editor, { action: 'deleteTopic', ...a });
+		await assert.rejects(getEditorLesson(db, owner, a.lessonId), failsWith(404));
+		await assert.rejects(mutateCurriculum(db, owner, { action: 'deleteTopic', ...a }), failsWith(404));
+	} finally { db.sqlite.close(); }
+});
+
 test('A bevezetés és a címsorok nélküli tartalom is megmarad a bekezdésszerkesztőben', () => {
 	const source = 'Bevezető szöveg\n\n## Első cím\n\n**Tartalom**\n\n## Második cím\n\n- Lista';
 	assert.deepEqual(parseEditableSections(serializeEditableSections(parseEditableSections(source))), parseEditableSections(source));

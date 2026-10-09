@@ -29,15 +29,15 @@ export async function requireLevelEditor(db: D1Database, user: PublicUser, level
 		FROM levels l LEFT JOIN level_settings ls ON ls.level_id = l.id
 		LEFT JOIN users u ON u.id = ls.owner_id WHERE l.id = ?`)
 		.bind(levelId).first<{ id: string; subject_id: string; owner_id: string | null; published: number; owner_email: string | null }>();
-	if (!level) error(404, 'Nincs ilyen szint.');
+	if (!level) error(404, 'Nincs ilyen tananyag.');
 	if (user.is_admin || level.owner_id === user.id) return level;
 	const editor = await db.prepare('SELECT 1 FROM level_editors WHERE level_id = ? AND email = ?')
 		.bind(levelId, user.email.trim().toLowerCase()).first();
-	if (!editor) error(403, 'Ehhez a szinthez nincs szerkesztési jogosultságod.');
+	if (!editor) error(403, 'Ehhez a tananyaghoz nincs szerkesztési jogosultságod.');
 	return level;
 }
 
-/** A tantárgyválasztó csak a felhasználó által szerkeszthető szinteket számolja. */
+/** A tantárgyválasztó csak a felhasználó által szerkeszthető tananyagokat számolja. */
 export async function countEditorLevelsBySubject(db: D1Database, user: PublicUser): Promise<Record<string, number>> {
 	const rows = await db.prepare(`SELECT l.subject_id, COUNT(*) AS count
 		FROM levels l LEFT JOIN level_settings ls ON ls.level_id = l.id
@@ -129,11 +129,11 @@ function emailField(body: Record<string, unknown>): string {
 	return email;
 }
 
-/** Minden írás ugyanazt a szinthez kötött jogosultságvizsgálatot használja. */
+/** Minden írás ugyanazt a tananyaghoz kötött jogosultságvizsgálatot használja. */
 export async function mutateCurriculum(db: D1Database, user: PublicUser, body: Record<string, unknown>) {
 	const action = body.action;
 	if (action === 'createLevel') {
-		if (!canCreateLevel(user)) error(403, 'Új szintet tanár hozhat létre.');
+		if (!canCreateLevel(user)) error(403, 'Új tananyagot tanár hozhat létre.');
 		const subjectId = textField(body, 'subjectId');
 		const title = textField(body, 'title');
 		if (!await db.prepare('SELECT id FROM subjects WHERE id = ?').bind(subjectId).first()) error(404, 'Nincs ilyen tantárgy.');
@@ -176,9 +176,13 @@ export async function mutateCurriculum(db: D1Database, user: PublicUser, body: R
 			.bind(id, levelId, textField(body, 'title'), levelId).run();
 		return { id };
 	}
-	if (action === 'renameTopic' || action === 'createLesson') {
+	if (action === 'renameTopic' || action === 'createLesson' || action === 'deleteTopic') {
 		const topicId = textField(body, 'topicId');
-		if (!await db.prepare('SELECT id FROM materials WHERE id = ? AND level_id = ?').bind(topicId, levelId).first()) error(404, 'Nincs ilyen témakör ezen a szinten.');
+		if (!await db.prepare('SELECT id FROM materials WHERE id = ? AND level_id = ?').bind(topicId, levelId).first()) error(404, 'Nincs ilyen témakör ezen a tananyagban.');
+		if (action === 'deleteTopic') {
+			await db.prepare('DELETE FROM materials WHERE id = ? AND level_id = ?').bind(topicId, levelId).run();
+			return {};
+		}
 		const title = textField(body, 'title');
 		if (action === 'renameTopic') {
 			await db.prepare('UPDATE materials SET title = ? WHERE id = ? AND level_id = ?').bind(title, topicId, levelId).run();
@@ -194,7 +198,7 @@ export async function mutateCurriculum(db: D1Database, user: PublicUser, body: R
 		if (!Array.isArray(ids) || ids.length > 500 || ids.some((id) => typeof id !== 'string') || new Set(ids).size !== ids.length) error(400, 'Érvénytelen sorrend.');
 		const topics = action === 'reorderTopics';
 		const parentId = topics ? levelId : textField(body, 'topicId');
-		if (!topics && !await db.prepare('SELECT id FROM materials WHERE id = ? AND level_id = ?').bind(parentId, levelId).first()) error(404, 'Nincs ilyen témakör ezen a szinten.');
+		if (!topics && !await db.prepare('SELECT id FROM materials WHERE id = ? AND level_id = ?').bind(parentId, levelId).first()) error(404, 'Nincs ilyen témakör ezen a tananyagban.');
 		const table = topics ? 'materials' : 'lessons';
 		const parent = topics ? 'level_id' : 'material_id';
 		const existing = await db.prepare(`SELECT id FROM ${table} WHERE ${parent} = ?`).bind(parentId).all<{ id: string }>();
@@ -205,7 +209,7 @@ export async function mutateCurriculum(db: D1Database, user: PublicUser, body: R
 	if (action === 'saveLesson' || action === 'deleteLesson') {
 		const lessonId = textField(body, 'lessonId');
 		const lesson = await getEditorLesson(db, user, lessonId);
-		if (lesson.levelId !== levelId) error(404, 'Nincs ilyen lecke ezen a szinten.');
+		if (lesson.levelId !== levelId) error(404, 'Nincs ilyen lecke ezen a tananyagban.');
 		if (action === 'deleteLesson') {
 			await db.prepare('DELETE FROM lessons WHERE id = ?').bind(lessonId).run();
 			return {};

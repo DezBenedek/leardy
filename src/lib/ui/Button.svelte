@@ -9,6 +9,7 @@
 		size?: Size;
 		href?: string;
 		type?: 'button' | 'submit' | 'reset';
+		form?: string;
 		disabled?: boolean;
 		busy?: boolean;
 		block?: boolean;
@@ -22,6 +23,7 @@
 		size = 'md',
 		href,
 		type = 'button',
+		form,
 		disabled = false,
 		busy = false,
 		block = false,
@@ -66,7 +68,7 @@
 		{@render children()}
 	</a>
 {:else}
-	<button {type} class={cls} disabled={isDisabled} aria-label={ariaLabel} aria-busy={busy} {onclick}>
+	<button {type} {form} class={cls} disabled={isDisabled} aria-label={ariaLabel} aria-busy={busy} {onclick}>
 		{@render children()}
 	</button>
 {/if}

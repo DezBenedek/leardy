@@ -2,7 +2,7 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 import { getDb, requireUser } from '$lib/server/db';
 
 /* Kezdőlap: a felhasználó határidős feladatai időrendi sorrendben.
-   Kvízfeladatok és beadandók, saját (tanított) és csatlakozott osztályokból.
+   Kvízfeladatok és beadandók, csatlakozott osztályokból. A saját osztályokban külön az értékelendő beadandókat adjuk vissza.
    Beadott (submitted) tételek már nem jelennek meg.
    A drawerhez a leckék, a cél, a leírás, a követelmények és a tanár-jelölés is jár. */
 export const GET: RequestHandler = async (event) => {
@@ -30,8 +30,8 @@ export const GET: RequestHandler = async (event) => {
 					LEFT JOIN task_submissions s ON s.task_id = t.id AND s.user_id = ?
 					WHERE t.due_date IS NOT NULL
 					  AND COALESCE(s.submitted, 0) = 0
-					  AND (c.teacher_id = ?
-					       OR EXISTS (SELECT 1 FROM classroom_members m
+					  AND c.teacher_id <> ?
+					  AND (EXISTS (SELECT 1 FROM classroom_members m
 					                  WHERE m.classroom_id = c.id AND m.user_id = ?))
 					UNION ALL
 					SELECT 'assignment' AS kind, a.id, a.classroom_id, a.title, a.due_date,
@@ -44,8 +44,8 @@ export const GET: RequestHandler = async (event) => {
 					LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.user_id = ?
 					WHERE a.due_date IS NOT NULL
 					  AND COALESCE(s.submitted, 0) = 0
-					  AND (c.teacher_id = ?
-					       OR EXISTS (SELECT 1 FROM classroom_members m
+					  AND c.teacher_id <> ?
+					  AND (EXISTS (SELECT 1 FROM classroom_members m
 					                  WHERE m.classroom_id = c.id AND m.user_id = ?))
 				 )
 				 ORDER BY due_date ASC
@@ -86,8 +86,32 @@ export const GET: RequestHandler = async (event) => {
 			require_files: r.require_files ?? 0,
 			require_audio: r.require_audio ?? 0
 		}));
+		const gradingRows = await db.prepare(`
+			SELECT a.id, a.classroom_id, a.title, a.due_date, c.name AS room_name,
+				a.description, a.require_text, a.require_images, a.require_files, a.require_audio,
+				COUNT(*) AS pending_count
+			FROM classroom_assignments a
+			JOIN classrooms c ON c.id = a.classroom_id
+			JOIN assignment_submissions s ON s.assignment_id = a.id
+			JOIN classroom_members m ON m.classroom_id = c.id AND m.user_id = s.user_id
+			WHERE c.teacher_id = ? AND s.submitted = 1 AND s.graded_at IS NULL
+			GROUP BY a.id
+			ORDER BY MIN(s.submitted_at) ASC
+			LIMIT 20
+		`).bind(user.id).all<{
+			id: string; classroom_id: string; title: string; due_date: number | null;
+			room_name: string; description: string; require_text: number; require_images: number;
+			require_files: number; require_audio: number; pending_count: number;
+		}>();
+		const grading = (gradingRows.results ?? []).map((r) => ({
+			kind: 'assignment' as const, id: r.id, classroomId: r.classroom_id,
+			title: r.title, dueDate: r.due_date, roomName: r.room_name, own: true,
+			description: r.description, require_text: r.require_text, require_images: r.require_images,
+			require_files: r.require_files, require_audio: r.require_audio, pendingCount: r.pending_count
+		}));
+
 		return json(
-			{ tasks },
+			{ tasks, grading },
 			{ status: 200, headers: { 'cache-control': 'private, no-store' } }
 		);
 	} catch (e) {

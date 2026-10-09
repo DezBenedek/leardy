@@ -42,7 +42,7 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 				id TEXT PRIMARY KEY,
 				title TEXT NOT NULL,
 				icon TEXT NOT NULL DEFAULT 'book',
-				level_label TEXT NOT NULL DEFAULT 'Szint',
+				level_label TEXT NOT NULL DEFAULT 'Tananyag',
 				sort INTEGER NOT NULL DEFAULT 0,
 				created_at INTEGER NOT NULL
 			)`
@@ -256,9 +256,9 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 	} catch {
 		// az oszlop már létezik
 	}
-	// Tantárgyankénti szint-címke ("Szint", "Évfolyam", ...), utólagos bővítés.
+	// A tananyagválasztó címkéjének utólagos bővítése.
 	try {
-		await db.prepare(`ALTER TABLE subjects ADD COLUMN level_label TEXT NOT NULL DEFAULT 'Szint'`).run();
+		await db.prepare(`ALTER TABLE subjects ADD COLUMN level_label TEXT NOT NULL DEFAULT 'Tananyag'`).run();
 	} catch {
 		// az oszlop már létezik
 	}
@@ -570,7 +570,7 @@ export async function listSubjects(dbOrEvent: DbOrEvent): Promise<Subject[]> {
 	const [subjectsRes, levelCountRes, lessonCountRes, packCountRes] = await db.batch([
 		db.prepare(
 			`SELECT id, title, COALESCE(icon, 'book') AS icon, COALESCE(sort, 0) AS sort,
-				COALESCE(level_label, 'Szint') AS levelLabel
+				COALESCE(level_label, 'Tananyag') AS levelLabel
 				FROM subjects
 				ORDER BY sort, title`
 		),
@@ -617,7 +617,7 @@ export async function listSubjects(dbOrEvent: DbOrEvent): Promise<Subject[]> {
 		levelCount: levelCounts.get(r.id) ?? 0,
 		lessonCount: lessonCounts.get(r.id) ?? 0,
 		packCount: packCounts.get(r.id) ?? 0,
-		levelLabel: r.levelLabel || 'Szint'
+		levelLabel: 'Tananyag'
 	}));
 }
 
@@ -692,7 +692,7 @@ export async function getSubjectTree(
 		db
 			.prepare(
 				`SELECT id, title, COALESCE(icon, 'book') AS icon, COALESCE(sort, 0) AS sort,
-				COALESCE(level_label, 'Szint') AS levelLabel FROM subjects WHERE id = ?`
+				COALESCE(level_label, 'Tananyag') AS levelLabel FROM subjects WHERE id = ?`
 			)
 			.bind(subjectId),
 		db
@@ -809,7 +809,7 @@ export async function getSubjectTree(
 		title: subject.title,
 		icon: subject.icon ?? 'book',
 		sort: subject.sort ?? 0,
-		levelLabel: subject.levelLabel || 'Szint',
+		levelLabel: 'Tananyag',
 		levelCount: levelNodes.length,
 		lessonCount,
 		packCount:

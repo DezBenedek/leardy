@@ -4,7 +4,7 @@ import { editorContext, searchEditorCandidates } from '$lib/server/curriculum-ed
 export const GET: RequestHandler = async (event) => {
 	const { db, user } = await editorContext(event);
 	const levelId = event.url.searchParams.get('level') ?? '';
-	if (!levelId) error(400, 'Válassz szintet.');
+	if (!levelId) error(400, 'Válassz tananyagot.');
 	const users = await searchEditorCandidates(db, user, levelId, event.url.searchParams.get('q') ?? '', 9);
 	return json({ users: users.slice(0, 8), hasMore: users.length > 8 }, { headers: { 'cache-control': 'no-store' } });
 };

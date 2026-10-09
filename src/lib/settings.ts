@@ -29,6 +29,10 @@ export interface AppSettings {
 	reduceMotion: boolean;
 	/** Kompakt lista: sűrűbb kártya- és leckelista. */
 	compactList: boolean;
+	/** Minden bekezdés kinyitása a lecke megnyitásakor. */
+	openAllLessonSections: boolean;
+	/** A szerkesztő tartalommezői teljes magasságban indulnak. */
+	expandEditorTextareas: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -45,7 +49,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
 	quickQuizCount: 10,
 	fontFamily: 'system',
 	reduceMotion: false,
-	compactList: false
+	compactList: false,
+	openAllLessonSections: false,
+	expandEditorTextareas: false
 };
 
 function clampCount(n: unknown): number {
@@ -92,7 +98,9 @@ export function loadSettings(): AppSettings {
 			quickQuizCount: clampCount(parsed.quickQuizCount),
 			fontFamily: clampFontFamily(parsed.fontFamily),
 			reduceMotion: parsed.reduceMotion ?? DEFAULT_SETTINGS.reduceMotion,
-			compactList: parsed.compactList ?? DEFAULT_SETTINGS.compactList
+			compactList: parsed.compactList ?? DEFAULT_SETTINGS.compactList,
+			openAllLessonSections: parsed.openAllLessonSections === true,
+			expandEditorTextareas: parsed.expandEditorTextareas === true
 		};
 	} catch {
 		return { ...DEFAULT_SETTINGS };

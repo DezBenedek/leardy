@@ -41,3 +41,11 @@ export function motionOK(): boolean {
 	}
 	return true;
 }
+
+/** Egymás fölötti panelekből csak a legfelső kezelje az Escape billentyűt. */
+export function isTopOverlay(panel: HTMLElement | null): boolean {
+	if (!panel) return false;
+	const dialogs = [...document.querySelectorAll<HTMLElement>('[aria-modal="true"]')]
+		.filter((dialog) => dialog.getClientRects().length > 0);
+	return dialogs.at(-1) === panel;
+}

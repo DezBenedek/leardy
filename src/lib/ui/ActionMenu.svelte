@@ -18,11 +18,12 @@
 <script lang="ts">
 	import { Ellipsis } from '@lucide/svelte';
 	import IconButton from './IconButton.svelte';
-	let { actions, label = 'Műveletek', disabled = false, compact = false }: {
+	let { actions, label = 'Műveletek', disabled = false, compact = false, menuIconsOnly = false }: {
 		actions: ActionMenuItem[];
 		label?: string;
 		disabled?: boolean;
 		compact?: boolean;
+		menuIconsOnly?: boolean;
 	} = $props();
 	let open = $state(false);
 	let root: HTMLElement | undefined = $state();
@@ -52,16 +53,16 @@
 
 <svelte:window onpointerdown={outside} onkeydown={keydown} />
 
-{#snippet actionButton(action: ActionMenuItem)}
+{#snippet actionButton(action: ActionMenuItem, iconOnly = false)}
 	<button type="button" aria-label={action.label} title={action.label} disabled={disabled || action.disabled}
 		onclick={() => run(action)}
 		class={['action-button', action.tone === 'danger' ? 'text-red-600 dark:text-red-400' : 'text-ink-600 dark:text-stone-300']}>
 		<action.icon size={20} aria-hidden="true" />
-		<span>{action.label}</span>
+		{#if !iconOnly}<span>{action.label}</span>{/if}
 	</button>
 {/snippet}
 
-<div bind:this={root} class={['actions', { compact }]} data-open={open}>
+<div bind:this={root} class={['actions', { compact, 'icons-only': menuIconsOnly }]} data-open={open}>
 	{#each expandable as action (action.id)}
 		<div class="promoted" data-size={action.promote}>
 			{#if action.iconOnly}
@@ -87,7 +88,7 @@
 			<div {id} class="dropdown" inert={!open} aria-hidden={!open}>
 				{#each actions as action, index (action.id)}
 					<div class="dropdown-action" data-size={action.promote} style:--order={index}>
-						{@render actionButton(action)}
+						{@render actionButton(action, menuIconsOnly)}
 					</div>
 				{/each}
 			</div>
@@ -123,6 +124,9 @@
 	:global(.dark) .dropdown-shell { border-color: rgb(255 255 255 / .1); background: var(--color-stone-900); box-shadow: 0 16px 40px rgb(0 0 0 / .4); }
 	.dropdown { display: grid; gap: 8px; }
 	.dropdown .action-button { width: 100%; min-height: 50px; justify-content: flex-start; gap: 12px; padding: 12px 16px; font-size: 15px; }
+	.icons-only .dropdown-shell { width: max-content; }
+	.icons-only .dropdown { grid-auto-flow: column; }
+	.icons-only .dropdown .action-button { width: 44px; min-height: 44px; justify-content: center; padding: 10px; }
 	.dropdown-action { opacity: 0; transform: translateY(-6px); transition: opacity 180ms, transform 220ms cubic-bezier(.22,1,.36,1); transition-delay: 0ms; }
 	[data-open='true'] .dropdown-shell { visibility: visible; opacity: 1; transform: translateY(0); pointer-events: auto; }
 	[data-open='true'] .dropdown-action { opacity: 1; transform: translateY(0) scale(1); transition-delay: calc(var(--order) * 45ms); }

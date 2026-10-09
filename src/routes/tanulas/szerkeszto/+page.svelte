@@ -20,6 +20,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
+	import ActionMenu from '$lib/ui/ActionMenu.svelte';
 	import SearchInput from '$lib/ui/SearchInput.svelte';
 	import Switch from '$lib/ui/Switch.svelte';
 	import type { PageData } from './$types';
@@ -51,6 +52,7 @@
 	let editorSearchTimer: ReturnType<typeof setTimeout> | undefined;
 	let editorSearchController: AbortController | undefined;
 	let nameDialog = $state<{ action: 'createLevel' | 'createTopic' | 'renameTopic' | 'createLesson'; title: string; topicId?: string; subjectId?: string } | null>(null);
+	let deleteTopicDialog = $state<{ topicId: string; levelId: string; title: string } | null>(null);
 	let name = $state('');
 	let formError = $state('');
 	const fieldClass = 'mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-3 text-ink-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-white/15 dark:bg-white/5 dark:text-white';
@@ -82,13 +84,13 @@
 			saveScope(scopeKey, { subject: data.subjectId, level: data.levelId });
 			return;
 		}
-		// A konkrét szintet megadó link mindig elsőbbséget kap.
+		// A konkrét tananyagot megadó link mindig elsőbbséget kap.
 		if (!to || to.url.searchParams.get('level')) return;
 		const saved = loadScope(scopeKey);
 		const requestedSubject = to.url.searchParams.get('subject');
 		if (!saved.subject || !saved.level || (requestedSubject && requestedSubject !== saved.subject)) return;
 		try {
-			// A mentett szintet is a jelenlegi szerkesztési jogosultságokkal ellenőrizzük.
+			// A mentett tananyagot is a jelenlegi szerkesztési jogosultságokkal ellenőrizzük.
 			const levels = data.subjectId === saved.subject ? data.levels : (await loadEditorTree(saved.subject))?.levels;
 			if (version !== scopeRestoreVersion || !levels?.some((item) => item.id === saved.level)) return;
 			await goto(resolve(editorUrl(saved.subject, saved.level)), { replaceState: true, keepFocus: true, noScroll: true });
@@ -156,7 +158,7 @@
 		if (!selected) return null;
 		const response = await fetch(`/api/curriculum?${new URLSearchParams({ subject: subjectId })}`, { cache: 'no-store' });
 		const result = await response.json();
-		if (!response.ok) throw new Error(result.message ?? 'Nem sikerült betölteni a szinteket.');
+		if (!response.ok) throw new Error(result.message ?? 'Nem sikerült betölteni a tananyagokat.');
 		const levels = (result.levels as EditorLevel[]).filter((item) => item.canEdit);
 		return { ...selected, levels, levelCount: levels.length };
 	}
@@ -167,10 +169,9 @@
 	}
 
 	function createLevel(subjectId: string) {
-		const selected = data.subjects.find((item) => item.id === subjectId);
 		scopeSubjectId = subjectId;
 		scopeOpen = false;
-		openName('createLevel', `Új ${(selected?.levelLabel ?? 'szint').toLowerCase()}`);
+		openName('createLevel', 'Új tananyag');
 		if (nameDialog) nameDialog.subjectId = subjectId;
 	}
 
@@ -207,6 +208,31 @@
 		finally { busy = false; }
 	}
 
+	function openDeleteTopic(topicId: string, title: string) {
+		if (!level?.canEdit || busy || navigating) return;
+		deleteTopicDialog = { topicId, levelId: level.id, title };
+	}
+
+	async function deleteTopic() {
+		if (!deleteTopicDialog || busy || navigating) return;
+		const dialog = deleteTopicDialog;
+		if (!level?.canEdit || level.id !== dialog.levelId) {
+			deleteTopicDialog = null;
+			return;
+		}
+		busy = true;
+		try {
+			await editCurriculum({ action: 'deleteTopic', levelId: dialog.levelId, topicId: dialog.topicId });
+			await invalidateAll();
+			toast.success('A témakör törölve');
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : 'Nem sikerült törölni a témakört.');
+		} finally {
+			deleteTopicDialog = null;
+			busy = false;
+		}
+	}
+
 	function openSettings() {
 		if (!level?.canEdit) return;
 		levelName = level.title;
@@ -225,7 +251,7 @@
 			await editCurriculum({ action: 'updateLevel', levelId: level.id, title: levelName, published });
 			await invalidateAll();
 			settingsOpen = false;
-			toast.success('A szint beállításai mentve');
+			toast.success('A tananyag beállításai mentve');
 		} catch (err) { formError = err instanceof Error ? err.message : 'Nem sikerült menteni.'; }
 		finally { busy = false; }
 	}
@@ -314,7 +340,7 @@
 	<h1 class={['min-w-0 shrink-0 overflow-hidden transition-[max-width,opacity] duration-200 motion-reduce:transition-none', !level && 'flex-1']} style:max-width={searchFocus ? '0px' : level ? 'calc(100% - 214px)' : 'calc(100% - 52px)'} style:opacity={searchFocus ? 0 : 1}>
 		<button
 			type="button"
-			aria-label={level ? `Tantárgy és szint választása: ${subject?.title}, ${level.title}` : 'Tantárgy és szint választása'}
+			aria-label={level ? `Tantárgy és tananyag választása: ${subject?.title}, ${level.title}` : 'Tantárgy és tananyag választása'}
 			aria-haspopup="dialog"
 			aria-expanded={scopeOpen}
 			title={level ? `${subject?.title}: ${level.title}` : 'Tananyag választása'}
@@ -323,7 +349,7 @@
 			class="flex w-full min-w-0 items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 py-2 text-left transition hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none motion-reduce:active:scale-100 dark:border-white/10 dark:bg-stone-900 dark:hover:bg-white/5"
 		>
 			<span class="min-w-0 flex-1">
-				<span class="block truncate text-[11px] font-bold tracking-wider text-stone-400 uppercase dark:text-stone-500">{subject?.title ?? 'Tantárgy és szint'}</span>
+				<span class="block truncate text-[11px] font-bold tracking-wider text-stone-400 uppercase dark:text-stone-500">{subject?.title ?? 'Tantárgy és tananyag'}</span>
 				<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">{level?.title ?? 'Válassz tananyagot'}</span>
 			</span>
 			<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
@@ -335,22 +361,22 @@
 			<IconButton ariaLabel={ordering ? 'Sorrendmódosítás bezárása' : 'Sorrend módosítása'} size={46} disabled={!level.canEdit || busy || navigating || searchFocus} onclick={toggleOrdering}><ArrowUpDown size={21} /></IconButton>
 		</div>
 		<div class="shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none" style:width={searchFocus ? '0px' : '46px'} style:opacity={searchFocus ? 0 : 1}>
-			<IconButton ariaLabel="A szint beállításai" size={46} disabled={!level.canEdit || busy || navigating || searchFocus} onclick={openSettings}><Settings size={21} /></IconButton>
+			<IconButton ariaLabel="A tananyag beállításai" size={46} disabled={!level.canEdit || busy || navigating || searchFocus} onclick={openSettings}><Settings size={21} /></IconButton>
 		</div>
 	{/if}
 </header>
 
 {#if level && !level.canEdit}
 	<div class="mt-4 rounded-2xl bg-stone-100 p-4 text-sm text-stone-600 dark:bg-white/5 dark:text-stone-300">
-		<p>Ezt a szintet csak a szerkesztői módosíthatják.</p>
-		{#if data.canCreate}<div class="mt-3"><Button size="sm" onclick={() => openName('createLevel', 'Új saját szint')}><Plus size={16} /> Saját szint létrehozása</Button></div>{/if}
+		<p>Ezt a tananyagot csak a szerkesztői módosíthatják.</p>
+		{#if data.canCreate}<div class="mt-3"><Button size="sm" onclick={() => openName('createLevel', 'Új saját tananyag')}><Plus size={16} /> Saját tananyag létrehozása</Button></div>{/if}
 	</div>
 {/if}
 
 <div class="mt-5 space-y-4" aria-busy={busy || navigating}>
 	{#each filteredTopics as topic (topic.id)}
 		{@const topicIndex = level?.materials.findIndex((item) => item.id === topic.id) ?? 0}
-		<section class="overflow-hidden rounded-3xl border border-stone-200 bg-white dark:border-white/10 dark:bg-stone-900">
+		<section class="rounded-3xl border border-stone-200 bg-white dark:border-white/10 dark:bg-stone-900">
 			<div class="flex items-center gap-2 border-b border-stone-100 p-4 dark:border-white/10">
 				<span class="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"><BookOpenText size={18} /></span>
 				<h2 class="min-w-0 flex-1 break-words text-base font-extrabold text-ink-900 dark:text-white">{topic.title}</h2>
@@ -362,8 +388,11 @@
 						<IconButton ariaLabel="Témakör lejjebb: {topic.title}" size={44} disabled={busy || topicIndex === level.materials.length - 1} onclick={() => { void move('topic', topic.id, 1); }}><ArrowDown size={17} /></IconButton>
 						</div>
 					{/if}
-					<IconButton ariaLabel="Témakör átnevezése: {topic.title}" size={44} disabled={busy} onclick={() => openName('renameTopic', 'Témakör átnevezése', topic.id, topic.title)}><Pencil size={17} /></IconButton>
 					<IconButton ariaLabel="Lecke hozzáadása: {topic.title}" size={44} disabled={busy} onclick={() => openName('createLesson', 'Új lecke', topic.id)}><Plus size={18} /></IconButton>
+					<ActionMenu compact label="Témakör műveletei: {topic.title}" disabled={busy || navigating} actions={[
+						{ id: 'rename', label: 'Átnevezés', icon: Pencil, onclick: () => openName('renameTopic', 'Témakör átnevezése', topic.id, topic.title) },
+						{ id: 'delete', label: 'Törlés', icon: Trash2, tone: 'danger', onclick: () => openDeleteTopic(topic.id, topic.title) }
+					]} />
 					</div>
 				{/if}
 			</div>
@@ -390,7 +419,7 @@
 	{:else}
 		<div class="rounded-3xl border border-dashed border-stone-300 p-8 text-center dark:border-white/15">
 			<BookOpenText size={32} class="mx-auto mb-3 text-stone-400" />
-			<p class="font-bold text-ink-900 dark:text-white">{query ? 'Nincs találat.' : level ? 'Még nincs témakör.' : 'Válassz tantárgyat és szintet'}</p>
+			<p class="font-bold text-ink-900 dark:text-white">{query ? 'Nincs találat.' : level ? 'Még nincs témakör.' : 'Válassz tantárgyat és tananyagot'}</p>
 			{#if !query && level?.canEdit}<div class="mt-4"><Button onclick={() => openName('createTopic', 'Új témakör')}><Plus size={18} /> Témakör hozzáadása</Button></div>
 			{:else if !query && !level}<div class="mt-4"><Button onclick={openScope}>Tananyag választása</Button></div>{/if}
 		</div>
@@ -411,21 +440,32 @@
 <Drawer open={nameDialog !== null} label={nameDialog?.title ?? 'Név megadása'} title={nameDialog?.title} onBack={nameDialog?.action === 'createLevel' ? backToLevels : undefined} onClose={() => { if (!busy) nameDialog = null; }}>
 	<form onsubmit={saveName} class="mt-4 space-y-4">
 		<label class="block text-sm font-bold text-ink-900 dark:text-white">Név<input class={fieldClass} bind:value={name} required maxlength={160} disabled={busy} /></label>
-		{#if nameDialog?.action === 'createLevel'}<p class="text-sm text-stone-500 dark:text-stone-400">Te leszel a szint tulajdonosa és szerkesztője. A szint piszkozatként jön létre.</p>{/if}
+		{#if nameDialog?.action === 'createLevel'}<p class="text-sm text-stone-500 dark:text-stone-400">Te leszel a tananyag tulajdonosa és szerkesztője. A tananyag piszkozatként jön létre.</p>{/if}
 		{#if formError}<p role="alert" class="text-sm text-red-600 dark:text-red-400">{formError}</p>{/if}
 		<Button type="submit" busy={busy} block>{nameDialog?.action.startsWith('create') ? 'Létrehozás' : 'Mentés'}</Button>
 	</form>
 </Drawer>
 
-<Drawer open={settingsOpen} label="A szint beállításai" onClose={() => { if (!busy) settingsOpen = false; }}>
+<ConfirmDialog
+	open={deleteTopicDialog !== null}
+	title="Témakör törlése"
+	description={`Biztosan törlöd a(z) „${deleteTopicDialog?.title ?? ''}” témakört és az összes hozzá tartozó leckét? Ez nem vonható vissza.`}
+	confirmLabel="Témakör törlése"
+	holdLabel="Tartsd nyomva a törléshez"
+	{busy}
+	onClose={() => { if (!busy) deleteTopicDialog = null; }}
+	onConfirm={() => { void deleteTopic(); }}
+/>
+
+<Drawer open={settingsOpen} label="A tananyag beállításai" onClose={() => { if (!busy) settingsOpen = false; }}>
 	{#snippet header()}
-		<label for="level-name" class="min-w-0 flex-1 {sectionClass}">{subject?.levelLabel ?? 'Szint'} neve</label>
+		<label for="level-name" class="min-w-0 flex-1 {sectionClass}">Tananyag neve</label>
 		<button type="submit" form="level-settings" disabled={busy} aria-busy={busy} class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand-500 px-3.5 py-2 text-sm font-bold text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60 motion-reduce:transition-none">
 			{#if busy}<LoaderCircle size={15} class="animate-spin motion-reduce:animate-none" />{/if} Mentés
 		</button>
 	{/snippet}
 	<form id="level-settings" onsubmit={saveSettings}>
-		<input id="level-name" aria-label={`${subject?.levelLabel ?? 'Szint'} neve`} class={fieldClass} bind:value={levelName} required maxlength={160} disabled={busy} />
+		<input id="level-name" aria-label="Tananyag neve" class={fieldClass} bind:value={levelName} required maxlength={160} disabled={busy} />
 		<div class="mt-4 flex items-center gap-3 py-3">
 			<div class="min-w-0 flex-1"><p class={sectionClass}>Publikálva</p><p class="mt-1 text-xs text-stone-500 dark:text-stone-400">A tanulók is láthatják a tananyagot.</p></div>
 			<Switch id="level-published" bind:checked={published} label="Publikálva" disabled={busy} />

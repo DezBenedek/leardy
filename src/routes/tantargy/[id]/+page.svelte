@@ -11,7 +11,7 @@
 	const goBack = createBackNavigation(() => resolve('/tanulas'));
 
 	let tree = $derived(data.tree);
-	let levelLow = $derived((tree.levelLabel || 'Szint').toLowerCase());
+	let levelLow = $derived('Tananyag'.toLowerCase());
 </script>
 
 <svelte:head>

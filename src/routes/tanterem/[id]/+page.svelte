@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { createBackNavigation } from '$lib/back-navigation';
 	import { lessonPath } from '$lib/lesson-paths';
-	import { goto } from '$app/navigation';
+	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
+	import { untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 import {
 	ArrowLeft,
@@ -26,6 +28,7 @@ import {
 	RefreshCw,
 	RotateCcw,
 	Send,
+	Save,
 	Settings,
 	Shuffle,
 	Target,
@@ -144,6 +147,30 @@ import {
 	let detailTask = $state<FeedTask | null>(null);
 	let detailAssignment = $state<FeedAssignment | null>(null);
 
+	function openDetail(kind: 'message' | 'task' | 'assignment', id: string) {
+		const url = new URL(window.location.href);
+		url.searchParams.set('drawer', kind);
+		url.searchParams.set('item', id);
+		replaceState(url, { ...page.state, classroomDetail: { kind, id } });
+	}
+
+	let restoredDetailKey = '';
+	$effect(() => {
+		if (!seeded) return;
+		const detail = page.state.classroomDetail;
+		const kind = detail === undefined ? page.url.searchParams.get('drawer') : detail?.kind;
+		const id = detail === undefined ? page.url.searchParams.get('item') : detail?.id;
+		const key = `${room.id}:${kind}:${id}`;
+		if (key === restoredDetailKey) return;
+		restoredDetailKey = key;
+		untrack(() => {
+			closeDetail(false);
+			if (kind === 'message') detailMsg = messages.find((item) => item.id === id) ?? null;
+			if (kind === 'task') detailTask = tasks.find((item) => item.id === id) ?? null;
+			if (kind === 'assignment') detailAssignment = assignments.find((item) => item.id === id) ?? null;
+		});
+	});
+
 	interface MySubmission {
 		best_score: number;
 		best_total: number;
@@ -175,7 +202,13 @@ import {
 	/** Nyitott feladat utolsó kitöltésének átnézete. */
 	let lastReview = $state<QuizReview | null>(null);
 
-	function closeDetail() {
+	function closeDetail(clearUrl = true) {
+		if (clearUrl && (page.state.classroomDetail || new URL(window.location.href).searchParams.has('drawer'))) {
+			const url = new URL(window.location.href);
+			url.searchParams.delete('drawer');
+			url.searchParams.delete('item');
+			replaceState(url, { ...page.state, classroomDetail: null });
+		}
 		detailMsg = null;
 		detailTask = null;
 		detailAssignment = null;
@@ -453,11 +486,10 @@ import {
 
 	type Sheet = null | 'choice' | 'message' | 'task' | 'assignment' | 'settings';
 	let sheet = $state<Sheet>(null);
-	let settingsView = $state<'main' | 'members'>('main');
+	let membersOpen = $state(false);
 
 	function closeSheet() {
 		sheet = null;
-		settingsView = 'main';
 		deleteOpen = false;
 		confirmKickId = null;
 		confirmLeave = false;
@@ -1332,16 +1364,17 @@ import {
 	}
 
 	async function openSettings() {
-		settingsView = 'main';
 		confirmKickId = null;
 		confirmLeave = false;
 		sheet = 'settings';
 		if (!data.own) return;
 		setName = displayName;
+		setSubjectKeep = displaySubject;
+		matchSettingsSubject();
 		// A tantárgylista async töltődik: csak utána lehet a mentett
 		// tantárgyat kiválasztva mutatni.
 		await ensureSubjects();
-		if (sheet === 'settings' && settingsView === 'main') matchSettingsSubject();
+		if (sheet === 'settings') matchSettingsSubject();
 	}
 
 	async function saveSettings(e: SubmitEvent) {
@@ -1365,7 +1398,6 @@ import {
 			displayName = setName.trim();
 			displaySubject = subject;
 			sheet = null;
-			settingsView = 'main';
 			toast.success('Osztály frissítve');
 		} catch {
 			toast.error('Hálózati hiba. Próbáld újra!');
@@ -1482,7 +1514,7 @@ import {
 			{#if item.kind === 'assignment'}
 				<Card
 					href={data.own ? `/tanterem/${room.id}/beadando/${item.assignment.id}` : undefined}
-					onclick={data.own ? undefined : () => (detailAssignment = item.assignment)}
+					onclick={data.own ? undefined : () => openDetail('assignment', item.assignment.id)}
 					ariaLabel={item.assignment.title || 'Beadandó részletei'}
 				>
 					<div class="flex min-w-0 items-start gap-3 overflow-hidden">
@@ -1532,7 +1564,7 @@ import {
 				{@const lessons = parseTaskLessons(item.task)}
 				<Card
 					href={data.own ? `/tanterem/${room.id}/feladat/${item.task.id}` : undefined}
-					onclick={data.own ? undefined : () => (detailTask = item.task)}
+					onclick={data.own ? undefined : () => openDetail('task', item.task.id)}
 					ariaLabel={item.task.title || 'Feladat részletei'}
 				>
 					<div class="flex min-w-0 items-start gap-3 overflow-hidden">
@@ -1568,7 +1600,7 @@ import {
 				</Card>
 			{:else}
 				{@const chips = messageChips(item.msg)}
-				<Card onclick={() => (detailMsg = item.msg)} ariaLabel={item.msg.title}>
+				<Card onclick={() => openDetail('message', item.msg.id)} ariaLabel={item.msg.title}>
 					<div class="flex min-w-0 items-start gap-3 overflow-hidden">
 						<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
 							<Megaphone size={20} />
@@ -1602,9 +1634,14 @@ import {
 	onClose={closeDetail}
 	onEdit={data.own && !editingMsg && !editingTask && !editingAssignment ? openEdit : undefined}
 >
+	{#snippet actions()}
+		{#if editingMsg || editingTask || editingAssignment}
+			<Button type="submit" form={editingMsg ? 'edit-message' : editingTask ? 'edit-task' : 'edit-assignment'} size="sm" busy={savingEdit} disabled={editingMsg && editMsgTitle.trim().length < 3}><Save size={17} /> Mentés</Button>
+		{/if}
+	{/snippet}
 	{#if detailAssignment}
 		{#if editingAssignment}
-			<form onsubmit={saveAssignmentEdit} class="mt-3 grid gap-3.5" novalidate>
+			<form id="edit-assignment" onsubmit={saveAssignmentEdit} class="mt-3 grid gap-3.5" novalidate>
 				<Input label="Beadandó címe" required placeholder="pl. Olvasónapló 1. fejezet" bind:value={editAssignmentTitle} disabled={savingEdit} error={editError} />
 				<div>
 					<label for="edit-assignment-desc" class="mb-1.5 block text-[13px] font-semibold text-ink-900 dark:text-white">
@@ -1651,12 +1688,9 @@ import {
 						<Switch bind:checked={editAssignmentRequireFiles} disabled={savingEdit} label="Fájl feltöltés kérése" />
 					</div>
 				</div>
-				<div class="grid grid-cols-2 gap-2.5">
+				<div class="grid gap-2.5">
 					<Button variant="outline" block disabled={savingEdit} onclick={() => (editingAssignment = false)}>
 						Mégse
-					</Button>
-					<Button type="submit" block busy={savingEdit}>
-						{savingEdit ? 'Mentés…' : 'Mentés'}
 					</Button>
 				</div>
 				{#if !confirmDeleteAssignment}
@@ -1894,7 +1928,7 @@ import {
 		{/if}
 	{:else if detailMsg}
 		{#if editingMsg}
-			<form onsubmit={saveMsgEdit} class="mt-3 grid gap-3.5" novalidate>
+			<form id="edit-message" onsubmit={saveMsgEdit} class="mt-3 grid gap-3.5" novalidate>
 				<Input label="Cím" required placeholder="Üzenet címe" bind:value={editMsgTitle} disabled={savingEdit} error={editError} />
 				<div>
 					<label for="edit-msg-body" class="mb-1.5 block text-[13px] font-semibold text-ink-900 dark:text-white">
@@ -1909,12 +1943,9 @@ import {
 						class={inputCls}
 					></textarea>
 				</div>
-				<div class="grid grid-cols-2 gap-2.5">
+				<div class="grid gap-2.5">
 					<Button variant="outline" block disabled={savingEdit} onclick={() => (editingMsg = false)}>
 						Mégse
-					</Button>
-					<Button type="submit" block busy={savingEdit} disabled={editMsgTitle.trim().length < 3}>
-						{savingEdit ? 'Mentés…' : 'Mentés'}
 					</Button>
 				</div>
 			</form>
@@ -1963,7 +1994,7 @@ import {
 		{/if}
 	{:else if detailTask}
 		{#if editingTask}
-			<form onsubmit={saveTaskEdit} class="mt-3 grid gap-3.5" novalidate>
+			<form id="edit-task" onsubmit={saveTaskEdit} class="mt-3 grid gap-3.5" novalidate>
 				<Input label="Feladat címe" placeholder="pl. 3. lecke kvíz" bind:value={editTaskTitle} disabled={savingEdit} error={editError} />
 				<div class="grid grid-cols-2 gap-3">
 					<div>
@@ -2009,12 +2040,9 @@ import {
 						class={[inputCls, 'dark:[color-scheme:dark]']}
 					/>
 				</div>
-				<div class="grid grid-cols-2 gap-2.5">
+				<div class="grid gap-2.5">
 					<Button variant="outline" block disabled={savingEdit} onclick={() => (editingTask = false)}>
 						Mégse
-					</Button>
-					<Button type="submit" block busy={savingEdit}>
-						{savingEdit ? 'Mentés…' : 'Mentés'}
 					</Button>
 				</div>
 			</form>
@@ -2625,61 +2653,18 @@ import {
 </Drawer>
 
 <!-- Osztálybeállítások -->
-<Drawer
-	open={sheet === 'settings'}
-	label={settingsView === 'members' ? 'Tagok' : 'Osztálybeállítások'}
-	title={settingsView === 'members' ? `Tagok (${members.length})` : 'Osztálybeállítások'}
-	onBack={settingsView === 'members'
-		? () => {
-				settingsView = 'main';
-				confirmKickId = null;
-			}
-		: undefined}
-	onClose={closeSheet}
->
-	{#if settingsView === 'members'}
-		<div class="mt-2 grid gap-2">
-			{#if members.length === 0}
-				<Card><p class="text-sm text-stone-500 dark:text-stone-400">Még senki nem csatlakozott.</p></Card>
-			{:else}
-				{#each members as m (m.id)}
-					{@const confirm = confirmKickId === m.id}
-					<Card>
-						<div class="flex items-center gap-3">
-	<div class="min-w-0 flex-1 self-center">
-								<p class="truncate text-[15px] font-bold text-ink-900 dark:text-white">{m.name}</p>
-								<p class="text-[12px] text-stone-400 dark:text-stone-500">
-									Csatlakozott: {fmtDate(m.joined_at)}
-								</p>
-							</div>
-							{#if data.own}
-								<button
-									type="button"
-									onclick={() => kickMember(m.id, m.name)}
-									disabled={kicking}
-									aria-label={confirm ? 'Kidobás megerősítése' : `${m.name} kidobása`}
-									class={[
-										'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-bold transition active:scale-[0.98] disabled:opacity-60',
-										confirm
-											? 'bg-red-600 text-white hover:bg-red-700'
-											: 'border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10'
-									]}
-								>
-									<UserMinus size={15} />
-									{confirm ? (kicking ? '…' : 'Biztos?') : 'Kidobom'}
-								</button>
-							{/if}
-						</div>
-					</Card>
-				{/each}
-			{/if}
-		</div>
-	{:else if data.own}
+<Drawer open={sheet === 'settings'} label="Osztálybeállítások" title="Osztálybeállítások" onClose={closeSheet}>
+	{#snippet actions()}
+		{#if data.own}
+			<Button type="submit" form="classroom-settings" size="sm" busy={savingSettings} disabled={setName.trim().length < 3} ariaLabel="Osztálybeállítások mentése"><Save size={17} /> Mentés</Button>
+		{/if}
+	{/snippet}
+	{#if data.own}
 		<div class="mt-3 flex items-center gap-3">
 			<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Értesítés</p>
 			<Switch bind:checked={roomNotif} label="Értesítés" />
 		</div>
-		<form onsubmit={saveSettings} class="mt-3 grid gap-3.5" novalidate>
+		<form id="classroom-settings" onsubmit={saveSettings} class="mt-3 grid gap-3.5" novalidate>
 			<Input label="Osztály neve" required bind:value={setName} disabled={savingSettings} />
 			<div>
 				<SubjectPicker {subjects} bind:value={setSubjectId} disabled={savingSettings} />
@@ -2720,14 +2705,11 @@ import {
 					</div>
 				</div>
 			</div>
-			<Button variant="outline" block onclick={() => (settingsView = 'members')}>
+			<Button variant="outline" block onclick={() => (membersOpen = true)}>
 				<Users size={17} /> Tagok ({members.length})
 			</Button>
 			<Button variant="outline" block onclick={() => (statsOpen = true)}>
 				<TrendingUp size={17} /> Statisztika
-			</Button>
-			<Button type="submit" block busy={savingSettings} disabled={setName.trim().length < 3}>
-				{savingSettings ? 'Mentés…' : 'Mentés'}
 			</Button>
 		</form>
 		<button
@@ -2760,7 +2742,7 @@ import {
 			</p>
 		</div>
 		<div class="mt-2.5">
-			<Button variant="outline" block onclick={() => (settingsView = 'members')}>
+			<Button variant="outline" block onclick={() => (membersOpen = true)}>
 				<Users size={17} /> Tagok ({members.length})
 			</Button>
 		</div>
@@ -2833,3 +2815,42 @@ import {
 	onPick={onAttachPick}
 	onClose={() => (attachPickOpen = false)}
 />
+
+<Drawer open={membersOpen} label="Tagok" title={`Tagok (${members.length})`} onClose={() => { membersOpen = false; confirmKickId = null; }}>
+	<div class="mt-2 grid gap-2">
+		{#if members.length === 0}
+			<Card><p class="text-sm text-stone-500 dark:text-stone-400">Még senki nem csatlakozott.</p></Card>
+		{:else}
+			{#each members as m (m.id)}
+				{@const confirm = confirmKickId === m.id}
+				<Card>
+					<div class="flex items-center gap-3">
+						<div class="min-w-0 flex-1 self-center">
+							<p class="truncate text-[15px] font-bold text-ink-900 dark:text-white">{m.name}</p>
+							<p class="text-[12px] text-stone-400 dark:text-stone-500">
+								Csatlakozott: {fmtDate(m.joined_at)}
+							</p>
+						</div>
+						{#if data.own}
+							<button
+								type="button"
+								onclick={() => kickMember(m.id, m.name)}
+								disabled={kicking}
+								aria-label={confirm ? 'Kidobás megerősítése' : `${m.name} kidobása`}
+								class={[
+									'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-bold transition active:scale-[0.98] disabled:opacity-60',
+									confirm
+										? 'bg-red-600 text-white hover:bg-red-700'
+										: 'border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10'
+								]}
+							>
+								<UserMinus size={15} />
+								{confirm ? (kicking ? '…' : 'Biztos?') : 'Kidobom'}
+							</button>
+						{/if}
+					</div>
+				</Card>
+			{/each}
+		{/if}
+	</div>
+</Drawer>

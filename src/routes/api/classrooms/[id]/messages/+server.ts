@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureClassContentSchema, type MessageRefType } from '$lib/server/classroom';
+import { getDb, requireUser } from '$lib/server/db';
+import type { MessageRefType } from '$lib/server/classroom';
 import { fireNotify, notifyClassroom } from '$lib/server/push';
 
 const REF_TYPES: MessageRefType[] = ['', 'subject', 'lesson', 'quiz', 'deck', 'topic'];
@@ -17,8 +17,6 @@ interface RefInput {
 export const POST: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
-	await ensureAuthSchema(db);
-	await ensureClassContentSchema(db);
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
 	const id = event.params.id ?? '';

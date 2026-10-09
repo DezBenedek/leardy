@@ -4,7 +4,7 @@
 	import { Check, Lightbulb, RotateCcw, X } from '@lucide/svelte';
 	import type { QuizQuestion } from '$lib/curriculum';
 	import type { SM2Mark } from '$lib/sm2';
-	import { buildDailyWordQueue, buildWordQueue, formatInterval, gradeSM2, todayDay } from '$lib/sm2';
+	import { buildDailyWordQueue, buildWordQueue, gradeSM2, todayDay } from '$lib/sm2';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 
@@ -58,7 +58,6 @@
 	let reviewed = $derived(Object.keys(outcomes).length);
 	let missed = $derived(reviewed - known);
 	let notified = $state(false);
-	let lastFeedback = $state('');
 	let dragging = $state(false);
 	let dragX = $state(0);
 	let exitDir = $state<0 | 1 | -1>(0);
@@ -92,7 +91,6 @@
 		revealed = false;
 		outcomes = {};
 		notified = false;
-		lastFeedback = '';
 		repeats = {};
 		ready = true;
 		showInstant();
@@ -155,10 +153,6 @@
 
 	function grade(knew: boolean, dir: 1 | -1) {
 		if (finished || exitDir !== 0 || !current) return;
-		if (!revealed) {
-			revealed = true;
-			return;
-		}
 		const card = current;
 		clearTimeout(exitTimer);
 		dragging = false;
@@ -166,9 +160,6 @@
 		const next = gradeSM2(sessionProgress[card.q.id], knew, today);
 		sessionProgress = { ...sessionProgress, [card.q.id]: next };
 		outcomes = { ...outcomes, [card.q.id]: knew };
-		lastFeedback = knew
-			? formatInterval(next.dueDay - today)
-			: (repeats[card.q.id] ?? 0) < REPEAT_MAX ? 'Ebben a körben még visszatér.' : 'Holnap újra gyakorolhatod.';
 		onMark?.(card.q.id, knew);
 		exitDir = dir;
 		dragX = dir * 700;
@@ -343,19 +334,13 @@
 			</p>
 		</div>
 
-		{#if reviewRound}
-			<p class="mt-2 text-center text-[12px] font-medium text-stone-500 dark:text-stone-400">
-				Ismétlés a kevésbé biztos szavakból
-			</p>
-		{/if}
-
 		<div class="grid flex-1 place-items-center pt-3">
 			<div class="w-full">
 				<div class="anim-pop relative h-72 sm:h-80 [perspective:1400px]">
 					<div
 						role="button"
 						tabindex="0"
-						aria-label="Kártya: {revealed ? backText : frontText}. Koppintás a fordításhoz, felfedés után húzás jobbra ha tudod, balra ha nem tudod."
+						aria-label="Kártya: {revealed ? backText : frontText}. Koppintás a fordításhoz, húzás jobbra, ha tudod, balra, ha nem tudod."
 						onpointerdown={onDown}
 						onpointermove={onMove}
 						onpointerup={onUp}
@@ -453,36 +438,25 @@
 			</div>
 		</div>
 
-		<p aria-live="polite" class="min-h-5 pt-2 text-center text-[12px] font-medium text-stone-500 dark:text-stone-400">
-			{lastFeedback}
-		</p>
-		{#if !revealed}
-			<div class={['pt-3', embedded ? '' : 'pb-24']}>
-				<Button block size="lg" onclick={() => (revealed = true)}>
-					Válasz felfedése
-				</Button>
-			</div>
-		{:else}
-			<div class={['grid grid-cols-2 gap-2 pt-3', embedded ? '' : 'pb-24']}>
-				<button
-					type="button"
-					disabled={exitDir !== 0}
-					onclick={() => grade(false, -1)}
-					class="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-red-500 px-4 py-3 text-[16px] font-extrabold text-white transition hover:bg-red-600 active:scale-[0.98]"
-					aria-label="Nem tudom"
-				>
-					<X size={20} strokeWidth={3} aria-hidden="true" /> Nem tudom
-				</button>
-				<button
-					type="button"
-					disabled={exitDir !== 0}
-					onclick={() => grade(true, 1)}
-					class="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-[16px] font-extrabold text-white transition hover:bg-emerald-600 active:scale-[0.98]"
-					aria-label="Tudom"
-				>
-					<Check size={20} strokeWidth={3} aria-hidden="true" /> Tudom
-				</button>
-			</div>
-		{/if}
+		<div class={['grid grid-cols-2 gap-2 pt-3', embedded ? '' : 'pb-24']}>
+			<button
+				type="button"
+				disabled={exitDir !== 0}
+				onclick={() => grade(false, -1)}
+				class="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-red-500 px-4 py-3 text-[16px] font-extrabold text-white transition hover:bg-red-600 active:scale-[0.98]"
+				aria-label="Nem tudom"
+			>
+				<X size={20} strokeWidth={3} aria-hidden="true" /> Nem tudom
+			</button>
+			<button
+				type="button"
+				disabled={exitDir !== 0}
+				onclick={() => grade(true, 1)}
+				class="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-[16px] font-extrabold text-white transition hover:bg-emerald-600 active:scale-[0.98]"
+				aria-label="Tudom"
+			>
+				<Check size={20} strokeWidth={3} aria-hidden="true" /> Tudom
+			</button>
+		</div>
 	</div>
 {/if}

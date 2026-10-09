@@ -1,7 +1,7 @@
 <script lang="ts" module>
 	/* Üzenet-csatolmány választó: előbb típus-csempe (Lecke, Kvíz, Témakör,
 	   Kártya), majd a globális ContentPicker drawer visz végig a
-	   Tantárgy, Szint, Témakör, Lecke sorrenden. Több csatolmány is
+	   Tantárgy, Tananyag, Témakör, Lecke sorrenden. Több csatolmány is
 	   választható; a Kártya-lista saját. Oldalgyökérben kell használni. */
 
 	export interface AttachPick {
@@ -113,7 +113,7 @@
 	const kindTiles: { id: Kind; label: string; desc: string; icon: typeof BookOpen }[] = [
 		{ id: 'lesson', label: 'Lecke', desc: 'Elmélet a leckéből', icon: BookOpen },
 		{ id: 'quiz', label: 'Kvíz', desc: 'Kvízes leckék', icon: Target },
-		{ id: 'topic', label: 'Témakör', desc: 'Egy témakör a szintből', icon: BookOpen },
+		{ id: 'topic', label: 'Témakör', desc: 'Egy témakör a tananyagból', icon: BookOpen },
 		{ id: 'deck', label: 'Kártya', desc: 'Kártyacsomag', icon: Layers }
 	];
 
@@ -169,6 +169,7 @@
 		{#if deckQuery}
 			<button
 				type="button"
+				onpointerdown={(event) => event.preventDefault()}
 				onclick={() => (deckQuery = '')}
 				aria-label="Keresés törlése"
 				class="absolute top-1/2 right-2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-stone-400 transition hover:bg-black/5 hover:text-ink-900 dark:hover:bg-white/10 dark:hover:text-white"

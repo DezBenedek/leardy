@@ -2,7 +2,10 @@
 	import { createBackNavigation } from '$lib/back-navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { onMount, tick } from 'svelte';
+	import { onMount } from 'svelte';
+	import { loadSettings } from '$lib/settings';
+	import { loadLessonSections, saveLessonSections } from '$lib/lesson-sections';
+	import ScrollableText from '$lib/ui/ScrollableText.svelte';
 	import { ArrowLeft, ChevronDown, ChevronRight, Dices, Layers } from '@lucide/svelte';
 	import QuizModal from '$lib/components/QuizModal.svelte';
 	import QuizRunner from '$lib/components/QuizRunner.svelte';
@@ -19,37 +22,29 @@
 	let sections = $derived(splitSections(lessonPage.lesson.body_md));
 	let allQuestions = $derived(lessonPage.quizzes.flatMap((q) => q.questions));
 
-	/** Az első szekció alapból nyitva. Zárva indul, majd az első
-		paint után nyílik le, így a lenyílás animáció látszik. */
 	let openSecs = $state<Record<string, boolean>>({});
 	let initedFor = '';
-
 	$effect(() => {
 		const id = lessonPage.lesson.id;
 		let hash = '';
-		try { hash = decodeURIComponent(page.url.hash.slice(1)); } catch { /* Hibás horgony esetén az első bekezdés nyílik. */ }
-		const target = sections.find((section) => section.slug === hash)?.slug;
-		const first = target ?? sections[0]?.slug;
+		try { hash = decodeURIComponent(page.url.hash.slice(1)); } catch { /* Hibás horgony. */ }
 		const key = `${id}#${hash}`;
-		if (!first || initedFor === key) return;
+		if (initedFor === key) return;
 		initedFor = key;
-		openSecs = {};
-		let active = true;
-		// Két frame késleltetés: az első paint még csukva történik,
-		// utána a 0fr -> 1fr átmenet animálva lenyílik.
-		// (Csökkentett mozgásnál a CSS transition none, így azonnal nyílik.)
-		void (async () => {
-			await tick();
-			requestAnimationFrame(() => {
-				requestAnimationFrame(() => {
-					if (!active) return;
-					openSecs = { [first]: true };
-					if (target) document.getElementById(target)?.scrollIntoView({ block: 'start' });
-				});
-			});
-		})();
-		return () => { active = false; };
+		const saved = loadLessonSections(id);
+		const all = loadSettings().openAllLessonSections;
+		openSecs = Object.fromEntries(sections.map((section, index) => [section.slug, all || (saved?.[section.slug] ?? index === 0)]));
+		if (hash && sections.some((section) => section.slug === hash)) {
+			openSecs[hash] = true;
+			const frame = requestAnimationFrame(() => document.getElementById(hash)?.scrollIntoView({ block: 'start' }));
+			return () => cancelAnimationFrame(frame);
+		}
 	});
+
+	function toggleSection(slug: string) {
+		openSecs[slug] = !openSecs[slug];
+		saveLessonSections(lessonPage.lesson.id, openSecs);
+	}
 
 	/** Nagy modalban megnyitott kvíz. */
 	let quizModal = $state<{ title: string; questions: QuizQuestion[] } | null>(null);
@@ -118,7 +113,7 @@
 	</IconButton>
 	<div class="flex min-w-0 flex-1 items-center">
 		<h1 class="font-display min-w-0 flex-1 text-[26px] leading-tight font-extrabold tracking-tight text-ink-900 dark:text-white">
-			{lessonPage.lesson.title}
+			<ScrollableText text={lessonPage.lesson.title} lines={2} />
 		</h1>
 	</div>
 	{#if allQuestions.length > 0}
@@ -142,10 +137,10 @@
 				<button
 					type="button"
 					aria-expanded={open}
-					onclick={() => (openSecs[section.slug] = !open)}
+					onclick={() => toggleSection(section.slug)}
 					class="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2.5 py-2 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:hover:bg-white/5 dark:active:bg-white/10"
 				>
-					<span class="min-w-0 flex-1 text-[16px] font-bold text-ink-900 dark:text-white">
+					<span class="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-[16px] font-bold text-ink-900 dark:text-white">
 						{section.title}
 					</span>
 					<ChevronDown

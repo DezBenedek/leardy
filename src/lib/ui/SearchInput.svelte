@@ -44,7 +44,7 @@
 		.expandable:not(:focus-within) svg { left: 50%; translate: -50% -50%; }
 	}
 	@container (min-width: 96px) {
-		.expandable input { padding-left: 44px; padding-right: 16px; color: var(--color-ink-900); cursor: text; }
+		.expandable input { padding-left: 44px; padding-right: 40px; color: var(--color-ink-900); cursor: text; }
 		.expandable input::placeholder { color: var(--color-stone-400); }
 		.expandable svg { left: 16px; translate: 0 -50%; }
 		:global(.dark) .expandable input { color: white; }
@@ -91,14 +91,15 @@
 			'w-full min-w-0 rounded-full border border-stone-200 bg-white py-3 text-[15px] text-ink-900 outline-none transition',
 			'placeholder:text-stone-400 focus:border-stone-300',
 			'dark:border-white/10 dark:bg-stone-900 dark:text-white dark:focus:border-white/25',
-			expanded ? ['pl-11', value && focused ? 'pr-10' : 'pr-4'] : 'px-0',
+			expanded ? ['pl-11', value ? 'pr-10' : 'pr-4'] : 'px-0',
 			'disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none',
 			!expanded && 'cursor-pointer text-transparent placeholder:text-transparent'
 		]}
 	/>
-	{#if value && focused && !disabled}
+	{#if value && !disabled}
 		<button
 			type="button"
+			onpointerdown={(event) => event.preventDefault()}
 			onclick={clear}
 			aria-label="Keresés törlése"
 			class="absolute top-1/2 right-2 grid size-8 -translate-y-1/2 place-items-center rounded-full text-stone-400 transition hover:bg-stone-100 hover:text-ink-900 active:scale-95 dark:text-stone-500 dark:hover:bg-white/10 dark:hover:text-white"
