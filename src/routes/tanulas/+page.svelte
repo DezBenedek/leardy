@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { contentFetch, subscribeContent } from '$lib/content-client';
 	import { lessonPath } from '$lib/lesson-paths';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -26,7 +27,7 @@
 	import ContentPicker, { type ContentPick } from '$lib/components/ContentPicker.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import QuickPractice from '$lib/components/QuickPractice.svelte';
-	import type { Package, QuizQuestion, SubjectTree } from '$lib/curriculum';
+	import type { Package, QuizQuestion, Subject, SubjectTree } from '$lib/curriculum';
 	import { normHu } from '$lib/deck-history';
 	import { loadLastLesson } from '$lib/lesson-history';
 	import { Query, getOrFetch, peek } from '$lib/query.svelte';
@@ -46,7 +47,7 @@
 	let user = $derived(auth.ready ? auth.user : data.user);
 	let canEdit = $derived(user?.role === 'teacher' || !!user?.is_admin || data.isEditor);
 
-	/* Gyorstár-ablakok: friss = nincs hálózat, öreg = mutatható + csendben frissül. */
+	/* A memóriában őrzött adat azonnal látszik, megnyitáskor újraellenőrizzük. */
 	const TREE_TTL = 10 * 60_000;
 	const TREE_STALE = 30 * 60_000;
 	const PACKAGES_TTL = 10 * 60_000;
@@ -56,6 +57,15 @@
 	let subjectId = $state(savedScope.subject);
 	let levelId = $state(savedScope.level);
 	const treeQ = new Query<SubjectTree | null>();
+	const subjectsQ = new Query<Subject[]>();
+	let subjects = $derived(subjectsQ.data ?? data.subjects);
+	$effect(() => {
+		subjectsQ.load('subjects', async (cached) => {
+			const response = await contentFetch('/api/browse', cached);
+			if (!response.ok) throw new Error(`http ${response.status}`);
+			return (await response.json()).subjects;
+		});
+	});
 
 	// Első paint előtti előtöltés: visszalépéskor rögtön adat, skeleton nélkül.
 	untrack(() => {
@@ -64,8 +74,8 @@
 
 	// Mentett tantárgy érvényesítése, különben az első.
 	$effect(() => {
-		if (!subjectId || !data.subjects.some((s) => s.id === subjectId)) {
-			if (data.subjects[0]) subjectId = data.subjects[0].id;
+		if (!subjectId || !subjects.some((s) => s.id === subjectId)) {
+			if (subjects[0]) subjectId = subjects[0].id;
 		}
 	});
 
@@ -73,7 +83,7 @@
 	let qpicks = $state<QuizQuestion[]>([]);
 
 	let levels = $derived(treeQ.data?.levels ?? []);
-	let activeSubject = $derived(data.subjects.find((s) => s.id === subjectId) ?? null);
+	let activeSubject = $derived(subjects.find((s) => s.id === subjectId) ?? null);
 	let activeLevelTitle = $derived(
 		levelId ? (levels.find((l) => l.id === levelId)?.title ?? 'Tananyag') : 'Minden tananyag'
 	);
@@ -88,7 +98,7 @@
 	// Hydráláskor ugyanaz az ikon kell, mint a szerveren. A mentett tantárgy
 	// csak mount után válthatja le, különben eltérő SVG-elemek maradhatnak bent.
 	let ScopeIcon = $derived(
-		subjectIcons[(scopeIconReady ? activeSubject : data.subjects[0])?.icon ?? ''] ?? Shapes
+		subjectIcons[(scopeIconReady ? activeSubject : subjects[0])?.icon ?? ''] ?? Shapes
 	);
 
 	let scopeOpen = $state(false);
@@ -103,21 +113,18 @@
 		scopeOpen = false;
 	}
 
-	async function fetchTreeRaw(id: string): Promise<SubjectTree | null> {
-		try {
-			const res = await fetch(`/api/browse?subject=${encodeURIComponent(id)}`);
-			const j = await res.json();
-			return res.ok ? (j.tree ?? null) : null;
-		} catch {
-			return null;
-		}
+	async function fetchTreeRaw(id: string, cacheOnly = false): Promise<SubjectTree | null> {
+		const res = await contentFetch(`/api/browse?subject=${encodeURIComponent(id)}`, cacheOnly);
+		if (!res.ok) throw new Error(`http ${res.status}`);
+		const j = await res.json();
+		return res.ok ? (j.tree ?? null) : null;
 	}
 
 	// Visszatöltött tananyagot az első betöltés nem nullázza, váltáskor igen.
 	$effect(() => {
 		if (prevSubject !== null && prevSubject !== subjectId) levelId = '';
 		prevSubject = subjectId;
-		treeQ.load(subjectId ? `tree:${subjectId}` : null, () => fetchTreeRaw(subjectId), TREE_TTL, TREE_STALE);
+		treeQ.load(subjectId ? `tree:${subjectId}` : null, (cached) => fetchTreeRaw(subjectId, cached), TREE_TTL, TREE_STALE);
 	});
 
 	// Mentett tananyag érvényesítése, de csak kész fához: tantárgyváltáskor
@@ -235,17 +242,14 @@
 		return a;
 	}
 
-	async function fetchPackagesRaw(): Promise<Package[]> {
-		try {
-			const params = new URLSearchParams();
-			if (subjectId) params.set('subject', subjectId);
-			if (levelId) params.set('level', levelId);
-			const res = await fetch(`/api/packages?${params}`);
-			const j = await res.json();
-			return res.ok ? (j.packages ?? []) : [];
-		} catch {
-			return [];
-		}
+	async function fetchPackagesRaw(cacheOnly = false): Promise<Package[]> {
+		const params = new URLSearchParams();
+		if (subjectId) params.set('subject', subjectId);
+		if (levelId) params.set('level', levelId);
+		const res = await contentFetch(`/api/packages?${params}`, cacheOnly);
+		if (!res.ok) throw new Error(`http ${res.status}`);
+		const j = await res.json();
+		return res.ok ? (j.packages ?? []) : [];
 	}
 
 	function pickRandom(questions: QuizQuestion[]): QuizQuestion[] {
@@ -258,11 +262,14 @@
 	onMount(() => {
 		scopeIconReady = true;
 		lastLesson = loadLastLesson();
+		return subscribeContent((message) => {
+			if (message.type === 'content-deleted') lastLesson = loadLastLesson();
+		});
 	});
 
 	/** Folytatás: az utolsó lecke megnyitása, előzmény nélkül az első lecke. */
 	function continueLastLesson() {
-		const last = loadLastLesson() ?? lastLesson;
+		const last = loadLastLesson();
 		if (last?.id) {
 			lastLesson = last;
 			void goto(lessonPath(last.id));
@@ -283,7 +290,7 @@
 		const key = `packages:${subjectId}:${levelId}`;
 		const wanted = new Set(lessonIds);
 		try {
-			const pkgs = await getOrFetch(key, fetchPackagesRaw, PACKAGES_TTL);
+			const pkgs = await getOrFetch(key, fetchPackagesRaw, PACKAGES_TTL, 0, true);
 			qpicks = pickRandom(
 				pkgs.filter((p) => p.lessonId && wanted.has(p.lessonId)).flatMap((p) => p.questions)
 			);
@@ -481,7 +488,7 @@
 
 <ContentPicker
 	open={scopeOpen}
-	subjects={data.subjects}
+	subjects={subjects}
 	select="level"
 	startSubjectId={levelId ? subjectId : ''}
 	selectedSubjectId={subjectId}

@@ -962,10 +962,10 @@ export async function saveLessonProgress(
 	const now = Date.now();
 	await db.batch([
 		db.prepare(
-			`INSERT OR REPLACE INTO lesson_progress (user_id, lesson_id, done, score, total, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?)`
+			`INSERT OR REPLACE INTO lesson_progress (user_id, lesson_id, done, score, total, updated_at, event_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`
 		)
-		.bind(userId, lessonId, done ? 1 : 0, score, total, Math.floor(now / 1000)),
+		.bind(userId, lessonId, done ? 1 : 0, score, total, Math.floor(now / 1000), now),
 		db.prepare(`INSERT OR IGNORE INTO learning_days (user_id, day) VALUES (?, ?)`)
 			.bind(userId, learningDay(now))
 	]);

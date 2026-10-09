@@ -1,5 +1,6 @@
 import { browser } from '$app/environment';
 import { clearPersistedCache } from './query.svelte';
+import { offlineIdentity, rememberIdentity } from './content-client';
 
 export interface User {
 	id?: string;
@@ -67,6 +68,11 @@ class AuthStore {
 	 * ezért induló töltés (splash) nincs.
 	 */
 	seed(u: User | null): void {
+		if (browser) {
+			const previous = offlineIdentity()?.id;
+			if (previous && previous !== u?.id) clearPersistedCache();
+			rememberIdentity(u?.id ? { id: u.id, name: u.name } : null);
+		}
 		this.user = u;
 		this.ready = true;
 	}
@@ -81,6 +87,7 @@ class AuthStore {
 		this.user = null;
 		this.ready = true;
 		clearPersistedCache();
+		rememberIdentity(null);
 	}
 
 	async updateName(name: string): Promise<AuthResult> {
@@ -107,6 +114,8 @@ class AuthStore {
 		if (res.status < 300) {
 			this.user = null;
 			this.ready = true;
+			clearPersistedCache();
+			rememberIdentity(null);
 			return { ok: true };
 		}
 		return { ok: false, error: res.data.error ?? 'Hiba történt. Próbáld újra!' };

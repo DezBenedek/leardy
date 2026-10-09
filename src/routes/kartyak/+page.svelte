@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { contentFetch, offlineIdentity } from '$lib/content-client';
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import {
@@ -42,11 +43,11 @@
 	   területnek: a kvíz a lecke oldalán él, a kártya külön csomagként,
 	   opcionálisan leckéhez csatolva. */
 
-	const LIB_CACHE = 'leardy-library';
+	const LIB_CACHE = 'leardy-library:';
 	/** A kézi könyvtár-gyorstár lejárata: eddig időbélyeg nélkül, örökké élt. */
 	const LIB_CACHE_MS = 24 * 3_600_000;
 
-	/* Gyorstár-ablakok: friss = nincs hálózat, öreg = mutatható + csendben frissül. */
+	/* A memóriában őrzött adat azonnal látszik, megnyitáskor újraellenőrizzük. */
 	const SUBJECTS_TTL = 30 * 60_000;
 	const SUBJECTS_STALE = 2 * 3_600_000;
 	const LEVELS_TTL = 15 * 60_000;
@@ -254,31 +255,32 @@
 	const cardInput =
 		'min-w-0 flex-1 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm text-ink-900 outline-none transition placeholder:text-stone-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 motion-reduce:transition-none dark:border-white/15 dark:bg-white/5 dark:text-white dark:placeholder:text-stone-500';
 
-	async function fetchLevelsRaw(id: string): Promise<LevelNode[]> {
-		try {
-			const res = await fetch(`/api/browse?subject=${encodeURIComponent(id)}`);
-			const j = await res.json();
-			return res.ok && j.tree ? (j.tree.levels ?? []) : [];
-		} catch {
-			return [];
-		}
+	async function fetchLevelsRaw(id: string, cacheOnly = false): Promise<LevelNode[]> {
+		const res = await contentFetch(`/api/browse?subject=${encodeURIComponent(id)}`, cacheOnly);
+		if (!res.ok) throw new Error(`http ${res.status}`);
+		const j = await res.json();
+		return res.ok && j.tree ? (j.tree.levels ?? []) : [];
 	}
 
 	async function fetchLibraryRaw(): Promise<Package[]> {
+		const owner = offlineIdentity()?.id;
+		const key = owner ? `${LIB_CACHE}${owner}` : null;
+		let allowFallback = true;
 		try {
 			const res = await fetch('/api/library');
-			if (!res.ok) throw new Error('net');
+			if (!res.ok) { allowFallback = res.status >= 500; throw new Error('net'); }
 			const j = await res.json();
 			const pkgs = j.packages ?? [];
 			try {
-				localStorage.setItem(LIB_CACHE, JSON.stringify({ at: Date.now(), packages: pkgs }));
+				if (key && offlineIdentity()?.id === owner) localStorage.setItem(key, JSON.stringify({ at: Date.now(), packages: pkgs }));
 			} catch {
 				// tiltott storage
 			}
 			return pkgs;
-		} catch {
+		} catch (error) {
+			if (!allowFallback || !key || offlineIdentity()?.id !== owner) throw error;
 			try {
-				const raw = localStorage.getItem(LIB_CACHE);
+				const raw = localStorage.getItem(key);
 				if (raw) {
 					const parsed = JSON.parse(raw) as { at?: unknown; packages?: unknown };
 					// Időbélyeg nélküli régi formátum is elfogadott, de csak a lejárati
@@ -291,7 +293,7 @@
 			} catch {
 				// sérült gyorstár
 			}
-			return [];
+			throw error;
 		}
 	}
 
@@ -301,7 +303,7 @@
 			return;
 		}
 		try {
-			dLevels = await getOrFetch(`levels:${id}`, () => fetchLevelsRaw(id), 5 * 60_000);
+			dLevels = await getOrFetch(`levels:${id}`, (cached) => fetchLevelsRaw(id, cached), 5 * 60_000, 0, true);
 		} catch {
 			dLevels = [];
 		}
@@ -379,14 +381,11 @@
 		}
 	}
 
-	async function fetchSubjectsRaw(): Promise<Subject[]> {
-		try {
-			const res = await fetch('/api/browse');
-			const j = await res.json();
-			return res.ok ? (j.subjects ?? []) : [];
-		} catch {
-			return [];
-		}
+	async function fetchSubjectsRaw(cacheOnly = false): Promise<Subject[]> {
+		const res = await contentFetch('/api/browse', cacheOnly);
+		if (!res.ok) throw new Error(`http ${res.status}`);
+		const j = await res.json();
+		return res.ok ? (j.subjects ?? []) : [];
 	}
 
 	$effect(() => {
@@ -408,7 +407,7 @@
 		const id = subjectId;
 		if (prevSubject !== null && prevSubject !== id) levelId = '';
 		prevSubject = id;
-		levelsQ.load(id ? `levels:${id}` : null, () => fetchLevelsRaw(id), LEVELS_TTL, LEVELS_STALE);
+		levelsQ.load(id ? `levels:${id}` : null, (cached) => fetchLevelsRaw(id, cached), LEVELS_TTL, LEVELS_STALE);
 	});
 
 	// Mentett tananyag érvényesítése (csak kártyás tananyag maradhat).

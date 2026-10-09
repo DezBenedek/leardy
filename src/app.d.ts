@@ -2,7 +2,7 @@
 /// <reference types="vite-plugin-pwa/info" />
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
-import type { D1Database, R2Bucket } from '@cloudflare/workers-types';
+import type { D1Database, ExecutionContext, R2Bucket } from '@cloudflare/workers-types';
 
 declare global {
 	namespace App {
@@ -13,6 +13,8 @@ declare global {
 			classroomDetail?: { kind: 'message' | 'task' | 'assignment'; id: string } | null;
 		}
 		interface Platform {
+			caches: CacheStorage & { default: Cache };
+			ctx: ExecutionContext;
 			env: {
 				DB: D1Database;
 				UPLOADS?: R2Bucket;

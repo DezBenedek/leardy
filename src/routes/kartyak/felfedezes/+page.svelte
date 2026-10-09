@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { contentFetch } from '$lib/content-client';
 	import { createBackNavigation } from '$lib/back-navigation';
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
@@ -27,7 +28,7 @@
 	   A hivatalos csomag leckénként egy készlet, a kvízektől független tárolásban.
 	   A vissza-nyíl a szűrők mellett balra, cím nélkül. */
 
-	/* Gyorstár-ablakok: friss = nincs hálózat, öreg = mutatható + csendben frissül. */
+	/* A memóriában őrzött adat azonnal látszik, megnyitáskor újraellenőrizzük. */
 	const SUBJECTS_TTL = 30 * 60_000;
 	const SUBJECTS_STALE = 2 * 3_600_000;
 	const LEVELS_TTL = 15 * 60_000;
@@ -143,38 +144,29 @@
 
 	let searchActive = $derived(query.trim() !== '' || savedFilter !== 'all');
 
-	async function fetchLevelsRaw(id: string): Promise<LevelNode[]> {
-		try {
-			const res = await fetch(`/api/browse?subject=${encodeURIComponent(id)}`);
-			const j = await res.json();
-			return res.ok && j.tree ? (j.tree.levels ?? []) : [];
-		} catch {
-			return [];
-		}
+	async function fetchLevelsRaw(id: string, cacheOnly = false): Promise<LevelNode[]> {
+		const res = await contentFetch(`/api/browse?subject=${encodeURIComponent(id)}`, cacheOnly);
+		if (!res.ok) throw new Error(`http ${res.status}`);
+		const j = await res.json();
+		return res.ok && j.tree ? (j.tree.levels ?? []) : [];
 	}
 
-	async function fetchSubjectsRaw(): Promise<Subject[]> {
-		try {
-			const res = await fetch('/api/browse');
-			const j = await res.json();
-			return res.ok ? (j.subjects ?? []) : [];
-		} catch {
-			return [];
-		}
+	async function fetchSubjectsRaw(cacheOnly = false): Promise<Subject[]> {
+		const res = await contentFetch('/api/browse', cacheOnly);
+		if (!res.ok) throw new Error(`http ${res.status}`);
+		const j = await res.json();
+		return res.ok ? (j.subjects ?? []) : [];
 	}
 
-	async function fetchDiscRaw(sub: string, lev: string): Promise<Package[]> {
-		try {
-			const params = new URLSearchParams();
-			params.set('scope', 'cards');
-			if (sub) params.set('subject', sub);
-			if (lev) params.set('level', lev);
-			const res = await fetch(`/api/packages?${params}`);
-			const j = await res.json();
-			return res.ok ? (j.packages ?? []) : [];
-		} catch {
-			return [];
-		}
+	async function fetchDiscRaw(sub: string, lev: string, cacheOnly = false): Promise<Package[]> {
+		const params = new URLSearchParams();
+		params.set('scope', 'cards');
+		if (sub) params.set('subject', sub);
+		if (lev) params.set('level', lev);
+		const res = await contentFetch(`/api/packages?${params}`, cacheOnly);
+		if (!res.ok) throw new Error(`http ${res.status}`);
+		const j = await res.json();
+		return res.ok ? (j.packages ?? []) : [];
 	}
 
 	async function fetchSavedIdsRaw(): Promise<Record<string, boolean>> {
@@ -282,7 +274,7 @@
 			levelsQ.load(null, () => Promise.resolve([]), LEVELS_TTL, LEVELS_STALE);
 			return;
 		}
-		levelsQ.load(id ? `levels:${id}` : null, () => fetchLevelsRaw(id), LEVELS_TTL, LEVELS_STALE);
+		levelsQ.load(id ? `levels:${id}` : null, (cached) => fetchLevelsRaw(id, cached), LEVELS_TTL, LEVELS_STALE);
 	});
 
 	$effect(() => {
@@ -305,7 +297,7 @@
 	$effect(() => {
 		const sub = subjectId;
 		const lev = levelId;
-		discQ.load(`disc-cards:${sub}:${lev}`, () => fetchDiscRaw(sub, lev), DISC_TTL, DISC_STALE);
+		discQ.load(`disc-cards:${sub}:${lev}`, (cached) => fetchDiscRaw(sub, lev, cached), DISC_TTL, DISC_STALE);
 	});
 </script>
 

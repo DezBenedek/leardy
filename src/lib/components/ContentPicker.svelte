@@ -53,7 +53,8 @@
 	import Drawer from './Drawer.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Skeleton from '$lib/ui/Skeleton.svelte';
-	import { getOrFetch, peek } from '$lib/query.svelte';
+	import { getOrFetch, peek, invalidate } from '$lib/query.svelte';
+	import { contentFetch, subscribeContent } from '$lib/content-client';
 	import { untrack } from 'svelte';
 	import { motionOK } from '$lib/overlay';
 	import { fly } from 'svelte/transition';
@@ -114,6 +115,8 @@
 
 	type Step = 'subject' | 'level' | 'topic' | 'lesson';
 
+	let liveSubjects = $state<Subject[] | null>(null);
+	let availableSubjects = $derived(liveSubjects ?? subjects);
 	let trail = $state<Step[]>([]);
 	let subject = $state<Subject | null>(null);
 	let level = $state<LevelNode | null>(null);
@@ -151,6 +154,31 @@
 		}
 	});
 
+	$effect(() => {
+		if (!open || loadTree) return;
+		return subscribeContent((message) => {
+			if (message.type === 'content-status') return;
+			const url = message.url ? new URL(message.url) : null;
+			if (url && url.pathname !== '/api/browse') return;
+			const id = url?.searchParams.get('subject');
+			if (message.type === 'content-deleted' && id) {
+				const next = { ...trees }; delete next[id]; trees = next;
+				if (subject?.id === id) { subject = null; level = null; topic = null; trail = ['subject']; }
+				selected = selected.filter((p) => p.subjectId !== id);
+				return;
+			}
+			if (message.type === 'content-updated') {
+				invalidate(id ? `counts:tree:${id}` : 'counts:subjects');
+				if (!id) loadingSubjectCounts = false;
+			}
+			if (message.type === 'content-invalidated') {
+				invalidate('counts:'); treeTimes.clear();
+			}
+			if ((!id || id === subject?.id) && subject) void ensureTree(subject.id, message.type === 'content-updated' && url?.searchParams.get('quizcounts') === '1');
+			if (!id) void ensureSubjectCounts(message.type === 'content-updated' && url?.searchParams.get('quizcounts') === '1');
+		});
+	});
+
 	function reset() {
 		selectionVersion++;
 		treeVersion++;
@@ -181,13 +209,14 @@
 
 	async function start() {
 		reset();
+		if (!loadTree) void ensureSubjectCounts();
 		const initialSubjectId = baseSubjectId || startSubjectId;
-		const base = subjects.find((s) => s.id === initialSubjectId) ?? null;
+		const base = availableSubjects.find((s) => s.id === initialSubjectId) ?? null;
 		if (base) {
 			if (!baseSubjectId) trail = ['subject'];
 			subject = base;
 			const cached = cachedTree(base.id);
-			if (cached) { pushFirstStep(cached); return; }
+			if (cached) { pushFirstStep(cached); void ensureTree(base.id); return; }
 			if (select === 'level') trail = [...trail, 'level'];
 			starting = true;
 			const version = selectionVersion;
@@ -215,22 +244,29 @@
 		return q === '' || norm(hay).includes(q);
 	}
 
-	async function ensureSubjectCounts() {
-		if (Object.keys(subjectQuizCounts).length > 0 || loadingSubjectCounts) return;
+	async function ensureSubjectCounts(cacheOnly = false) {
+		if (loadingSubjectCounts) return;
 		loadingSubjectCounts = true;
 		try {
 			// Megosztott gyorstár: a számlálók ritkán változnak, oldalak között is élnek.
-			const counts = await getOrFetch<Record<string, number>>(
+			const counts = await getOrFetch<{ subjects: Subject[]; quizCountsBySubject: Record<string, number> }>(
 				'counts:subjects',
 				async () => {
-					const res = await fetch('/api/browse?quizcounts=1');
+					const res = await contentFetch('/api/browse?quizcounts=1', cacheOnly);
 					const j = await res.json().catch(() => ({}));
 					if (!res.ok || !j.quizCountsBySubject) throw new Error('net');
-					return j.quizCountsBySubject as Record<string, number>;
+					return j as { subjects: Subject[]; quizCountsBySubject: Record<string, number> };
 				},
-				COUNTS_TTL
+				COUNTS_TTL, 0, true
 			);
-			subjectQuizCounts = counts;
+			subjectQuizCounts = counts.quizCountsBySubject;
+			liveSubjects = counts.subjects;
+			if (subject) {
+				const updated = counts.subjects.find((s) => s.id === subject?.id);
+				if (updated) subject = updated;
+				else { subject = null; level = null; topic = null; trail = ['subject']; }
+			}
+			selected = selected.filter((p) => counts.subjects.some((s) => s.id === p.subjectId));
 		} catch {
 			// szűrés nélkül marad
 		} finally {
@@ -249,12 +285,12 @@
 		return cached.tree;
 	}
 
-	async function ensureTree(id: string): Promise<SubjectTree | null> {
+	async function ensureTree(id: string, cacheOnly = false): Promise<SubjectTree | null> {
 		const version = ++treeVersion;
 		treeError = false;
 		const cached = cachedTree(id);
-		if (cached) { loadingTree = false; return cached; }
-		loadingTree = true;
+		if (cached && loadTree) { loadingTree = false; return cached; }
+		loadingTree = !cached;
 		try {
 			if (loadTree) {
 				let request = treeRequests.get(id);
@@ -274,19 +310,27 @@
 			const got = await getOrFetch<{ tree: SubjectTree; counts?: Record<string, number> }>(
 				`counts:tree:${id}`,
 				async () => {
-					const res = await fetch(
-						`/api/browse?subject=${encodeURIComponent(id)}&quizcounts=1`
+					const res = await contentFetch(
+						`/api/browse?subject=${encodeURIComponent(id)}&quizcounts=1`, cacheOnly
 					);
 					const j = await res.json().catch(() => ({}));
 					if (!res.ok || !j.tree) throw new Error('net');
 					return { tree: j.tree as SubjectTree, counts: j.quizCounts as Record<string, number> | undefined };
 				},
-				COUNTS_TTL
+				COUNTS_TTL, 0, true
 			);
 			if (version === treeVersion) {
 				trees = { ...trees, [id]: got.tree };
 				treeTimes.set(id, Date.now());
 				if (got.counts) quizCounts = { ...quizCounts, [id]: got.counts };
+				if (subject?.id === id) {
+					const nextLevel = got.tree.levels.find((l) => l.id === level?.id) ?? null;
+					const nextTopic = nextLevel?.materials.find((m) => m.id === topic?.id) ?? null;
+					if (level && !nextLevel) trail = trail.filter((s) => s === 'subject' || s === 'level');
+					else if (topic && !nextTopic) trail = trail.filter((s) => s !== 'lesson');
+					level = nextLevel; topic = nextTopic;
+					selected = selected.filter((p) => p.subjectId !== id || got.tree.levels.some((l) => l.id === p.levelId && (p.kind === 'level' || l.materials.some((m) => m.id === p.topicId && (p.kind === 'topic' || m.lessons.some((le) => le.id === p.lessonId))))));
+				}
 			}
 			return got.tree;
 		} catch {
@@ -314,7 +358,7 @@
 
 	let tree = $derived(subject ? (trees[subject.id] ?? null) : null);
 	let visibleSubjects = $derived(
-		(onlyWithQuiz ? subjects.filter((s) => (subjectQuizCounts[s.id] ?? 0) > 0) : subjects).filter(
+		(onlyWithQuiz ? availableSubjects.filter((s) => (subjectQuizCounts[s.id] ?? 0) > 0) : availableSubjects).filter(
 			(s) => matches(s.title)
 		)
 	);
@@ -366,7 +410,9 @@
 		query = '';
 		starting = false;
 		trail = [...trail, 'level'];
-		const t = cachedTree(s.id) ?? await ensureTree(s.id);
+		const cached = cachedTree(s.id);
+		if (cached && !loadTree) void ensureTree(s.id);
+		const t = cached ?? await ensureTree(s.id);
 		if (!open || version !== selectionVersion) return;
 		pendingSubjectId = '';
 		if (select === 'level') return;

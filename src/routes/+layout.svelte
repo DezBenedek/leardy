@@ -6,6 +6,12 @@
 	import { page } from '$app/state';
 	import { fade } from 'svelte/transition';
 	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import { offlineUrl } from '$lib/content-protocol';
+	import { startContentSync, invalidateContent } from '$lib/content-client';
+	import { startProgressSync, syncProgress } from '$lib/progress-outbox.svelte';
+	import { startPwaUpdates } from '$lib/pwa-client';
 	import { pwaInfo } from 'virtual:pwa-info';
 	import { auth } from '$lib/auth.svelte';
 	import AuthDrawer from '$lib/components/AuthDrawer.svelte';
@@ -23,6 +29,23 @@
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
+	let offlinePage = $derived(page.url.pathname === '/offline');
+	onMount(() => {
+		const stopContent = startContentSync();
+		const stopProgress = startProgressSync();
+		return () => { stopContent(); stopProgress(); };
+	});
+	beforeNavigate(({ to, cancel }) => {
+		if (to && !navigator.onLine && (/^\/tanulas\/lecke\/[^/]+\/?$/.test(to.url.pathname) || to.url.pathname === '/tanulas')) {
+			cancel(); void goto(resolve('/offline') + offlineUrl(to.url).slice('/offline'.length));
+		}
+	});
+
+	$effect(() => {
+		if (page.status !== 404 && page.status !== 410) return;
+		const lesson = /^\/tanulas\/lecke\/([^/]+)\/?$/.exec(page.url.pathname);
+		if (lesson) void invalidateContent({ action: 'deleteLesson', lessonId: decodeURIComponent(lesson[1]) });
+	});
 
 	onMount(() => {
 		startNotificationEngine();
@@ -47,51 +70,49 @@
 	// Nelkuluk a bongeszo nem kinalja fel a "Telepites" gombot.
 	let webManifestLink = $derived(pwaInfo ? pwaInfo.webManifest.linkTag : '');
 
-	onMount(async () => {
-		if (!browser) return;
-		if (dev) {
-			const resetKey = 'leardy-dev-service-worker-reset';
-			try {
-				const sw = navigator.serviceWorker;
-				if (!sw) return;
-				const registrations = await sw.getRegistrations();
-				const controlled = !!sw.controller;
-				if (registrations.length > 0) {
-					await Promise.all(registrations.map((registration) => registration.unregister()));
+	onMount(() => {
+		let stopped = false;
+		let stopUpdates: (() => void) | undefined;
+		async function registerPwa() {
+			if (dev) {
+				const resetKey = 'leardy-dev-service-worker-reset';
+				try {
+					const sw = navigator.serviceWorker;
+					if (!sw) return;
+					const registrations = await sw.getRegistrations();
+					const controlled = !!sw.controller;
+					if (registrations.length > 0) {
+						await Promise.all(registrations.map((registration) => registration.unregister()));
+					}
+					const oldCaches = (await caches.keys()).filter(
+						(key) => key.startsWith('leardy-static-') || key.startsWith('workbox-')
+					);
+					await Promise.all(oldCaches.map((key) => caches.delete(key)));
+					if (controlled && sessionStorage.getItem(resetKey) !== '1') {
+						sessionStorage.setItem(resetKey, '1');
+						location.reload();
+						return;
+					}
+					if (!controlled) sessionStorage.removeItem(resetKey);
+				} catch (error) {
+					console.warn('Fejlesztői service worker takarítási hiba', error);
 				}
-				const oldCaches = (await caches.keys()).filter(
-					(key) => key.startsWith('leardy-static-') || key.startsWith('workbox-')
-				);
-				await Promise.all(oldCaches.map((key) => caches.delete(key)));
-				if (controlled && sessionStorage.getItem(resetKey) !== '1') {
-					sessionStorage.setItem(resetKey, '1');
-					location.reload();
-					return;
-				}
-				if (!controlled) sessionStorage.removeItem(resetKey);
-			} catch (error) {
-				console.warn('Fejlesztői service worker takarítási hiba', error);
+				return;
 			}
-			return;
+			if (!pwaInfo) return;
+			if (!stopped) stopUpdates = startPwaUpdates();
 		}
-		if (!pwaInfo) return;
-		try {
-			const { registerSW } = await import('virtual:pwa-register');
-			registerSW({
-				immediate: true,
-				onRegisterError(error: unknown) {
-					console.warn('SW registration error', error);
-				}
-			});
-		} catch (error) {
-			console.warn('SW registration error', error);
-		}
+		void registerPwa();
+		return () => {
+			stopped = true;
+			stopUpdates?.();
+		};
 	});
 
 	// Kliens indulaskor azonnal szinkronizalunk, hogy a gyerekek
 	// (Sidebar, fooldal) mar az elso paintkor latjak a usert.
 	// svelte-ignore state_referenced_locally: szandekosan csak a kezdeti ertek kell.
-	if (browser && !auth.ready) auth.seed(data.user ?? null);
+	if (browser && !auth.ready && !offlinePage) auth.seed(data.user ?? null);
 
 	$effect(() => {
 		if (!user) return;
@@ -105,8 +126,9 @@
 	// A session szerverről jön: paint előtt beáll, splash nincs.
 	// Kliensoldali navigációnál a friss layout-adat szinkronizál.
 	$effect.pre(() => {
-		auth.seed(data.user ?? null);
+		if (!offlinePage) auth.seed(data.user ?? null);
 	});
+	$effect(() => { if (user?.id) void syncProgress(); });
 
 	// Google OAuth hibák visszajelzése a callback átirányítás után (?auth_error=...).
 	// onMount + window.location: nem reaktív, ezért egyszer fut, nincs végtelen ciklus,
@@ -151,7 +173,9 @@
 	{@html webManifestLink}
 </svelte:head>
 
-{#if !user}
+{#if offlinePage}
+	<main class="mx-auto min-h-dvh w-full max-w-3xl px-4 py-5 sm:px-6">{@render children()}</main>
+{:else if !user}
 	<!-- Auth-gate: be nem lépve az app nem használható, csak Google belépés -->
 	<div class="mx-auto grid min-h-dvh w-full max-w-md place-items-center px-6">
 		<div class="w-full text-center">

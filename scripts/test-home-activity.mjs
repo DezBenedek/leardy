@@ -70,7 +70,7 @@ function testDb() {
 	sqlite.exec(`PRAGMA foreign_keys = ON;
 		CREATE TABLE users (id TEXT PRIMARY KEY);
 		INSERT INTO users VALUES ('student'), ('other');
-		CREATE TABLE lesson_progress (user_id TEXT, lesson_id TEXT, done INTEGER, score INTEGER, total INTEGER, updated_at INTEGER, PRIMARY KEY (user_id, lesson_id));
+		CREATE TABLE lesson_progress (user_id TEXT, lesson_id TEXT, done INTEGER, score INTEGER, total INTEGER, updated_at INTEGER, event_at INTEGER DEFAULT 0, PRIMARY KEY (user_id, lesson_id));
 		CREATE TABLE card_progress (user_id TEXT, card_key TEXT, known INTEGER, seen INTEGER, updated_at TEXT, repetitions INTEGER, ease REAL, interval_days INTEGER, due_day INTEGER, PRIMARY KEY (user_id, card_key));`);
 	sqlite.exec(migration);
 	return {
@@ -113,8 +113,8 @@ test('A régi másodperces, milliszekundumos és kártyás dátumokból visszany
 	const db = testDb();
 	t.mock.method(Date, 'now', () => friday);
 	try {
-		db.sqlite.prepare('INSERT INTO lesson_progress VALUES (?, ?, 1, 1, 1, ?)').run('student', 'seconds', (friday - 2 * 86_400_000) / 1000);
-		db.sqlite.prepare('INSERT INTO lesson_progress VALUES (?, ?, 1, 1, 1, ?)').run('student', 'millis', friday - 86_400_000);
+		db.sqlite.prepare('INSERT INTO lesson_progress (user_id,lesson_id,done,score,total,updated_at) VALUES (?, ?, 1, 1, 1, ?)').run('student', 'seconds', (friday - 2 * 86_400_000) / 1000);
+		db.sqlite.prepare('INSERT INTO lesson_progress (user_id,lesson_id,done,score,total,updated_at) VALUES (?, ?, 1, 1, 1, ?)').run('student', 'millis', friday - 86_400_000);
 		db.sqlite.prepare('INSERT INTO card_progress (user_id, card_key, seen, updated_at) VALUES (?, ?, 1, ?)').run('student', 'word', new Date(friday).toISOString());
 		db.sqlite.prepare('INSERT INTO card_progress (user_id, card_key, seen, updated_at) VALUES (?, ?, 1, ?)').run('student', 'invalid', 'invalid');
 		assert.equal((await getHomeStats(db, 'student')).streak, 3);

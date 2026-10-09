@@ -1,65 +1,40 @@
-import { json, type RequestEvent, type RequestHandler } from '@sveltejs/kit';
+import { error, json, isHttpError, type RequestHandler } from '@sveltejs/kit';
 import { getDb, getSessionUser } from '$lib/server/db';
-import {
-	countQuizzesByLesson,
-	countQuizzesBySubject,
-	getSubjectTree,
-	listSubjects
-} from '$lib/server/curriculum';
+import { countQuizzesByLesson, countQuizzesBySubject, getSubjectTree, listSubjects } from '$lib/server/curriculum';
+import { contentResponse, publicContent } from '$lib/server/content-cache';
 
-/** Bejelentkezett user id-je, vagy null a done-jelölésekhez. */
-async function userIdOf(event: RequestEvent): Promise<string | number | null> {
-	try {
-		const db = getDb(event);
-		if (!db) return null;
-		const user = await getSessionUser(event, db);
-		return user?.id ?? null;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Böngésző-végpont a Tanulás oldalnak.
- * ?subject= nélkül: tantárgy-lista; ?subject=id esetén a tantárgy fája
- * (?level=id-tel a tananyagokra szűrve).
- * ?quizcounts=1 esetén kvízszámok is jönnek: tantárgy-listánál
- * quizCountsBySubject, fánál quizCounts (leckénként).
- *
- * Gyorstár: a tananyag ritkán változik, ezért a nyilvános válaszok
- * böngésző-gyorstárba kerülnek (max-age + stale-while-revalidate).
- * A bejelentkezett fa done-jelöléseket tartalmaz, az privát.
- */
-const PUBLIC_LIST = 'public, max-age=300, stale-while-revalidate=3600';
-const PUBLIC_TREE = 'public, max-age=120, stale-while-revalidate=600';
-const PRIVATE_TREE = 'private, max-age=60, stale-while-revalidate=300';
-export const GET: RequestHandler = async (event) => {	const subjectId = event.url.searchParams.get('subject') ?? '';
+export const GET: RequestHandler = async (event) => {
+	const subjectId = event.url.searchParams.get('subject') ?? '';
 	const levelId = event.url.searchParams.get('level') ?? '';
-	const withCounts = event.url.searchParams.get('quizcounts') === '1';
+	const counts = event.url.searchParams.get('quizcounts') === '1';
 	try {
-		if (!subjectId) {
-			const subjects = await listSubjects(event);
-			if (!withCounts) return json({ subjects }, { headers: { 'cache-control': PUBLIC_LIST } });
-			const db = getDb(event);
-			const quizCountsBySubject = db ? await countQuizzesBySubject(db) : {};
-			return json({ subjects, quizCountsBySubject }, { headers: { 'cache-control': PUBLIC_LIST } });
-		}
-		const userId = await userIdOf(event);
-		const tree = await getSubjectTree(event, subjectId, userId);
-		if (!tree) return json({ error: 'Nincs ilyen tantárgy.' }, { status: 404 });
-		if (levelId) tree.levels = tree.levels.filter((l) => l.id === levelId);
-		const headers: Record<string, string> =
-			userId === null
-				? { 'cache-control': PUBLIC_TREE }
-				: { 'cache-control': PRIVATE_TREE, vary: 'Cookie' };
-		if (!withCounts) return json({ tree }, { headers });
 		const db = getDb(event);
-		const quizCounts = db ? await countQuizzesByLesson(db, subjectId) : {};
-		return json({ tree, quizCounts }, { headers });
+		if (!db) error(503, 'Az adatbázis most nem elérhető.');
+		if (!subjectId) {
+			const resource = await publicContent(event, `subjects:${counts}`, null, async () => ({
+				subjects: await listSubjects(event),
+				...(counts ? { quizCountsBySubject: await countQuizzesBySubject(db) } : {})
+			}));
+			return contentResponse(event, resource.data, resource.version);
+		}
+		const resource = await publicContent(event, `tree:${subjectId}:${levelId}:${counts}`, subjectId, async () => {
+			const tree = await getSubjectTree(event, subjectId, null);
+			if (!tree) error(404, 'Nincs ilyen tantárgy.');
+			if (levelId) tree.levels = tree.levels.filter((l) => l.id === levelId);
+			return { tree, ...(counts ? { quizCounts: await countQuizzesByLesson(db, subjectId) } : {}) };
+		});
+		const user = await getSessionUser(event, db);
+		if (user) {
+			const done = await db.prepare(`SELECT p.lesson_id FROM lesson_progress p
+				JOIN lessons le ON le.id=p.lesson_id JOIN materials m ON m.id=le.material_id
+				JOIN levels l ON l.id=m.level_id WHERE p.user_id=? AND p.done=1 AND l.subject_id=?`)
+				.bind(user.id, subjectId).all<{ lesson_id: string }>();
+			const ids = new Set(done.results.map((r) => r.lesson_id));
+			for (const level of resource.data.tree.levels) for (const material of level.materials) for (const lesson of material.lessons) lesson.done = ids.has(lesson.id);
+		}
+		return contentResponse(event, resource.data, resource.version, user?.id ?? null);
 	} catch (e) {
-		return json(
-			{ error: e instanceof Error ? e.message : 'Nem sikerült betölteni a tananyagot.' },
-			{ status: 500 }
-		);
+		if (isHttpError(e)) throw e;
+		return json({ error: 'Nem sikerült betölteni a tananyagot.' }, { status: 503, headers: { 'cache-control': 'no-store' } });
 	}
 };

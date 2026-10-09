@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { contentFetch } from '$lib/content-client';
 	import { lessonPath } from '$lib/lesson-paths';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -41,7 +42,7 @@
 	const id = $derived(page.params.id ?? '');
 	const detailQ = new Query<Detail>();
 
-	/* Gyorstár-ablakok: friss = nincs hálózat, öreg = mutatható + csendben frissül. */
+	/* A memóriában őrzött adat azonnal látszik, megnyitáskor újraellenőrizzük. */
 	const PKG_TTL = 10 * 60_000;
 	const PKG_STALE = 30 * 60_000;
 
@@ -85,31 +86,14 @@
 		}
 	}
 
-	async function fetchDetail(): Promise<Detail> {
+	async function fetchDetail(cacheOnly = false): Promise<Detail> {
 		// A Kártyák területen saját deckek (deck:...) és hivatalos csomagok
 		// (pack:..., régi alakban cards:...) vannak. Régi kvíz-azonosítóval már 404-et adunk.
 		if (!id.startsWith('deck:') && !id.startsWith('pack:') && !id.startsWith('cards:'))
 			throw new Error('not-found');
-		try {
-			const res = await fetch(`/api/packages?id=${encodeURIComponent(id)}`);
-			if (!res.ok) throw new Error(`http ${res.status}`);
-			return res.json();
-		} catch (e) {
-			// Hálózat nélkül a könyvtár-gyorstárból szolgálunk (csak mentett csomag).
-			if (e instanceof TypeError) {
-				try {
-					const raw = localStorage.getItem('leardy-library');
-					const pkgs = raw ? ((JSON.parse(raw).packages ?? []) as Package[]) : [];
-					const found = pkgs.find((p) => p.quizId === id);
-					if (found) {
-						return { package: found, progress: {} };
-					}
-				} catch {
-					// sérült gyorstár
-				}
-			}
-			throw e;
-		}
+		const res = await contentFetch(`/api/packages?id=${encodeURIComponent(id)}`, cacheOnly);
+		if (!res.ok) throw new Error(`http ${res.status}`);
+		return res.json();
 	}
 
 	let pkg = $derived(detailQ.data?.package ?? null);

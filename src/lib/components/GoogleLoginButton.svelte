@@ -1,21 +1,22 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
+
 	interface Props {
 		label?: string;
 		busy?: boolean;
 	}
 
 	let { label = 'Belépés Google fiókkal', busy = false }: Props = $props();
-
-	function login() {
-		window.location.href = '/api/auth/google';
-	}
 </script>
 
-<button
-	type="button"
-	onclick={login}
-	disabled={busy}
-	class="inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-white px-5 py-3 text-[15px] font-bold text-ink-900 shadow-lg shadow-black/5 ring-1 ring-stone-300 transition hover:bg-stone-50 active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 disabled:pointer-events-none disabled:opacity-60 dark:bg-white dark:shadow-black/30 dark:ring-0 dark:hover:bg-stone-100"
+<a
+	href={busy ? undefined : resolve('/api/auth/google')}
+	data-sveltekit-reload
+	aria-disabled={busy || undefined}
+	class={[
+		'inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-white px-5 py-3 text-[15px] font-bold text-ink-900 shadow-lg shadow-black/5 ring-1 ring-stone-300 transition hover:bg-stone-50 active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 dark:bg-white dark:shadow-black/30 dark:ring-0 dark:hover:bg-stone-100',
+		busy && 'pointer-events-none opacity-60'
+	]}
 >
 	<svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true">
 		<path
@@ -36,7 +37,7 @@
 		/>
 	</svg>
 	{label}
-</button>
+</a>
 <div class="mt-2.5 text-center">
 	<p class="text-[13px] font-semibold text-stone-500 dark:text-stone-400">Támogatott iskolák:</p>
 	<ul class="mt-1">
