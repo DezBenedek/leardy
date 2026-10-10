@@ -3,11 +3,8 @@
 	import { lessonPath, lessonEditorPath } from '$lib/lesson-paths';
 	import { afterNavigate, beforeNavigate, goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, BookOpenText, ChevronDown, ChevronRight, LoaderCircle, Pencil, Plus, Settings, Trash2, UserRound } from '@lucide/svelte';
-	import { slide } from 'svelte/transition';
+	import { ArrowDown, ArrowLeft, ArrowUp, BookOpenText, ChevronDown, ChevronRight, LoaderCircle, Pencil, Plus, Settings, Trash2, UserRound } from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
-	import { cubicOut } from 'svelte/easing';
-	import { motionOK } from '$lib/overlay';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import ContentPicker from '$lib/components/ContentPicker.svelte';
@@ -34,8 +31,6 @@
 	let searchFocus = $state(false);
 	let scopeOpen = $state(false);
 	let scopeSubjectId = $state('');
-	let ordering = $state(false);
-	let orderMotion = $state(false);
 	let busy = $state(false);
 	let navigating = $state(false);
 	let settingsOpen = $state(false);
@@ -136,11 +131,6 @@
 		}, 350);
 	}
 
-	function toggleOrdering() {
-		orderMotion = motionOK();
-		ordering = !ordering;
-	}
-
 	function editorUrl(subjectId: string, levelId = ''): `/tanulas/szerkeszto?${string}` {
 		return `/tanulas/szerkeszto?${new URLSearchParams({ subject: subjectId, level: levelId })}`;
 	}
@@ -148,7 +138,7 @@
 	async function changeScope(subjectId: string, levelId = '') {
 		if (busy || navigating) return;
 		navigating = true;
-		try { await goto(resolve(editorUrl(subjectId, levelId)), { keepFocus: true, noScroll: true }); query = ''; ordering = false; }
+		try { await goto(resolve(editorUrl(subjectId, levelId)), { keepFocus: true, noScroll: true }); query = ''; }
 		catch (err) { toast.error(err instanceof Error ? err.message : 'Nem sikerült váltani a tananyagot.'); }
 		finally { navigating = false; }
 	}
@@ -315,7 +305,7 @@
 	}
 
 	async function move(kind: 'topic' | 'lesson', id: string, direction: number, topicId?: string) {
-		if (!level?.canEdit || busy) return;
+		if (!level?.canEdit || busy || navigating) return;
 		const items = kind === 'topic' ? level.materials : level.materials.find((topic) => topic.id === topicId)?.lessons ?? [];
 		const ids = items.map((item) => item.id);
 		const index = ids.indexOf(id);
@@ -337,7 +327,7 @@
 	<div class="shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none" style:width={searchFocus ? '0px' : '44px'} style:opacity={searchFocus ? 0 : 1}>
 		<IconButton ariaLabel="Vissza a tanuláshoz" size={44} disabled={searchFocus} onclick={goBack}><ArrowLeft size={21} /></IconButton>
 	</div>
-	<h1 class={['min-w-0 shrink-0 overflow-hidden transition-[max-width,opacity] duration-200 motion-reduce:transition-none', !level && 'flex-1']} style:max-width={searchFocus ? '0px' : level ? 'calc(100% - 214px)' : 'calc(100% - 52px)'} style:opacity={searchFocus ? 0 : 1}>
+	<h1 class={['min-w-0 shrink-0 overflow-hidden transition-[max-width,opacity] duration-200 motion-reduce:transition-none', !level && 'flex-1']} style:max-width={searchFocus ? '0px' : level ? 'calc(100% - 160px)' : 'calc(100% - 52px)'} style:opacity={searchFocus ? 0 : 1}>
 		<button
 			type="button"
 			aria-label={level ? `Tantárgy és tananyag választása: ${subject?.title}, ${level.title}` : 'Tantárgy és tananyag választása'}
@@ -357,9 +347,6 @@
 	</h1>
 	{#if level}
 		<SearchInput bind:value={query} expandable disabled={busy || navigating} ariaLabel="Keresés a témakörök és leckék között" placeholder="Keresés…" onfocus={() => (searchFocus = true)} onblur={() => (searchFocus = false)} />
-		<div class="shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none" style:width={searchFocus ? '0px' : '46px'} style:opacity={searchFocus ? 0 : 1}>
-			<IconButton ariaLabel={ordering ? 'Sorrendmódosítás bezárása' : 'Sorrend módosítása'} size={46} disabled={!level.canEdit || busy || navigating || searchFocus} onclick={toggleOrdering}><ArrowUpDown size={21} /></IconButton>
-		</div>
 		<div class="shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none" style:width={searchFocus ? '0px' : '46px'} style:opacity={searchFocus ? 0 : 1}>
 			<IconButton ariaLabel="A tananyag beállításai" size={46} disabled={!level.canEdit || busy || navigating || searchFocus} onclick={openSettings}><Settings size={21} /></IconButton>
 		</div>
@@ -382,14 +369,10 @@
 				<h2 class="min-w-0 flex-1 break-words text-base font-extrabold text-ink-900 dark:text-white">{topic.title}</h2>
 				{#if level?.canEdit}
 					<div class="ml-auto flex shrink-0 items-center gap-2">
-					{#if ordering}
-						<div class="flex shrink-0 items-center gap-2 overflow-hidden" transition:slide={{ axis: 'x', duration: orderMotion ? 180 : 0, easing: cubicOut }}>
-						<IconButton ariaLabel="Témakör feljebb: {topic.title}" size={44} disabled={busy || topicIndex === 0} onclick={() => { void move('topic', topic.id, -1); }}><ArrowUp size={17} /></IconButton>
-						<IconButton ariaLabel="Témakör lejjebb: {topic.title}" size={44} disabled={busy || topicIndex === level.materials.length - 1} onclick={() => { void move('topic', topic.id, 1); }}><ArrowDown size={17} /></IconButton>
-						</div>
-					{/if}
 					<IconButton ariaLabel="Lecke hozzáadása: {topic.title}" size={44} disabled={busy} onclick={() => openName('createLesson', 'Új lecke', topic.id)}><Plus size={18} /></IconButton>
-					<ActionMenu compact label="Témakör műveletei: {topic.title}" disabled={busy || navigating} actions={[
+					<ActionMenu compact dense menuIconsOnly floating label="Témakör műveletei: {topic.title}" disabled={busy || navigating} actions={[
+						{ id: 'up', label: `Témakör feljebb: ${topic.title}`, icon: ArrowUp, disabled: topicIndex === 0, onclick: () => { void move('topic', topic.id, -1); } },
+						{ id: 'down', label: `Témakör lejjebb: ${topic.title}`, icon: ArrowDown, disabled: topicIndex === level.materials.length - 1, onclick: () => { void move('topic', topic.id, 1); } },
 						{ id: 'rename', label: 'Átnevezés', icon: Pencil, onclick: () => openName('renameTopic', 'Témakör átnevezése', topic.id, topic.title) },
 						{ id: 'delete', label: 'Törlés', icon: Trash2, tone: 'danger', onclick: () => openDeleteTopic(topic.id, topic.title) }
 					]} />
@@ -404,10 +387,10 @@
 						<a href={level?.canEdit ? lessonEditorPath(lesson.id) : lessonPath(lesson.id)} class="flex min-w-0 flex-1 items-center gap-2 py-4 text-sm font-bold text-ink-900 hover:text-brand-600 dark:text-white dark:hover:text-brand-300">
 							<span class="min-w-0 flex-1 break-words">{lesson.title}</span><ChevronRight size={18} class="shrink-0 text-stone-400" />
 						</a>
-						{#if ordering && level?.canEdit}
-							<div class="flex shrink-0 items-center gap-2 overflow-hidden" transition:slide={{ axis: 'x', duration: orderMotion ? 180 : 0, easing: cubicOut }}>
-							<IconButton ariaLabel="Lecke feljebb: {lesson.title}" size={44} disabled={busy || lessonIndex === 0} onclick={() => { void move('lesson', lesson.id, -1, topic.id); }}><ArrowUp size={17} /></IconButton>
-							<IconButton ariaLabel="Lecke lejjebb: {lesson.title}" size={44} disabled={busy || lessonIndex === lessonCount - 1} onclick={() => { void move('lesson', lesson.id, 1, topic.id); }}><ArrowDown size={17} /></IconButton>
+						{#if level?.canEdit}
+							<div class="flex shrink-0 items-center gap-1">
+							<IconButton ariaLabel="Lecke feljebb: {lesson.title}" size={36} disabled={busy || navigating || lessonIndex === 0} onclick={() => { void move('lesson', lesson.id, -1, topic.id); }}><ArrowUp size={17} /></IconButton>
+							<IconButton ariaLabel="Lecke lejjebb: {lesson.title}" size={36} disabled={busy || navigating || lessonIndex === lessonCount - 1} onclick={() => { void move('lesson', lesson.id, 1, topic.id); }}><ArrowDown size={17} /></IconButton>
 							</div>
 						{/if}
 					</li>

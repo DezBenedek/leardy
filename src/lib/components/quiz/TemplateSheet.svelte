@@ -10,27 +10,24 @@
 		custom: CustomTemplate[];
 		busy: boolean;
 		error: string;
-		legacyCount: number;
-		onImportLegacy: () => void;
 		onRetry: () => void;
 		onClose: () => void;
 		onPick: (seed: TemplateSeed) => void;
 		onDeleteCustom: (key: string) => void;
 	}
-	let { open, custom, busy, error, legacyCount, onImportLegacy, onRetry, onClose, onPick, onDeleteCustom }: Props = $props();
+	let { open, custom, busy, error, onRetry, onClose, onPick, onDeleteCustom }: Props = $props();
 	const icons: Record<QuestionTypeId, typeof ListChecks> = { choice: ListChecks, tf: Check, text: Pencil, match: Shapes, order: ListOrdered };
 </script>
 
 <div use:portal>
 	<Sheet {open} label="Saját sablon választása" title="Saját sablonok" {onClose}>
-		<p class="mt-2 text-xs text-stone-500 dark:text-stone-400">A fiókodba mentett sablonokat minden eszközödön eléred.</p>
 		{#if busy}<p role="status" class="mt-3 text-sm text-stone-500 dark:text-stone-400">Sablonok frissítése…</p>{/if}
 		{#if error}
 			<p role="alert" class="mt-3 text-sm text-red-700 dark:text-red-300">{error}</p>
 			<Button size="sm" variant="outline" disabled={busy} onclick={onRetry}>Újrapróbálás</Button>
 		{/if}
 		{#if !custom.length && !busy && !error}
-			<p class="mt-3 text-sm text-stone-500 dark:text-stone-400">Még nincs saját sablonod. Egy kérdés menüjében a Mentés saját sablonként művelettel készíthetsz.</p>
+			<p class="mt-3 text-sm text-stone-500 dark:text-stone-400">Nincsenek sablonjaid!</p>
 		{:else if custom.length}
 			<ul class="-mx-1 mt-2 space-y-0.5" aria-label="Saját sablonok">
 				{#each custom as template (template.key)}
@@ -44,12 +41,6 @@
 					</li>
 				{/each}
 			</ul>
-		{/if}
-		{#if legacyCount && !error}
-			<div class="mt-4 space-y-2 border-t border-stone-200 pt-3 dark:border-white/10">
-				<p class="text-xs text-stone-500 dark:text-stone-400">Ezen az eszközön {legacyCount} korábbi sablon található. Ha a tieid, átveheted őket a jelenlegi fiókodba.</p>
-				<Button size="sm" variant="outline" disabled={busy} onclick={onImportLegacy}>Korábbi sablonok átvétele a fiókba</Button>
-			</div>
 		{/if}
 	</Sheet>
 </div>

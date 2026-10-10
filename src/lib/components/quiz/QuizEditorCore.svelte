@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick, untrack, type Snippet } from 'svelte';
-	import { ArrowDown, ArrowUp, Copy, Eye, LayoutTemplate, Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import { ArrowDown, ArrowUp, Copy, Eye, LayoutTemplate, Pencil, Trash2 } from '@lucide/svelte';
+	import AddItemButton from '$lib/ui/AddItemButton.svelte';
 	import { typeComponents } from '$lib/question-types/components';
 	import Button from '$lib/ui/Button.svelte';
 	import ActionMenu from '$lib/ui/ActionMenu.svelte';
@@ -15,7 +16,6 @@
 	import type { QuizAdapter } from './quiz-adapter';
 	import {
 		blankQuestion, deleteCustomTemplate, draftToPreview, effectiveSectionSlug, loadCustomTemplates,
-		loadLegacyCustomTemplates, importLegacyCustomTemplates,
 		questionTypeTitle, saveCustomTemplate, seedToDraft, validateQuestion,
 		type CustomTemplate, type QuestionDraft, type QuestionTypeId, type SectionOption, type TemplateSeed
 	} from '$lib/quiz-editor';
@@ -53,7 +53,6 @@
 	let typeSheetOpen = $state(false);
 	let templateSheetOpen = $state(false);
 	let customTemplates = $state<CustomTemplate[]>([]);
-	let legacyTemplates = $state<CustomTemplate[]>([]);
 	let preview = $state<{ title: string; questions: QuizQuestion[] } | null>(null);
 	let pending = $state<{ title: string; description: string; label: string; action: () => void } | null>(null);
 	let listElement: HTMLUListElement | undefined = $state();
@@ -112,7 +111,6 @@
 	async function openTemplates() {
 		if (editorBusy) return;
 		customTemplates = [];
-		legacyTemplates = loadLegacyCustomTemplates();
 		templateSheetOpen = true;
 		templateBusy = true;
 		templateError = '';
@@ -126,17 +124,6 @@
 		templateError = '';
 		try { customTemplates = await deleteCustomTemplate(key); }
 		catch (err) { templateError = err instanceof Error ? err.message : 'A sablon törlése nem sikerült. Próbáld újra.'; }
-		finally { templateBusy = false; }
-	}
-	async function importTemplates() {
-		if (editorBusy || !legacyTemplates.length) return;
-		templateBusy = true;
-		templateError = '';
-		try {
-			customTemplates = await importLegacyCustomTemplates(legacyTemplates);
-			legacyTemplates = [];
-			toast.success('A korábbi sablonok átkerültek a fiókodba');
-		} catch (err) { templateError = err instanceof Error ? err.message : 'A sablonok átvétele nem sikerült. Próbáld újra.'; }
 		finally { templateBusy = false; }
 	}
 	function applyTemplate(seed: TemplateSeed) {
@@ -239,7 +226,6 @@
 
 {#snippet actions()}
 	<div class="flex shrink-0 items-center gap-1 sm:gap-2">
-		<Button size="sm" ariaLabel="Új kérdés" disabled={editorBusy} onclick={() => (typeSheetOpen = true)}><Plus size={16} aria-hidden="true" /><span>Új<span class="ml-1 hidden min-[360px]:inline">kérdés</span></span></Button>
 		<Button size="sm" variant="ghost" ariaLabel="Kvíz előnézete" disabled={editorBusy || !questions.length} onclick={previewAll}><Eye size={17} aria-hidden="true" /><span class="hidden sm:inline">Előnézet</span></Button>
 		<Button size="sm" variant="ghost" ariaLabel="Saját sablonok" disabled={editorBusy} onclick={openTemplates}><LayoutTemplate size={17} aria-hidden="true" /><span class="hidden sm:inline">Sablonok</span></Button>
 	</div>
@@ -248,9 +234,9 @@
 <div class="quiz-editor" aria-busy={editorBusy}>
 	{#if header}{@render header(actions)}{:else}<div class="mb-3 flex justify-end">{@render actions()}</div>{/if}
 	{#if !questions.length}
-		<p class="py-6 text-center text-sm text-stone-500 dark:text-stone-400">Még nincs kérdés. Adj hozzá egyet a fenti gombbal.</p>
+		<p class="mb-3 rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500 dark:border-white/15 dark:text-stone-400">Még nincs kérdés. Adj hozzá egyet a kvíz elkészítéséhez.</p>
 	{:else}
-		<ul bind:this={listElement} class="space-y-1.5" aria-label="A lecke kérdései">
+		<ul bind:this={listElement} class="mb-3 space-y-1.5" aria-label="A lecke kérdései">
 			{#each questions as question, index (question.id)}
 				{@const Icon = typeComponents(question.type).icon}
 				{@const invalid = validateQuestion(question)}
@@ -275,6 +261,7 @@
 			{/each}
 		</ul>
 	{/if}
+	<AddItemButton label="Kérdés hozzáadása" disabled={editorBusy} onclick={() => (typeSheetOpen = true)} />
 	{#if listError}<p role="alert" class="mt-3 rounded-2xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{listError}</p>{/if}
 </div>
 
@@ -292,7 +279,7 @@
 
 <QuestionTypeSheet open={typeSheetOpen} value={editing?.type ?? ''} onClose={() => (typeSheetOpen = false)} onPick={pickType} />
 <TemplateSheet open={templateSheetOpen} custom={customTemplates} busy={templateBusy} error={templateError}
-	legacyCount={legacyTemplates.length} onImportLegacy={importTemplates} onRetry={openTemplates}
+	onRetry={openTemplates}
 	onClose={() => (templateSheetOpen = false)} onPick={applyTemplate} onDeleteCustom={removeTemplate} />
 <div use:portal>
 	<Sheet open={pending !== null} label={pending?.title ?? 'Megerősítés'} title={pending?.title} onClose={() => (pending = null)}>

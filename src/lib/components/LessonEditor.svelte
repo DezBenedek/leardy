@@ -7,14 +7,14 @@
 	import { cubicInOut } from 'svelte/easing';
 	import { rememberEditorScope } from '$lib/editor-scope';
 	import { motionOK } from '$lib/overlay';
-	import LessonContent from './lesson/LessonContent.svelte';
 	import type LessonRichEditor from './lesson/LessonRichEditor.svelte';
 	import { auth } from '$lib/auth.svelte';
-	import { emptyLessonDoc, editableLessonDoc, lessonNodeText, validateLessonContent, type LessonContentV1 } from '$lib/lesson-content';
+	import { emptyLessonDoc, editableLessonDoc, validateLessonContent, type LessonContentV1 } from '$lib/lesson-content';
 	import { markdownLessonDoc } from '$lib/lesson-markdown';
 	import { getLessonDraft, putLessonDraft, removeLessonDraft, lessonDraftKey, type LessonDraft } from '$lib/lesson-draft';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
-	import { ArrowDown, ArrowLeft, ArrowUp, ListChecks, Pencil, Plus, Save, Trash2, ChevronDown, Eye } from '@lucide/svelte';
+	import { ArrowDown, ArrowLeft, ArrowUp, ListChecks, Pencil, Save, Trash2, FileClock, X } from '@lucide/svelte';
+	import AddItemButton from '$lib/ui/AddItemButton.svelte';
 	import ActionMenu from '$lib/ui/ActionMenu.svelte';
 	import Drawer from './Drawer.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
@@ -23,8 +23,6 @@
 	import { toast } from '$lib/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
-	import Sheet from '$lib/ui/Sheet.svelte';
-	import { portal } from './SubjectPicker.svelte';
 
 	let { lesson, initialQuizzes = [] }: { lesson: EditorLesson; initialQuizzes?: EditorQuiz[] } = $props();
 	const editorId = $props.id();
@@ -46,31 +44,88 @@
 	let draftReady = $state(false);
 	let locked = $derived(busy || uploading || !draftReady);
 	let activeSlug = $state(initialContent.sections[0]?.slug ?? '');
-	let visited = $state(initialContent.sections[0] ? [initialContent.sections[0].slug] : []);
+	let pointerSelectingTitle = false;
 	let editorGeneration = $state(0);
+	let animateSections = $state(false);
 	let RichEditor = $state<typeof LessonRichEditor>();
+	const sectionEditors: Record<string, { focusContent: () => void } | undefined> = {};
+	let pendingFocusSlug = '';
 	let editorError = $state('');
-	let previewOpen = $state(false);
 	let availableDraft = $state<LessonDraft | null>(null);
 	let draftError = $state('');
-	let draftSavedSnapshot = $state('');
 	let draftQueue: Promise<unknown> = Promise.resolve();
 	const userId = $derived(auth.user?.id ?? '');
 	function persistDraft() {
 		if (!userId || !draftReady || availableDraft || !dirty) return;
-		const snapshot = JSON.stringify([title, serialized]);
 		const draft: LessonDraft = { key: lessonDraftKey(userId, lesson.id), userId, lessonId: lesson.id, title, content: JSON.parse(serialized), revision, updatedAt: Date.now() };
-		draftQueue = draftQueue.then(() => putLessonDraft(draft)).then(() => { draftSavedSnapshot = snapshot; }).catch(() => { draftError = 'A helyi piszkozat nem menthető. A Mentés gombbal továbbra is menthetsz.'; });
+		draftQueue = draftQueue.then(() => putLessonDraft(draft)).catch(() => { draftError = 'A helyi piszkozat nem menthető. A Mentés gombbal továbbra is menthetsz.'; });
 	}
+	let loadingEditor: Promise<void> | undefined;
 	function loadEditor() {
-		if (RichEditor) return;
-		void import('./lesson/LessonRichEditor.svelte').then((module) => { RichEditor = module.default; editorError = ''; }).catch(() => { editorError = 'A szerkesztő nem töltődött be.'; });
+		if (RichEditor) return Promise.resolve();
+		return loadingEditor ??= import('./lesson/LessonRichEditor.svelte').then((module) => { RichEditor = module.default; editorError = ''; }).catch(() => { editorError = 'A szerkesztő nem töltődött be.'; }).finally(() => { loadingEditor = undefined; });
 	}
-	function selectSection(slug: string) {
+	let stopFollowing = () => {};
+	function sectionSlide(node: Element, params: Parameters<typeof slide>[1]) {
+		const transition = slide(node, params);
+		// A levágás ne hozzon létre görgethető őst a szövegkurzor számára.
+		return { ...transition, css: (t: number, u: number) => `${transition.css!(t, u)}overflow: clip;` };
+	}
+	function keepSectionPosition(anchor: HTMLElement) {
+		stopFollowing();
+		const top = anchor.getBoundingClientRect().top;
+		const parents: HTMLElement[] = [];
+		for (let parent = anchor.parentElement; parent; parent = parent.parentElement) {
+			if (parent !== document.scrollingElement && /(auto|scroll)/.test(getComputedStyle(parent).overflowY)) parents.push(parent);
+		}
+		let frame = 0;
+		const end = performance.now() + (motionOK() ? 300 : 0);
+		const stop = () => {
+			cancelAnimationFrame(frame);
+			window.removeEventListener('wheel', stop, true);
+			window.removeEventListener('touchmove', stop, true);
+			window.removeEventListener('pointerdown', stop, true);
+			window.removeEventListener('keydown', stopOnNavigation, true);
+		};
+		function stopOnNavigation(event: KeyboardEvent) {
+			if (['Tab', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) stop();
+		}
+		function follow() {
+			if (!anchor.isConnected) { stop(); return; }
+			// A kattintott szöveg az összecsukás teljes ideje alatt maradjon a kurzor alatt.
+			for (const parent of parents) parent.scrollBy({ top: anchor.getBoundingClientRect().top - top, behavior: 'instant' });
+			window.scrollBy({ top: anchor.getBoundingClientRect().top - top, behavior: 'instant' });
+			if (performance.now() < end) frame = requestAnimationFrame(follow);
+			else stop();
+		}
+		window.addEventListener('wheel', stop, { capture: true, passive: true });
+		window.addEventListener('touchmove', stop, { capture: true, passive: true });
+		window.addEventListener('pointerdown', stop, true);
+		window.addEventListener('keydown', stopOnNavigation, true);
+		frame = requestAnimationFrame(follow);
+		stopFollowing = stop;
+	}
+	function selectSection(slug: string, anchor?: HTMLElement) {
 		if (locked || availableDraft) return;
-		activeSlug = activeSlug === slug ? '' : slug;
-		if (activeSlug && !visited.includes(slug)) visited.push(slug);
-		loadEditor();
+		pendingFocusSlug = '';
+		if (activeSlug === slug) return;
+		if (anchor) keepSectionPosition(anchor);
+		activeSlug = slug;
+		void loadEditor();
+	}
+	function removeSection(slug: string) {
+		stopFollowing();
+		const index = sections.findIndex((section) => section.slug === slug);
+		const nextSlug = sections[index + 1]?.slug ?? sections[index - 1]?.slug ?? '';
+		const restoreFocus = document.getElementById(`${editorId}-card-${slug}`)?.contains(document.activeElement);
+		if (activeSlug === slug) activeSlug = nextSlug;
+		sections = sections.filter((section) => section.slug !== slug);
+		if (restoreFocus) void tick().then(() => {
+			const target = nextSlug
+				? document.getElementById(`${editorId}-card-${nextSlug}`)?.querySelector<HTMLButtonElement>('[aria-expanded]')
+				: document.getElementById(`${editorId}-add`);
+			target?.focus({ preventScroll: true });
+		});
 	}
 	async function discardDraft() {
 		availableDraft = null;
@@ -85,7 +140,6 @@
 		sections = availableDraft.content.sections;
 		revision = availableDraft.revision;
 		activeSlug = sections[0]?.slug ?? '';
-		visited = activeSlug ? [activeSlug] : [];
 		editorGeneration++;
 		availableDraft = null;
 		loadEditor();
@@ -104,12 +158,14 @@
 	const fieldClass = 'w-full rounded-xl border border-stone-300 bg-white px-3 py-3 text-ink-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:opacity-60 dark:border-white/15 dark:bg-white/5 dark:text-white';
 	let backUrl = $derived(`/tanulas/szerkeszto?${new URLSearchParams({ subject: lesson.subjectId, level: lesson.levelId })}` as const);
 	onMount(() => {
+		const motionFrame = requestAnimationFrame(() => { animateSections = true; });
 		rememberEditorScope(lesson.subjectId, lesson.levelId);
 		loadEditor();
 		if (userId) void getLessonDraft(userId, lesson.id).then((draft) => {
 			if (draft && (JSON.stringify(draft.content) !== savedContent || draft.title !== originalTitle)) availableDraft = draft;
 		}).catch(() => { draftError = 'A helyi piszkozatok most nem érhetők el.'; }).finally(() => { draftReady = true; });
 		else draftReady = true;
+		return () => { cancelAnimationFrame(motionFrame); stopFollowing(); };
 	});
 
 	beforeNavigate((navigation) => {
@@ -207,18 +263,25 @@
 
 	async function addSection() {
 		if (locked) return;
+		stopFollowing();
+		await loadEditor();
+		if (locked) return;
 		const slug = `bekezdes-${crypto.randomUUID()}`;
+		pendingFocusSlug = slug;
 		sections.push({ slug, title: 'Új bekezdés', doc: emptyLessonDoc(), intro: false });
 		activeSlug = slug;
-		visited.push(slug);
-		loadEditor();
-		await tick();
-		document.getElementById(`${editorId}-card-${slug}`)?.scrollIntoView({ block: 'nearest', behavior: motionOK() ? 'smooth' : 'instant' });
+	}
+	function revealSection(slug: string) {
+		if (activeSlug !== slug || pendingFocusSlug !== slug) return;
+		pendingFocusSlug = '';
+		const card = document.getElementById(`${editorId}-card-${slug}`);
+		sectionEditors[slug]?.focusContent();
+		card?.querySelector<HTMLElement>('[role="textbox"]')?.scrollIntoView({ block: 'nearest', behavior: motionOK() ? 'smooth' : 'instant' });
 	}
 </script>
 
 <svelte:head><title>{title} szerkesztése | Leardy</title></svelte:head>
-<svelte:window onbeforeunload={beforeUnload} />
+<svelte:window onbeforeunload={beforeUnload} onpointerdown={() => { pendingFocusSlug = ''; }} onpointerup={() => { pointerSelectingTitle = false; }} onpointercancel={() => { pointerSelectingTitle = false; }} />
 
 <div class="editor-frame">
 	<header class="flex items-start gap-3">
@@ -229,7 +292,6 @@
 		</div>
 		<ActionMenu label="Lecke műveletei" disabled={locked} actions={[
 			{ id: 'save', label: 'Mentés', icon: Save, promote: 'small', disabled: !dirty, onclick: () => { void save(); } },
-			{ id: 'preview', label: 'Előnézet', icon: Eye, promote: 'medium', onclick: () => { previewOpen = true; } },
 			{ id: 'quiz', label: quizLabel, icon: ListChecks, promote: 'small', onclick: () => { void openQuiz(); } },
 			{ id: 'rename', label: 'Átnevezés', icon: Pencil, promote: 'small', iconOnly: true, onclick: openRename },
 			{ id: 'delete', label: 'Törlés', icon: Trash2, promote: 'small', iconOnly: true, tone: 'danger', onclick: openDelete }
@@ -237,57 +299,51 @@
 	</header>
 
 	{#if availableDraft}
-		<div class="mt-4 rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-500/30 dark:bg-brand-500/10">
-			<p class="text-sm font-bold">Van egy félbehagyott helyi piszkozatod.</p>
-			{#if availableDraft.revision !== revision}<p class="mt-1 text-xs">A szerveren azóta újabb változat készült. A piszkozat megnyitása nem írja felül.</p>{/if}
-			<div class="mt-3 flex flex-wrap gap-2"><Button onclick={restoreDraft}>Piszkozat megnyitása</Button><Button variant="ghost" onclick={() => { void discardDraft(); }}>Elvetés</Button></div>
+		<div class="draft-notice" role="status">
+			<FileClock size={17} class="shrink-0 text-brand-600 dark:text-brand-300" />
+			<p class="min-w-0 flex-1 text-xs font-semibold">{availableDraft.revision !== revision ? 'Helyi piszkozat · A lecke azóta megváltozott' : 'Van egy helyi piszkozatod'}</p>
+			<button type="button" class="draft-restore" onclick={restoreDraft}>Betöltés</button>
+			<IconButton ariaLabel="Piszkozat elvetése" size={32} onclick={() => { void discardDraft(); }}><X size={16} /></IconButton>
 		</div>
 	{/if}
 	<div class="mt-5 flex flex-wrap items-center justify-between gap-2">
 		<h2 class="font-extrabold text-ink-900 dark:text-white">Bekezdések</h2>
-		<span class="text-xs text-stone-500" aria-live="polite">{uploading ? 'Kép feltöltése…' : busy ? 'Mentés…' : dirty ? draftSavedSnapshot === JSON.stringify([title, serialized]) ? 'Nem mentett módosítások · Helyi piszkozat mentve' : 'Nem mentett módosítások' : 'Minden módosítás mentve'}</span>
+		<span class="text-xs text-stone-500" aria-live="polite">{uploading ? 'Kép feltöltése…' : busy ? 'Mentés…' : dirty ? '' : 'Minden módosítás mentve'}</span>
 	</div>
 	{#if draftError}<p role="status" class="mt-2 text-sm text-amber-700 dark:text-amber-300">{draftError}</p>{/if}
 	<div class="mt-3">
 		{#key editorGeneration}
 		{#each sections as section, index (section.slug)}
-			<div id={`${editorId}-card-${section.slug}`} transition:slide={{ duration: motionOK() ? 260 : 0, easing: cubicInOut }} class="pb-3">
-				<section class="min-w-0 rounded-2xl border border-stone-200 bg-white p-3 sm:p-4 dark:border-white/10 dark:bg-stone-900">
-					<div class="flex items-center gap-2">
-						<button type="button" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-2 text-left text-sm font-extrabold" aria-expanded={activeSlug === section.slug} disabled={locked || !!availableDraft} onclick={() => selectSection(section.slug)}>
-							<ChevronDown size={17} class={activeSlug === section.slug ? 'shrink-0 rotate-180' : 'shrink-0'} /><span class="truncate">{section.title || 'Névtelen bekezdés'}</span>
-						</button>
-						<ActionMenu compact floating label={`Bekezdés műveletei: ${section.title}`} disabled={locked || !!availableDraft} actions={[
+			<div id={`${editorId}-card-${section.slug}`} in:sectionSlide={{ duration: animateSections && motionOK() ? 260 : 0, easing: cubicInOut }} out:sectionSlide={{ duration: motionOK() ? 260 : 0, easing: cubicInOut }} onintroend={() => revealSection(section.slug)} class="pb-3">
+				<section data-lesson-section class="min-w-0 rounded-3xl border border-stone-200 bg-white p-4 sm:p-5 dark:border-white/10 dark:bg-stone-900">
+					<div class="mb-3 flex items-end gap-2">
+						{#if section.intro}
+							<span class="flex min-h-11 min-w-0 flex-1 items-center text-sm font-bold">Bevezetés</span>
+						{:else}
+							<label class="block min-w-0 flex-1 text-sm font-bold">Bekezdés címe<input class="{fieldClass} mt-1" bind:value={section.title} onpointerdown={() => { pointerSelectingTitle = true; }} onfocus={(event) => { if (!pointerSelectingTitle) void selectSection(section.slug, event.currentTarget); }} onclick={(event) => { void selectSection(section.slug, event.currentTarget); }} maxlength={160} disabled={locked || !!availableDraft} /></label>
+						{/if}
+						<ActionMenu compact dense menuIconsOnly floating label={`Bekezdés műveletei: ${section.title}`} disabled={locked || !!availableDraft} actions={[
 							{ id: 'down', label: 'Le', icon: ArrowDown, disabled: section.intro || index === sections.length - 1, onclick: () => move(index, 1) },
 							{ id: 'up', label: 'Fel', icon: ArrowUp, disabled: section.intro || index === 0 || sections[index - 1]?.intro, onclick: () => move(index, -1) },
-							{ id: 'delete', label: 'Törlés', icon: Trash2, tone: 'danger', onclick: () => { sections = sections.filter((item) => item.slug !== section.slug); } }
+							{ id: 'delete', label: 'Törlés', icon: Trash2, tone: 'danger', onclick: () => removeSection(section.slug) }
 						]} />
 					</div>
-					{#if activeSlug !== section.slug}<p class="mt-1 truncate text-xs text-stone-500 dark:text-stone-400">{lessonNodeText(section.doc).trim() || 'Még nincs tartalom.'}</p>{/if}
-					{#if visited.includes(section.slug)}
-						<div hidden={activeSlug !== section.slug} class="mt-3">
-							{#if !section.intro}<label class="mb-3 block text-xs font-bold">Bekezdés címe<input class="{fieldClass} mt-1" bind:value={section.title} maxlength={160} disabled={locked || !!availableDraft} /></label>{/if}
-							{#if RichEditor}<RichEditor initialDoc={section.doc} lessonId={lesson.id} disabled={busy || !!availableDraft || !draftReady} onChange={(doc) => { section.doc = doc; }} onBusyChange={(value) => { uploading = value; }} />
-							{:else if editorError}<p role="alert" class="text-sm text-red-600">{editorError}</p><Button onclick={loadEditor}>Újrapróbálás</Button>
-							{:else}<p class="py-6 text-center text-sm text-stone-500">Szerkesztő betöltése…</p>{/if}
-						</div>
-					{/if}
+					{#if RichEditor}<RichEditor bind:this={sectionEditors[section.slug]} initialDoc={section.doc} lessonId={lesson.id} expanded={activeSlug === section.slug} onActivate={(anchor) => { void selectSection(section.slug, anchor); }} disabled={busy || !!availableDraft || !draftReady} onChange={(doc) => { section.doc = doc; }} onBusyChange={(value) => { uploading = value; }} />
+					{:else if editorError}<p role="alert" class="text-sm text-red-600">{editorError}</p><Button onclick={loadEditor}>Újrapróbálás</Button>
+					{:else}<p class="py-4 text-center text-sm text-stone-500">Szerkesztő betöltése…</p>{/if}
 				</section>
 			</div>
 		{:else}
-			<div class="rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500 dark:border-white/15">Még nincs bekezdés. Adj hozzá egyet a lecke megírásához.</div>
+			<div in:sectionSlide={{ duration: animateSections && motionOK() ? 260 : 0, easing: cubicInOut }} out:sectionSlide={{ duration: motionOK() ? 260 : 0, easing: cubicInOut }} class="mb-3 rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500 dark:border-white/15">Még nincs bekezdés. Adj hozzá egyet a lecke megírásához.</div>
 		{/each}
 		{/key}
 	</div>
-	<button
-		type="button"
+	<AddItemButton
+		id={`${editorId}-add`}
+		label="Bekezdés hozzáadása"
 		disabled={locked || !!availableDraft}
 		onclick={() => { void addSection(); }}
-		class="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-stone-200 py-4 text-sm font-extrabold text-stone-400 transition hover:border-brand-300 hover:text-brand-600 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100 dark:border-white/10 dark:text-stone-500 dark:hover:border-brand-500/50 dark:hover:text-white"
-	>
-		<Plus size={18} strokeWidth={2.75} aria-hidden="true" />
-		Bekezdés hozzáadása
-	</button>
+	/>
 	{#if formError && !renameOpen && !deleteOpen}<p role="alert" class="mt-4 text-sm text-red-600 dark:text-red-400">{formError}</p>{/if}
 </div>
 
@@ -310,12 +366,12 @@
 	onConfirm={() => { void deleteLesson(); }}
 />
 
-<div use:portal>
-	<Sheet open={previewOpen} wide label="Lecke előnézete" title={title} onClose={() => { previewOpen = false; }}>
-		<div class="mt-4 space-y-5">{#each sections as section (section.slug)}<section><h3 class="mb-2 font-extrabold">{section.title}</h3><LessonContent doc={section.doc} /></section>{/each}</div>
-	</Sheet>
-</div>
-
 <style>
-	.editor-frame { container-type: inline-size; }
+	.editor-frame { container-type: inline-size; overflow-anchor: none; }
+	.draft-notice { margin-top: 16px; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border: 1px solid var(--color-brand-200); border-radius: 12px; background: var(--color-brand-50); }
+	.draft-restore { border-radius: 8px; padding: 7px 10px; font-size: 12px; font-weight: 800; color: var(--color-brand-600); }
+	.draft-restore:hover { background: rgb(99 102 241 / .1); }
+	.draft-restore:focus-visible { outline: 2px solid var(--color-brand-500); }
+	:global(.dark) .draft-notice { border-color: rgb(99 102 241 / .3); background: rgb(99 102 241 / .08); }
+	:global(.dark) .draft-restore { color: var(--color-brand-300); }
 </style>

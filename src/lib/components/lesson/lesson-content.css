@@ -1,6 +1,6 @@
 .lesson-prose { color: var(--color-ink-600); font-size: .95rem; line-height: 1.7; overflow-wrap: anywhere; min-width: 0; }
 .dark .lesson-prose { color: var(--color-stone-300); }
-.lesson-prose p { margin: .55em 0; }
+.lesson-prose p { margin: 0; min-height: 1.7em; }
 .lesson-prose h3, .lesson-prose h4 { color: var(--color-ink-900); font-weight: 800; line-height: 1.35; margin: 1em 0 .4em; }
 .dark .lesson-prose h3, .dark .lesson-prose h4 { color: white; }
 .lesson-prose h3 { font-size: 1.15rem; }

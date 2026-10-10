@@ -7,6 +7,7 @@
 		icon: typeof Save;
 		onclick: () => void;
 		disabled?: boolean;
+		active?: boolean;
 		tone?: 'default' | 'danger';
 		/** A fejléc rendelkezésre álló szélességéhez igazodik. */
 		promote?: 'small' | 'medium' | 'large';
@@ -19,7 +20,7 @@
 	import { tick } from 'svelte';
 	import { Ellipsis } from '@lucide/svelte';
 	import IconButton from './IconButton.svelte';
-	let { actions, label = 'Műveletek', triggerLabel, triggerIcon: TriggerIcon, disabled = false, compact = false, menuIconsOnly = false, floating = false, align = 'auto' }: {
+	let { actions, label = 'Műveletek', triggerLabel, triggerIcon: TriggerIcon, disabled = false, compact = false, menuIconsOnly = false, menuColumns = 0, dense = false, floating = false, align = 'auto', preserveFocus = false, closeOnSelect = true }: {
 		actions: ActionMenuItem[];
 		triggerLabel?: string;
 		triggerIcon?: typeof Ellipsis;
@@ -27,10 +28,15 @@
 		disabled?: boolean;
 		compact?: boolean;
 		menuIconsOnly?: boolean;
+		menuColumns?: number;
+		/** Tömör lista a szerkesztő eszközeihez. */
+		dense?: boolean;
 		/** A menü a nézethez igazodik, és a görgethető panelek fölött jelenik meg. */
 		floating?: boolean;
 		/** A kezdőélhez igazított menü jobbra nyílik. */
 		align?: 'start' | 'end' | 'auto';
+		preserveFocus?: boolean;
+		closeOnSelect?: boolean;
 	} = $props();
 	let open = $state(false);
 	let root: HTMLElement | undefined = $state();
@@ -46,9 +52,14 @@
 
 	function run(action: ActionMenuItem) {
 		if (disabled || action.disabled) return;
-		open = false;
-		if (floating) root?.querySelector<HTMLButtonElement>('[aria-expanded]')?.focus({ preventScroll: true });
+		if (closeOnSelect) {
+			open = false;
+			if (floating && !preserveFocus) root?.querySelector<HTMLButtonElement>('[aria-expanded]')?.focus({ preventScroll: true });
+		}
 		action.onclick();
+	}
+	function keepFocus(event: PointerEvent) {
+		if (preserveFocus && event.button === 0) event.preventDefault();
 	}
 
 	function outside(event: PointerEvent) {
@@ -65,6 +76,7 @@
 	function position() {
 		if (!floating || !shell || !root) return;
 		const trigger = root.querySelector('[aria-expanded]')!.getBoundingClientRect();
+		if (open && (trigger.bottom < 0 || trigger.top > window.innerHeight)) { open = false; return; }
 		const height = shell.offsetHeight;
 		upward = window.innerHeight - trigger.bottom - 18 < height && trigger.top > window.innerHeight - trigger.bottom;
 		top = Math.max(8, upward ? trigger.top - height - 8 : Math.min(trigger.bottom + 8, window.innerHeight - height - 8));
@@ -83,7 +95,8 @@
 		shell = node;
 		if (!floating) return;
 		document.body.appendChild(node);
-		const closeOnScroll = (event: Event) => { if (!node.contains(event.target as Node)) open = false; };
+		// A fókusz és a mező magasságának animációja is görgethet. Ilyenkor a menü kövesse a gombot.
+		const followScroll = (event: Event) => { if (open && !node.contains(event.target as Node)) position(); };
 		const captureKey = (event: KeyboardEvent) => {
 			keydown(event);
 			if (open && event.key === 'Tab') {
@@ -91,22 +104,22 @@
 				root?.querySelector<HTMLButtonElement>('[aria-expanded]')?.focus({ preventScroll: true });
 				return;
 			}
-			if (!open || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+			if (!open || !['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
 			event.preventDefault();
 			event.stopImmediatePropagation();
 			const buttons = [...node.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
 			const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
 			const index = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 :
-				current < 0 ? (event.key === 'ArrowDown' ? 0 : buttons.length - 1) :
-				(current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+				current < 0 ? (['ArrowDown', 'ArrowRight'].includes(event.key) ? 0 : buttons.length - 1) :
+				(current + (['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : -1) + buttons.length) % buttons.length;
 			buttons[index]?.focus();
 		};
 		window.addEventListener('keydown', captureKey, true);
-		window.addEventListener('scroll', closeOnScroll, true);
+		window.addEventListener('scroll', followScroll, true);
 		window.addEventListener('resize', position);
 		return () => {
 			window.removeEventListener('keydown', captureKey, true);
-			window.removeEventListener('scroll', closeOnScroll, true);
+			window.removeEventListener('scroll', followScroll, true);
 			window.removeEventListener('resize', position);
 			node.remove();
 		};
@@ -117,6 +130,7 @@
 
 {#snippet actionButton(action: ActionMenuItem, iconOnly = false)}
 	<button type="button" aria-label={action.label} title={action.label} disabled={disabled || action.disabled}
+		aria-pressed={action.active}
 		onclick={() => run(action)}
 		class={['action-button', action.tone === 'danger' ? 'text-red-600 dark:text-red-400' : 'text-ink-600 dark:text-stone-300']}>
 		<action.icon size={20} aria-hidden="true" />
@@ -124,7 +138,7 @@
 	</button>
 {/snippet}
 
-<div bind:this={root} class={['actions', { compact, 'icons-only': menuIconsOnly }]} data-open={open}>
+<div bind:this={root} onpointerdown={keepFocus} role="presentation" class={['actions', { compact, 'icons-only': menuIconsOnly }]} data-open={open}>
 	{#each expandable as action (action.id)}
 		<div class="promoted" data-size={action.promote}>
 			{#if action.iconOnly}
@@ -149,7 +163,7 @@
 				<span>Műveletek</span>
 			{/if}
 		</button>
-		<div {@attach floatMenu} class={['dropdown-shell', { floating, 'icons-only': menuIconsOnly }]} data-open={open}
+		<div {@attach floatMenu} onpointerdown={keepFocus} role="presentation" class={['dropdown-shell', { floating, dense, 'icons-only': menuIconsOnly, 'icon-grid': menuIconsOnly && menuColumns > 0 }]} data-open={open} style:--menu-cols={menuColumns}
 			data-upward={upward} style:top={floating ? `${top}px` : undefined} style:left={floating ? `${left}px` : undefined}>
 			<div {id} class="dropdown" inert={!open} aria-hidden={!open}>
 				{#each actions as action, index (action.id)}
@@ -169,6 +183,7 @@
 	.action-button :global(svg) { flex-shrink: 0; }
 	.compact .toggle { width: 44px; height: 44px; padding: 0; }
 	.action-button:hover { background: var(--color-stone-50); }
+	.action-button[aria-pressed='true'] { background: var(--color-brand-50); color: var(--color-brand-600); box-shadow: inset 0 0 0 1px var(--color-brand-200); }
 	.action-button:active { transform: scale(.97); }
 	.action-button:focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; }
 	.action-button:disabled { opacity: .5; cursor: default; transform: none; }
@@ -176,6 +191,7 @@
 	.action-button.text-red-600:hover { background: var(--color-red-50); }
 	:global(.dark) .action-button { border-color: rgb(255 255 255 / .1); background: var(--color-stone-900); }
 	:global(.dark) .action-button:hover { background: var(--color-stone-800); }
+	:global(.dark) .action-button[aria-pressed='true'] { background: rgb(99 102 241 / .2); color: var(--color-brand-300); box-shadow: inset 0 0 0 1px rgb(99 102 241 / .4); }
 	:global(.dark) .action-button.text-red-600 { border-color: rgb(239 68 68 / .3); }
 	:global(.dark) .action-button.text-red-600:hover { background: rgb(239 68 68 / .1); }
 	.hamburger { position: relative; flex-shrink: 0; width: 21px; height: 18px; transition: transform 280ms cubic-bezier(.22,1,.36,1); }
@@ -195,6 +211,14 @@
 	.icons-only .dropdown-shell, .dropdown-shell.icons-only { width: max-content; }
 	.icons-only .dropdown { grid-auto-flow: column; }
 	.icons-only .dropdown .action-button { width: 44px; min-height: 44px; justify-content: center; padding: 10px; }
+	.dropdown-shell.dense { width: min(224px, calc(100vw - 16px)); padding: 5px; border-radius: 14px; }
+	.dense .dropdown { gap: 1px; }
+	.dense .dropdown .action-button { min-height: 36px; padding: 7px 10px; gap: 9px; border: 0; border-radius: 8px; font-size: 12px; line-height: 18px; white-space: normal; text-align: left; }
+	.dense .dropdown .action-button :global(svg) { width: 17px; height: 17px; }
+	.dropdown-shell.dense.icons-only { width: max-content; }
+	.dense.icons-only .dropdown .action-button { width: 38px; height: 38px; padding: 0; justify-content: center; }
+	.dense.icon-grid .dropdown { grid-auto-flow: row; grid-template-columns: repeat(var(--menu-cols), 38px); }
+	.dense .dropdown-action { transition-delay: 0ms !important; }
 	.dropdown-action { opacity: 0; transform: translateY(-6px); transition: opacity 180ms, transform 220ms cubic-bezier(.22,1,.36,1); transition-delay: 0ms; }
 	[data-open='true'] .dropdown-shell, .dropdown-shell[data-open='true'] { visibility: visible; opacity: 1; transform: translateY(0); pointer-events: auto; }
 	[data-open='true'] .dropdown-action { opacity: 1; transform: translateY(0) scale(1); transition-delay: calc(var(--order) * 45ms); }

@@ -1,8 +1,8 @@
 # Vizuális leckeszerkesztő
 
-A leckék bekezdései közvetlenül az oldalon szerkeszthetők. A bezárt kártyák rövid összefoglalót mutatnak; csak a megnyitott bekezdés eszköztára látszik. A már megnyitott bekezdések megtartják a saját visszavonási előzményeiket.
+A leckék bekezdései közvetlenül az oldalon szerkeszthetők. A cím és a tartalommező mindig látszik, az inaktív tartalom legfeljebb négy sor magas. Kezdetben az első bekezdés aktív, és amíg van bekezdés, mindig egy nyitva marad. Bekezdésváltáskor a kattintott mező helye megmarad, a tartalom finoman feltárul, az eszköztár rövid áttűnéssel és becsúszással jelenik meg. Az aktív mezőt világosabb szürke keret jelzi. Az új bekezdés egy kattintással hozzáadható, utána rögtön gépelhető. Külön előnézet nincs. A bekezdések megtartják a saját visszavonási előzményeiket. Az Enter és a Shift+Enter ugyanúgy működik, a szövegsorok között nincs automatikus bekezdéstérköz. Üres sorhoz kétszer kell Entert nyomni.
 
-Az első változat szövegformázást, alcímeket, listákat, hivatkozásokat, idézetet, kódot, elválasztót, képet, képletet, egyszerű táblázatot, Fontos/Példa/Tipp dobozt és lenyitható tartalmat tartalmaz. A képek URL-ről vagy feltöltéssel adhatók hozzá, leírással, képaláírással és fél vagy teljes szélességgel. A képletek MathLive segítségével, vizuálisan szerkeszthetők; az olvasó KaTeX-szel jeleníti meg őket.
+Az első változat szövegformázást, alcímeket, listákat, hivatkozásokat, idézetet, kódot, elválasztót, képet, képletet, egyszerű táblázatot, Fontos/Példa/Tipp dobozt és lenyitható tartalmat tartalmaz. A képek URL-ről vagy feltöltéssel adhatók hozzá, leírással, képaláírással és fél vagy teljes szélességgel. A képletbevitel MathLive segítségével történik, saját sablongombokkal, szimbólumpanellel, kurzormozgatással és opcionális LaTeX-forrással. Az olvasó KaTeX-szel jeleníti meg őket. A táblázat beszúrása kis panelen történik. A szerkesztési menü a kijelölt cellához igazodik, mutatja annak sorát és oszlopát, a műveleteket pedig külön sor- és oszlopcsoportba rendezi, rövid feliratokkal és magyarázó súgókkal. Az eszköztár menüi megőrzik a kijelölést és a kurzor láthatóságát, az aktív formázások kiemelést kapnak. Mobilon az aktív bekezdés eszköztára görgetés közben a képernyő tetején marad.
 
 ## Mentés és kompatibilitás
 
@@ -40,4 +40,6 @@ A böngészős tesztek a valódi Svelte-komponenseket használják, tesztadatokk
 playwriter -s <munkamenet> -e 'state.lessonOrigin="http://127.0.0.1:5173"'
 playwriter -s <munkamenet> -f scripts/test-lesson-editor-browser.mjs --timeout 60000
 playwriter -s <munkamenet> -f scripts/test-lesson-editor-extras-browser.mjs --timeout 60000
+playwriter -s <munkamenet> -f scripts/test-lesson-editor-compact-browser.mjs --timeout 60000
+playwriter -s <munkamenet> -f scripts/test-lesson-editor-controls-browser.mjs --timeout 60000
 ```
