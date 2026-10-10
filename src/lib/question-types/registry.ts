@@ -4,10 +4,13 @@ import { trueFalse } from './true-false/definition';
 import { text } from './text/definition';
 import { match } from './match/definition';
 import { order } from './order/definition';
+import { gap } from './gap/definition';
+import { map } from './map/definition';
+import { readSettings } from './settings';
 import type { AnswerFields, QuestionTypeDefinition, QuestionTypeId } from './types';
 import { normalizeQuestionImageUrl } from '../question-image';
 
-export const QUESTION_TYPES: QuestionTypeDefinition[] = [choice, trueFalse, text, match, order];
+export const QUESTION_TYPES: QuestionTypeDefinition[] = [choice, trueFalse, text, gap, match, order, map];
 
 export function isQuestionType(type: string): type is QuestionTypeId {
 	return QUESTION_TYPES.some((definition) => definition.id === type);
@@ -18,7 +21,7 @@ export function questionType(type: string): QuestionTypeDefinition {
 }
 
 /** A tárolt sorrend megmarad, a megjelenítési sorrendet a típus külön készíti el. */
-export function loadQuestionOptions(type: string, json: string) {
+export function loadQuestionOptions(type: string, json: string): Omit<AnswerFields, 'correct_answer'> {
 	try { return readQuestionOptions(type, JSON.parse(json)); }
 	catch { return { options: [], pairs: [] }; }
 }
@@ -28,13 +31,16 @@ export function readQuestionOptions(type: string, raw: unknown) {
 	const object = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
 	const answers = questionType(type).readOptions(object && 'options' in object ? object.options : raw);
 	const imageUrl = normalizeQuestionImageUrl(object?.imageUrl);
-	return { ...answers, ...(imageUrl ? { imageUrl } : {}) };
+	const settings = readSettings(object?.settings);
+	return { ...answers, ...(imageUrl ? { imageUrl } : {}), ...(settings ? { settings } : {}) };
 }
 
-export function storedQuestionOptions(type: string, fields: AnswerFields & { imageUrl?: unknown }) {
-	const stored = questionType(type).storedOptions(fields);
+export function storedQuestionOptions(type: string, fields: Omit<AnswerFields, 'imageUrl'> & { imageUrl?: unknown }) {
 	const imageUrl = normalizeQuestionImageUrl(fields.imageUrl);
 	if (imageUrl === null) throw new Error('A kép URL-je érvénytelen.');
+	const raw = questionType(type).storedOptions({ ...fields, imageUrl });
+	const settings = readSettings(fields.settings);
+	const stored = settings ? { ...(Array.isArray(raw) ? { options: raw } : raw as object), settings } : raw;
 	if (!imageUrl) return stored;
 	return Array.isArray(stored) ? { options: stored, imageUrl } : { ...stored as object, imageUrl };
 }

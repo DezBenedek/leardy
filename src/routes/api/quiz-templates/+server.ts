@@ -1,7 +1,8 @@
+import { loadQuestionOptions } from '$lib/question-types/registry';
 import { error, json, type RequestEvent, type RequestHandler } from '@sveltejs/kit';
 import { getDb, requireUser } from '$lib/server/db';
 import { ensureQuizTemplateSchema, listQuizTemplates } from '$lib/server/quiz-templates';
-import { isTemplateSeed, questionTypeTitle, validateQuestion } from '$lib/quiz-editor';
+import { draftOptionsJson, draftCorrectAnswer, isTemplateSeed, questionTypeTitle, validateQuestion } from '$lib/quiz-editor';
 import { normalizeQuestionImageUrl } from '$lib/question-image';
 
 async function context(event: RequestEvent) {
@@ -58,7 +59,7 @@ export const POST: RequestHandler = async (event) => {
 			type: item.type, title: item.title.trim().slice(0, 160) || `${questionTypeTitle(item.type)} sablonom`,
 			subtitle: item.subtitle.trim().slice(0, 160), question_text: item.question_text.trim(),
 			imageUrl: normalizeQuestionImageUrl(item.imageUrl) || undefined,
-			options: item.options, pairs: item.pairs, correct_answer: item.correct_answer
+			...loadQuestionOptions(item.type, draftOptionsJson(item)), correct_answer: draftCorrectAnswer(item)
 		};
 		const key = body.legacy === true ? `legacy:${legacyKey}` : crypto.randomUUID();
 		return db.prepare(`INSERT INTO quiz_templates (user_id, id, seed_json, created_at) VALUES (?, ?, ?, ?)

@@ -11,6 +11,7 @@ const replacements = {
 	'$lib/server/db': await typescriptModuleUrl(new URL('../src/lib/server/db.ts', import.meta.url)),
 	'$lib/server/quiz-templates': await typescriptModuleUrl(new URL('../src/lib/server/quiz-templates.ts', import.meta.url)),
 	'$lib/quiz-editor': editorUrl,
+	'$lib/question-types/registry': await typescriptModuleUrl(new URL('../src/lib/question-types/registry.ts', import.meta.url)),
 	'$lib/question-image': await typescriptModuleUrl(new URL('../src/lib/question-image.ts', import.meta.url))
 };
 let source = await readFile(new URL('../src/routes/api/quiz-templates/+server.ts', import.meta.url), 'utf8');
@@ -58,6 +59,7 @@ function seed(type = 'choice') {
 	return { ...blankQuestion('', type), type, title: 'Saját kérdés', subtitle: 'Tesztsablon', question_text: 'Melyik a helyes válasz?',
 		imageUrl: 'https://example.com/kép.png', options: ['Első', 'Második'],
 		pairs: type === 'match' ? [{ left: 'Egy', right: 'Első' }, { left: 'Kettő', right: 'Második' }] : [],
+		...(type === 'gap' ? { settings: { mode: 'text', text: 'Főváros: [[Budapest]].' } } : type === 'map' ? { settings: { mode: 'text', boxes: [{ id: 'egy', x: 50, y: 50, width: 30, answer: 'Budapest' }] } } : {}),
 		correct_answer: type === 'tf' ? 'Igaz' : 'Első' };
 }
 
@@ -122,5 +124,28 @@ test('A korábbi sablonok átvétele ismételhető, és a hibás csomag nem ment
 		assert.equal((await (await GET(event(db))).json()).templates.length, 1);
 		db.sqlite.prepare('DELETE FROM users WHERE id = ?').run('anna');
 		assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS count FROM quiz_templates').get().count, 1);
+	} finally { db.sqlite.close(); }
+});
+
+test('A saját sablon megőrzi a több helyes választ és az összes új kitöltési módot', async () => {
+	const db = testDb();
+	try {
+		const cases = [{ ...seed('choice'), settings: { multiple: true }, correct_answer: '["Első","Második"]' }];
+		for (const type of ['gap', 'map']) for (const mode of ['drag', 'text', 'dropdown']) {
+			const original = seed(type);
+			original.settings.mode = mode;
+			original.settings.reusable = mode === 'drag';
+			cases.push(original);
+		}
+		for (const original of cases) {
+			const response = await POST(event(db, { method: 'POST', body: { templates: [original] } }));
+			assert.equal(response.status, 201);
+		}
+		const { templates } = await (await GET(event(db, { token: 'anna-gép' }))).json();
+		for (const original of cases) {
+			const loaded = templates.find((template) => template.type === original.type && template.settings.mode === original.settings.mode);
+			assert.deepEqual(loaded.settings, original.settings);
+			assert.deepEqual(draftToPreview(seedToDraft(loaded, 'másik')), draftToPreview(seedToDraft(original, 'másik')));
+		}
 	} finally { db.sqlite.close(); }
 });

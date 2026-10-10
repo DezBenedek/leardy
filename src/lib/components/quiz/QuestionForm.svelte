@@ -58,7 +58,7 @@
 		</div>
 		<textarea id={`${id}-question`} class="{fieldClass} block min-h-18 resize-y leading-6" value={draft.question_text} oninput={(event) => { draft.question_text = event.currentTarget.value; onChange(); }} maxlength={1000} rows={2} placeholder={questionType(draft.type).questionPlaceholder} disabled={saving} spellcheck="true"></textarea>
 	</div>
-	<QuestionImage src={draft.imageUrl} />
+	{#if draft.type !== 'map'}<QuestionImage src={draft.imageUrl} />{/if}
 
 	<TypeEditor bind:draft {saving} {onChange} />
 

@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { Check, ListChecks, ListOrdered, Pencil, Shapes, Trash2 } from '@lucide/svelte';
+	import { Trash2 } from '@lucide/svelte';
 	import Sheet from '$lib/ui/Sheet.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import { portal } from '$lib/components/SubjectPicker.svelte';
-	import { questionTypeTitle, type CustomTemplate, type QuestionTypeId, type TemplateSeed } from '$lib/quiz-editor';
+	import { typeComponents } from '$lib/question-types/components';
+	import { questionTypeTitle, type CustomTemplate, type TemplateSeed } from '$lib/quiz-editor';
 
 	interface Props {
 		open: boolean;
@@ -16,7 +17,6 @@
 		onDeleteCustom: (key: string) => void;
 	}
 	let { open, custom, busy, error, onRetry, onClose, onPick, onDeleteCustom }: Props = $props();
-	const icons: Record<QuestionTypeId, typeof ListChecks> = { choice: ListChecks, tf: Check, text: Pencil, match: Shapes, order: ListOrdered };
 </script>
 
 <div use:portal>
@@ -31,7 +31,7 @@
 		{:else if custom.length}
 			<ul class="-mx-1 mt-2 space-y-0.5" aria-label="Saját sablonok">
 				{#each custom as template (template.key)}
-					{@const Icon = icons[template.type]}
+					{@const Icon = typeComponents(template.type).icon}
 					<li class="flex items-center gap-1">
 						<button type="button" disabled={busy} onclick={() => onPick(template)} class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl p-2 text-left hover:bg-stone-100 disabled:opacity-50 dark:hover:bg-white/5">
 							<span class="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"><Icon size={16} aria-hidden="true" /></span>

@@ -2,6 +2,7 @@
 	import { tick, untrack, type Snippet } from 'svelte';
 	import { ArrowDown, ArrowUp, Copy, Eye, LayoutTemplate, Pencil, Trash2 } from '@lucide/svelte';
 	import AddItemButton from '$lib/ui/AddItemButton.svelte';
+	import { readSettings } from '$lib/question-types/settings';
 	import { typeComponents } from '$lib/question-types/components';
 	import Button from '$lib/ui/Button.svelte';
 	import ActionMenu from '$lib/ui/ActionMenu.svelte';
@@ -37,7 +38,7 @@
 	const initial = untrack(() => [...initialQuizzes]);
 	let questions = $state<QuestionDraft[]>(initial.flatMap((quiz) => [...quiz.questions]
 		.sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
-		.map((q) => ({ id: q.id, quizId: quiz.id, question_text: q.question_text, imageUrl: q.imageUrl, type: q.type,
+		.map((q) => ({ id: q.id, quizId: quiz.id, question_text: q.question_text, imageUrl: q.imageUrl, settings: readSettings(q.settings), type: q.type,
 			options: [...q.options], pairs: q.pairs.map((p) => ({ ...p })), correct_answer: q.correct_answer,
 			sectionSlug: effectiveSectionSlug(q.sectionSlug, quiz.section_slug), sort: q.sort }))));
 	let quizId = $state(initial.at(-1)?.id ?? '');
@@ -68,7 +69,7 @@
 		return sections.find((section) => section.slug === slug)?.title ?? (slug ? 'Hiányzó bekezdés' : 'Teljes lecke');
 	}
 	function clone(draft: QuestionDraft): QuestionDraft {
-		return { ...draft, options: [...draft.options], pairs: draft.pairs.map((pair) => ({ ...pair })) };
+		return { ...draft, settings: readSettings(draft.settings), options: [...draft.options], pairs: draft.pairs.map((pair) => ({ ...pair })) };
 	}
 	async function run<T>(task: () => Promise<T>): Promise<{ value: T } | null> {
 		if (editorBusy) return null;
@@ -145,7 +146,7 @@
 		const problem = validateQuestion(editing);
 		if (problem) { formError = problem; return; }
 		const seed: TemplateSeed = { type: editing.type as QuestionTypeId, title: editing.question_text.trim().slice(0, 40),
-			subtitle: questionTypeTitle(editing.type), question_text: editing.question_text.trim(), imageUrl: editing.imageUrl, options: [...editing.options],
+			subtitle: questionTypeTitle(editing.type), question_text: editing.question_text.trim(), imageUrl: editing.imageUrl, settings: readSettings(editing.settings), options: [...editing.options],
 			pairs: editing.pairs.map((pair) => ({ ...pair })), correct_answer: editing.correct_answer };
 		templateBusy = true;
 		formError = '';

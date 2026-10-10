@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { browser } from '$app/environment';
 	import { Check, Lightbulb, RotateCcw, Shuffle, X } from '@lucide/svelte';
-	import type { QuizQuestion } from '$lib/curriculum';
+	import { isCardable, type QuizQuestion } from '$lib/curriculum';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 
@@ -25,13 +25,7 @@
 	const SWIPE_AT = 110;
 
 	/** Csak az egyértelmű szöveges válaszúak kártyázhatók. */
-	let pool = $derived(
-		questions.filter(
-			(q) =>
-				(q.type === 'choice' || q.type === 'text' || q.type === 'tf') &&
-				q.correct_answer?.trim()
-		)
-	);
+	let pool = $derived(questions.filter(isCardable));
 
 	let cards = $state<QuizQuestion[]>([]);
 	let idx = $state(0);

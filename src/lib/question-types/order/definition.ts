@@ -3,7 +3,7 @@ import type { QuestionTypeDefinition } from '../types';
 
 export const order: QuestionTypeDefinition = {
 	id: 'order',
-	title: 'Sorrendes',
+	title: 'Sorrend',
 	questionPlaceholder: 'Írd be a kérdést…',
 	create: () => ({ options: ['', ''], pairs: [], correct_answer: '' }),
 	readOptions: (raw) => ({ options: readOptions(raw), pairs: [] }),

@@ -49,6 +49,7 @@ export interface QuizQuestion {
 	id: string;
 	question_text: string;
 	imageUrl?: string;
+	settings?: import('./question-types/types').QuestionSettings;
 	type: string;
 	/** choice/order/tf esetén string-tömb; match esetén üres. */
 	options: string[];
@@ -148,6 +149,7 @@ export interface Package {
 export function isCardable(q: QuizQuestion): boolean {
 	return (
 		(q.type === 'choice' || q.type === 'text' || q.type === 'tf') &&
+		!q.settings?.multiple &&
 		!!q.correct_answer?.trim()
 	);
 }

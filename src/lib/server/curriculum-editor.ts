@@ -1,3 +1,4 @@
+import type { AnswerFields } from '../question-types/types';
 import { isQuestionType, loadQuestionOptions, questionType, readQuestionOptions, storedQuestionOptions } from '../question-types/registry';
 import type { D1Database } from '@cloudflare/workers-types';
 import { error, type RequestEvent } from '@sveltejs/kit';
@@ -190,11 +191,11 @@ function quizTypeField(body: Record<string, unknown>): string {
 }
 
 /** Szerver oldali kérdés ellenőrzés a futtató szabályai szerint. */
-function validateServerQuestion(type: string, options: string[], pairs: { left: string; right: string }[], correct: string): string | null {
-	return questionType(type).validate({ options, pairs, correct_answer: correct });
+function validateServerQuestion(type: string, fields: AnswerFields): string | null {
+	return questionType(type).validate(fields);
 }
 
-function parseServerOptions(type: string, raw: unknown): { options: string[]; pairs: { left: string; right: string }[]; optionsJson: string } {
+function parseServerOptions(type: string, raw: unknown) {
 	try {
 		const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
 		const fields = readQuestionOptions(type, parsed);
@@ -511,10 +512,10 @@ export async function mutateCurriculum(db: D1Database, user: PublicUser, body: R
 		await requireQuizInLevel(db, quizId, levelId);
 		const type = quizTypeField(body);
 		const questionText = questionTextField(body);
-		const { options, pairs, optionsJson } = parseServerOptions(type, body.options_json);
+		const { optionsJson, ...fields } = parseServerOptions(type, body.options_json);
 		const correctRaw = typeof body.correct_answer === 'string' ? body.correct_answer.trim() : '';
-		const correct = questionType(type).correctAnswer({ options, pairs, correct_answer: correctRaw });
-		const problem = validateServerQuestion(type, options, pairs, correctRaw);
+		const correct = questionType(type).correctAnswer({ ...fields, correct_answer: correctRaw });
+		const problem = validateServerQuestion(type, { ...fields, correct_answer: correctRaw });
 		if (problem) error(400, problem);
 		const sectionSlug = slugField(body, 'sectionSlug');
 		const rawId = body.questionId;

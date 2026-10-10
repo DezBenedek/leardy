@@ -3,7 +3,7 @@ import type { QuestionTypeDefinition } from '../types';
 
 export const trueFalse: QuestionTypeDefinition = {
 	id: 'tf',
-	title: 'Igaz-hamis',
+	title: 'Igaz, hamis',
 	questionPlaceholder: 'Írd le az állítást…',
 	create: () => ({ options: [], pairs: [], correct_answer: 'Igaz' }),
 	readOptions: () => ({ options: ['Igaz', 'Hamis'], pairs: [] }),

@@ -8,7 +8,7 @@ function cleanPairs(pairs: QuizPair[]): QuizPair[] {
 
 export const match: QuestionTypeDefinition = {
 	id: 'match',
-	title: 'Párosítós',
+	title: 'Összekötős',
 	questionPlaceholder: 'Írd be a kérdést…',
 	create: () => ({ options: [], pairs: [{ left: '', right: '' }, { left: '', right: '' }], correct_answer: '' }),
 	readOptions(raw) {

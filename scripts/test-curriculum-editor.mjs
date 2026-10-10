@@ -529,3 +529,30 @@ test('Minden kérdéstípus képe megmarad újratöltés, másolás és publiká
 		await assert.rejects(mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId, type: 'tf', question_text: 'Tiltott képhivatkozás', options_json: JSON.stringify({ options: [], imageUrl: 'javascript:alert(1)' }), correct_answer: 'Igaz' }), failsWith(400));
 	} finally { db.sqlite.close(); }
 });
+
+test('Az új kérdésbeállítások mentés, újratöltés és másolás után is megmaradnak', async () => {
+	const db = testDb();
+	const { storedQuestionOptions, questionType } = await import(questionTypesUrl);
+	try {
+		const fixture = await createFixture(db);
+		const { id: quizId } = await mutateCurriculum(db, owner, { action: 'createQuiz', ...fixture, title: 'Új feladattípusok' });
+		const cases = [{ type: 'choice', options: ['Első', 'Második', 'Harmadik'], pairs: [], correct_answer: '["Első","Harmadik"]', settings: { multiple: true } }];
+		for (const mode of ['text', 'drag', 'dropdown']) {
+			cases.push({ type: 'gap', options: ['Szeged'], pairs: [], correct_answer: '', settings: { mode, reusable: true, text: 'Fővárosok: [[Budapest]] és [[Bécs]].' } });
+			cases.push({ type: 'map', options: ['Szeged'], pairs: [], correct_answer: '', imageUrl: 'https://example.com/map.png', settings: { mode, reusable: false, boxes: [{ id: 'egy', x: 25, y: 30, width: 30, answer: 'Budapest', arrow: { x: 60, y: 80 } }] } });
+		}
+		for (const fields of cases) {
+			const { id } = await mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId, question_text: 'Új kérdés', type: fields.type, options_json: JSON.stringify(storedQuestionOptions(fields.type, fields)), correct_answer: fields.correct_answer });
+			const loaded = (await getEditorQuizzes(db, owner, fixture.lessonId))[0].questions.find((question) => question.id === id);
+			assert.deepEqual(loaded.settings, fields.settings);
+			assert.equal(loaded.correct_answer, questionType(fields.type).correctAnswer(fields));
+			const { id: copiedId } = await mutateCurriculum(db, owner, { action: 'duplicateQuestion', ...fixture, questionId: id });
+			const copied = (await getEditorQuizzes(db, owner, fixture.lessonId))[0].questions.find((question) => question.id === copiedId);
+			assert.deepEqual(copied.settings, loaded.settings);
+			assert.equal(copied.correct_answer, loaded.correct_answer);
+		}
+		for (const settings of [{ mode: 'text', boxes: [] }, { mode: 'text', boxes: [{ id: 'egy', x: 120, y: 10, width: 30, answer: 'Válasz' }] }]) {
+			await assert.rejects(mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId, question_text: 'Hibás vaktérkép', type: 'map', options_json: JSON.stringify({ options: [], imageUrl: 'https://example.com/map.png', settings }), correct_answer: '' }), failsWith(400));
+		}
+	} finally { db.sqlite.close(); }
+});

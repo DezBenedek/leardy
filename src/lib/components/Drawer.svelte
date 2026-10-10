@@ -242,7 +242,7 @@
 					role="presentation"
 					ontouchstart={contentTouchStart}
 					ontouchend={contentTouchEnd}
-					class={['min-h-0 overflow-y-auto overscroll-contain', animateHeight && 'overflow-x-hidden [scrollbar-gutter:stable]']}
+					class="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-gutter:stable] [overflow-anchor:none]"
 				>
 					<div {@attach trackContentHeight} class="px-5 pt-2 pb-5 sm:px-6 sm:pb-6">
 						{#if title || header}

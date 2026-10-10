@@ -34,6 +34,7 @@ export interface EditorQuestion {
 	quiz_id: string;
 	question_text: string;
 	imageUrl?: string;
+	settings?: import('./question-types/types').QuestionSettings;
 	type: string;
 	options: string[];
 	pairs: { left: string; right: string }[];

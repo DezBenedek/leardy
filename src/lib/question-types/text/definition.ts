@@ -3,7 +3,7 @@ import type { QuestionTypeDefinition } from '../types';
 
 export const text: QuestionTypeDefinition = {
 	id: 'text',
-	title: 'Beírós',
+	title: 'Rövid válasz (beírós)',
 	questionPlaceholder: 'Írd be a kérdést…',
 	create: () => ({ options: [], pairs: [], correct_answer: '' }),
 	readOptions: () => ({ options: [], pairs: [] }),

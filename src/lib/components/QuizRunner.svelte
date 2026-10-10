@@ -222,7 +222,7 @@
 					<p class="text-[18px] leading-snug font-extrabold text-balance text-ink-900 sm:text-[20px] dark:text-white">
 						{current.question_text}
 					</p>
-					{#if current.imageUrl}<div class="mt-3"><QuestionImage src={current.imageUrl} /></div>{/if}
+					{#if current.imageUrl && current.type !== 'map'}<div class="mt-3"><QuestionImage src={current.imageUrl} /></div>{/if}
 					<div class="mt-3">
 						{#if gameQuestions[current.id]}
 							<Game

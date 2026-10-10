@@ -6,6 +6,12 @@ export interface GameQuestion {
 	question_text: string;
 	type: string;
 	options: string[];
+	imageUrl?: string;
+	multiple?: boolean;
+	mode?: import('../question-types/types').InputMode;
+	reusable?: boolean;
+	gapText?: string;
+	boxes?: Omit<import('../question-types/types').MapBox, 'answer'>[];
 	left?: string;
 	/** A teljes párosítós feladat bal oldalai, a helyes párok felfedése nélkül. */
 	lefts?: string[];

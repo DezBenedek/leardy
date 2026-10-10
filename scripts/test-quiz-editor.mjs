@@ -8,6 +8,7 @@ const templateFixtures = QUESTION_TYPES.map(({ id: type }) => ({
 	...blankQuestion('teszt', type), type, title: 'Saját tesztsablon', subtitle: '', question_text: 'Tesztkérdés',
 	options: type === 'choice' || type === 'order' ? ['Első', 'Második'] : [],
 	pairs: type === 'match' ? [{ left: 'Első fogalom', right: 'Első pár' }, { left: 'Második fogalom', right: 'Második pár' }] : [],
+	...(type === 'gap' ? { settings: { mode: 'text', text: 'Főváros: [[Budapest]].' } } : type === 'map' ? { settings: { mode: 'text', boxes: [{ id: 'egy', x: 50, y: 50, width: 30, answer: 'Budapest' }] }, imageUrl: 'https://example.com/map.png' } : {}),
 	correct_answer: type === 'choice' ? 'Első' : type === 'tf' ? 'Igaz' : type === 'text' ? 'Válasz' : ''
 }));
 

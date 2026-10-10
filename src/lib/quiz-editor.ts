@@ -5,8 +5,9 @@
 import type { QuizPair, QuizQuestion } from './curriculum';
 
 import { QUESTION_TYPES, isQuestionType, loadQuestionOptions, questionType, storedQuestionOptions } from './question-types/registry';
+import { readSettings } from './question-types/settings';
 import { normalizeQuestionImageUrl } from './question-image';
-import type { QuestionTypeId } from './question-types/types';
+import type { QuestionSettings, QuestionTypeId } from './question-types/types';
 export { QUESTION_TYPES, isQuestionType };
 export type { QuestionTypeId };
 
@@ -18,6 +19,7 @@ export interface QuestionDraft {
 	quizId: string;
 	question_text: string;
 	imageUrl?: string;
+	settings?: QuestionSettings;
 	type: string;
 	options: string[];
 	pairs: QuizPair[];
@@ -57,12 +59,12 @@ export function blankQuiz(sort = 0): QuizDraft {
 }
 
 /** Piszkozatból a DB-ben tárolt options_json. */
-export function draftOptionsJson(draft: Pick<QuestionDraft, 'type' | 'options' | 'pairs' | 'imageUrl'>): string {
+export function draftOptionsJson(draft: Pick<QuestionDraft, 'type' | 'options' | 'pairs' | 'imageUrl' | 'settings'>): string {
 	return JSON.stringify(storedQuestionOptions(draft.type, { ...draft, correct_answer: '' }));
 }
 
 /** Tárolt options_json visszafejtése szerkesztői alakba. */
-export function parseOptionsJson(json: string): { options: string[]; pairs: QuizPair[]; imageUrl?: string } {
+export function parseOptionsJson(json: string): { options: string[]; pairs: QuizPair[]; imageUrl?: string; settings?: QuestionSettings } {
 	try {
 		const parsed: unknown = JSON.parse(json ?? '[]');
 		if (Array.isArray(parsed) || (parsed && typeof parsed === 'object' && 'options' in parsed)) return loadQuestionOptions('choice', json);
@@ -75,16 +77,17 @@ export function parseOptionsJson(json: string): { options: string[]; pairs: Quiz
 }
 
 /** Helyes válasz előállítása mentéshez, a teljes sorrenddel vagy párosítással. */
-export function draftCorrectAnswer(draft: Pick<QuestionDraft, 'type' | 'options' | 'pairs' | 'correct_answer'>): string {
+export function draftCorrectAnswer(draft: Pick<QuestionDraft, 'type' | 'options' | 'pairs' | 'correct_answer' | 'settings'>): string {
 	return questionType(draft.type).correctAnswer(draft);
 }
 
 /** Kérdés ellenőrzése a futtató (QuizRunner) szabályai szerint. Hibaüzenet vagy null. */
-export function validateQuestion(draft: Pick<QuestionDraft, 'question_text' | 'type' | 'options' | 'pairs' | 'correct_answer' | 'imageUrl'>): string | null {
+export function validateQuestion(draft: Pick<QuestionDraft, 'question_text' | 'type' | 'options' | 'pairs' | 'correct_answer' | 'imageUrl' | 'settings'>): string | null {
 	if (!draft.question_text.trim()) return 'Add meg a kérdés szövegét.';
 	if (draft.question_text.trim().length > 1000) return 'A kérdés legfeljebb 1000 karakter lehet.';
 	if (!isQuestionType(draft.type)) return 'Válassz egy támogatott kérdéstípust.';
 	if (normalizeQuestionImageUrl(draft.imageUrl) === null) return 'Adj meg érvényes HTTP- vagy HTTPS-kép-URL-t.';
+	try { readSettings(draft.settings); } catch { return 'A kérdés beállításai érvénytelenek.'; }
 	return questionType(draft.type).validate(draft);
 }
 
@@ -97,7 +100,7 @@ export function validateQuizTitle(title: string): string | null {
 /** Piszkozatból tanulói előnézethez való kérdés. */
 export function draftToPreview(draft: QuestionDraft): QuizQuestion {
 	const optionsJson = draftOptionsJson(draft);
-	const { options, pairs, imageUrl } = loadQuestionOptions(draft.type, optionsJson);
+	const { options, pairs, imageUrl, settings } = loadQuestionOptions(draft.type, optionsJson);
 	return {
 		id: draft.id || 'elonezet',
 		question_text: draft.question_text.trim() || 'Kérdés előnézet',
@@ -105,6 +108,7 @@ export function draftToPreview(draft: QuestionDraft): QuizQuestion {
 		options,
 		pairs,
 		...(imageUrl ? { imageUrl } : {}),
+		...(settings ? { settings } : {}),
 		correct_answer: draftCorrectAnswer(draft),
 		sectionSlug: draft.sectionSlug
 	};
@@ -127,6 +131,7 @@ export interface TemplateSeed {
 	subtitle: string;
 	question_text: string;
 	imageUrl?: string;
+	settings?: QuestionSettings;
 	options: string[];
 	pairs: QuizPair[];
 	correct_answer: string;
@@ -206,6 +211,7 @@ export function seedToDraft(seed: TemplateSeed, quizId: string, sort = 0): Quest
 		quizId,
 		question_text: seed.question_text,
 		...(seed.imageUrl ? { imageUrl: seed.imageUrl } : {}),
+		...(seed.settings ? { settings: readSettings(seed.settings) } : {}),
 		type: seed.type,
 		options: [...seed.options],
 		pairs: seed.pairs.map((p) => ({ ...p })),
