@@ -1,3 +1,4 @@
+import { loadQuestionOptions } from '../question-types/registry';
 /* Szerveroldali tanterv-lekérdezések D1-re (Svelte 5 runes nem kell szerveroldalra).
    Típusszerződés: $lib/curriculum. Függőség: csak D1. */
 import type { D1Database } from '@cloudflare/workers-types';
@@ -90,6 +91,7 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 				type TEXT NOT NULL DEFAULT 'choice',
 				options_json TEXT NOT NULL DEFAULT '[]',
 				correct_answer TEXT NOT NULL DEFAULT '',
+				section_slug TEXT NOT NULL DEFAULT '',
 				sort INTEGER NOT NULL DEFAULT 0
 			)`
 		),
@@ -249,6 +251,12 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 		} catch {
 			// az oszlop már létezik
 		}
+	}
+	// Kérdés bekezdéshez (szekcióhoz) sorolása, utólagos bővítés.
+	try {
+		await db.prepare(`ALTER TABLE quiz_questions ADD COLUMN section_slug TEXT NOT NULL DEFAULT ''`).run();
+	} catch {
+		// az oszlop már létezik
 	}
 	// Kártya bekezdéshez (szekcióhoz) sorolása, utólagos bővítés.
 	try {
@@ -837,31 +845,17 @@ interface QuestionRow {
 	type: string;
 	options_json: string;
 	correct_answer: string;
+	section_slug?: string;
 }
 
 function parseQuestion(row: QuestionRow): QuizQuestion {
-	let options: string[] = [];
-	let pairs: QuizPair[] = [];
-	try {
-		const parsed: unknown = JSON.parse(row.options_json ?? '[]');
-		if (Array.isArray(parsed)) {
-			options = parsed.map((v) => String(v));
-		} else if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { pairs?: unknown }).pairs)) {
-			const rawPairs = (parsed as { pairs: unknown[] }).pairs;
-			pairs = rawPairs
-				.filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
-				.map((p) => ({ left: String(p.left ?? ''), right: String(p.right ?? '') }));
-		}
-	} catch {
-		// hibás JSON → üres options/pairs
-	}
 	return {
 		id: row.id,
 		question_text: row.question_text,
 		type: row.type ?? 'choice',
-		options,
-		pairs,
-		correct_answer: row.correct_answer ?? ''
+		...loadQuestionOptions(row.type ?? 'choice', row.options_json),
+		correct_answer: row.correct_answer ?? '',
+		sectionSlug: row.section_slug ?? ''
 	};
 }
 
@@ -920,7 +914,8 @@ export async function getLessonPage(
 					.prepare(
 						`SELECT id, quiz_id, question_text, COALESCE(type, 'choice') AS type,
 							COALESCE(options_json, '[]') AS options_json,
-							COALESCE(correct_answer, '') AS correct_answer
+							COALESCE(correct_answer, '') AS correct_answer,
+							COALESCE(section_slug, '') AS section_slug
 						 FROM quiz_questions WHERE quiz_id IN (${quizRows.map(() => '?').join(', ')})
 						 ORDER BY sort, id`
 					)
@@ -1092,7 +1087,8 @@ export async function listScopedPackages(
 					.prepare(
 						`SELECT id, quiz_id, question_text, COALESCE(type, 'choice') AS type,
 							COALESCE(options_json, '[]') AS options_json,
-							COALESCE(correct_answer, '') AS correct_answer
+							COALESCE(correct_answer, '') AS correct_answer,
+							COALESCE(section_slug, '') AS section_slug
 						 FROM quiz_questions WHERE quiz_id IN (${quizRows.map(() => '?').join(', ')})
 						 ORDER BY sort, id`
 					)
@@ -1795,7 +1791,8 @@ export async function getScopedQuizPackage(
 		.prepare(
 			`SELECT id, quiz_id, question_text, COALESCE(type, 'choice') AS type,
 				COALESCE(options_json, '[]') AS options_json,
-				COALESCE(correct_answer, '') AS correct_answer
+				COALESCE(correct_answer, '') AS correct_answer,
+				COALESCE(section_slug, '') AS section_slug
 			 FROM quiz_questions WHERE quiz_id = ? ORDER BY sort, id`
 		)
 		.bind(quizId)

@@ -16,17 +16,26 @@
 </script>
 
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { Ellipsis } from '@lucide/svelte';
 	import IconButton from './IconButton.svelte';
-	let { actions, label = 'Műveletek', disabled = false, compact = false, menuIconsOnly = false }: {
+	let { actions, label = 'Műveletek', disabled = false, compact = false, menuIconsOnly = false, floating = false, align = 'auto' }: {
 		actions: ActionMenuItem[];
 		label?: string;
 		disabled?: boolean;
 		compact?: boolean;
 		menuIconsOnly?: boolean;
+		/** A menü a nézethez igazodik, és a görgethető panelek fölött jelenik meg. */
+		floating?: boolean;
+		/** A kezdőélhez igazított menü jobbra nyílik. */
+		align?: 'start' | 'end' | 'auto';
 	} = $props();
 	let open = $state(false);
 	let root: HTMLElement | undefined = $state();
+	let shell: HTMLElement | undefined;
+	let top = $state(0);
+	let left = $state(0);
+	let upward = $state(false);
 	const id = $props.id();
 	let expandable = $derived(actions.filter((action) => action.promote));
 	let collapseAt = $derived(actions.some((action) => !action.promote) ? '' :
@@ -36,18 +45,69 @@
 	function run(action: ActionMenuItem) {
 		if (disabled || action.disabled) return;
 		open = false;
+		if (floating) root?.querySelector<HTMLButtonElement>('[aria-expanded]')?.focus({ preventScroll: true });
 		action.onclick();
 	}
 
 	function outside(event: PointerEvent) {
-		if (open && event.target instanceof Node && !root?.contains(event.target)) open = false;
+		if (open && event.target instanceof Node && !root?.contains(event.target) && !shell?.contains(event.target)) open = false;
 	}
 
 	function keydown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && open) {
+			if (floating) { event.preventDefault(); event.stopImmediatePropagation(); }
 			open = false;
 			root?.querySelector<HTMLButtonElement>('[aria-expanded]')?.focus();
 		}
+	}
+	function position() {
+		if (!floating || !shell || !root) return;
+		const trigger = root.querySelector('[aria-expanded]')!.getBoundingClientRect();
+		const height = shell.offsetHeight;
+		upward = window.innerHeight - trigger.bottom - 18 < height && trigger.top > window.innerHeight - trigger.bottom;
+		top = Math.max(8, upward ? trigger.top - height - 8 : Math.min(trigger.bottom + 8, window.innerHeight - height - 8));
+		const start = align === 'start' || (align === 'auto' && trigger.left + trigger.width / 2 < window.innerWidth / 2);
+		const desiredLeft = start ? trigger.left : trigger.right - shell.offsetWidth;
+		left = Math.max(8, Math.min(desiredLeft, window.innerWidth - shell.offsetWidth - 8));
+	}
+	async function toggle(event: MouseEvent) {
+		open = !open;
+		if (!open) return;
+		await tick();
+		position();
+		if (event.detail === 0) shell?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+	}
+	function floatMenu(node: HTMLElement) {
+		shell = node;
+		if (!floating) return;
+		document.body.appendChild(node);
+		const closeOnScroll = (event: Event) => { if (!node.contains(event.target as Node)) open = false; };
+		const captureKey = (event: KeyboardEvent) => {
+			keydown(event);
+			if (open && event.key === 'Tab') {
+				open = false;
+				root?.querySelector<HTMLButtonElement>('[aria-expanded]')?.focus({ preventScroll: true });
+				return;
+			}
+			if (!open || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			const buttons = [...node.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+			const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+			const index = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 :
+				current < 0 ? (event.key === 'ArrowDown' ? 0 : buttons.length - 1) :
+				(current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+			buttons[index]?.focus();
+		};
+		window.addEventListener('keydown', captureKey, true);
+		window.addEventListener('scroll', closeOnScroll, true);
+		window.addEventListener('resize', position);
+		return () => {
+			window.removeEventListener('keydown', captureKey, true);
+			window.removeEventListener('scroll', closeOnScroll, true);
+			window.removeEventListener('resize', position);
+			node.remove();
+		};
 	}
 </script>
 
@@ -76,7 +136,7 @@
 	{/each}
 	<div class="menu" data-collapse={collapseAt}>
 		<button type="button" class="action-button toggle text-ink-600 dark:text-stone-300" aria-label={label}
-			aria-expanded={open} aria-controls={id} {disabled} onclick={() => (open = !open)}>
+			aria-expanded={open} aria-controls={id} {disabled} onclick={toggle}>
 			{#if compact}
 				<Ellipsis size={20} aria-hidden="true" />
 			{:else}
@@ -84,7 +144,8 @@
 				<span>Műveletek</span>
 			{/if}
 		</button>
-		<div class="dropdown-shell">
+		<div {@attach floatMenu} class={['dropdown-shell', { floating, 'icons-only': menuIconsOnly }]} data-open={open}
+			data-upward={upward} style:top={floating ? `${top}px` : undefined} style:left={floating ? `${left}px` : undefined}>
 			<div {id} class="dropdown" inert={!open} aria-hidden={!open}>
 				{#each actions as action, index (action.id)}
 					<div class="dropdown-action" data-size={action.promote} style:--order={index}>
@@ -123,12 +184,14 @@
 	.dropdown-shell { position: absolute; top: calc(100% + 10px); right: 0; z-index: 40; width: min(260px, calc(100vw - 32px)); padding: 12px; border: 1px solid var(--color-stone-200); border-radius: 24px; background: white; box-shadow: 0 16px 40px rgb(0 0 0 / .14); visibility: hidden; opacity: 0; transform: translateY(-8px); pointer-events: none; transition: opacity 180ms, transform 220ms cubic-bezier(.22,1,.36,1), visibility 220ms; }
 	:global(.dark) .dropdown-shell { border-color: rgb(255 255 255 / .1); background: var(--color-stone-900); box-shadow: 0 16px 40px rgb(0 0 0 / .4); }
 	.dropdown { display: grid; gap: 8px; }
+	.dropdown-shell.floating { position: fixed; right: auto; z-index: 80; max-height: calc(100dvh - 16px); overflow-y: auto; }
+	.dropdown-shell[data-upward='true'] { transform: translateY(8px); }
 	.dropdown .action-button { width: 100%; min-height: 50px; justify-content: flex-start; gap: 12px; padding: 12px 16px; font-size: 15px; }
-	.icons-only .dropdown-shell { width: max-content; }
+	.icons-only .dropdown-shell, .dropdown-shell.icons-only { width: max-content; }
 	.icons-only .dropdown { grid-auto-flow: column; }
 	.icons-only .dropdown .action-button { width: 44px; min-height: 44px; justify-content: center; padding: 10px; }
 	.dropdown-action { opacity: 0; transform: translateY(-6px); transition: opacity 180ms, transform 220ms cubic-bezier(.22,1,.36,1); transition-delay: 0ms; }
-	[data-open='true'] .dropdown-shell { visibility: visible; opacity: 1; transform: translateY(0); pointer-events: auto; }
+	[data-open='true'] .dropdown-shell, .dropdown-shell[data-open='true'] { visibility: visible; opacity: 1; transform: translateY(0); pointer-events: auto; }
 	[data-open='true'] .dropdown-action { opacity: 1; transform: translateY(0) scale(1); transition-delay: calc(var(--order) * 45ms); }
 	.promoted { display: none; }
 	@container (min-width: 460px) {

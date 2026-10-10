@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { GameProps } from './types';
+	import type { GameProps } from '../../games/types';
 
 	let { q, onAnswer, picked = null, correct = null }: GameProps = $props();
 	let text = $state('');

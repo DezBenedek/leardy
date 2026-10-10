@@ -167,9 +167,9 @@
 		{#if heroLoading}
 			<div class="hero-skeleton" role="status" aria-label="Teendők betöltése">
 				<Skeleton cls="h-3 w-32 rounded-full bg-white/20" />
-				<Skeleton cls="mt-4 h-7 w-4/5 rounded-lg bg-white/20" />
+				<Skeleton cls="mt-2 h-6 w-4/5 rounded-lg bg-white/20" />
 				<Skeleton cls="mt-2 h-4 w-3/5 rounded-lg bg-white/20" />
-				<Skeleton cls="mt-5 h-10 w-32 rounded-full bg-white/20" />
+				<Skeleton cls="mt-3 h-11 w-32 rounded-full bg-white/20" />
 			</div>
 		{:else}
 			<div class="hero-eyebrow">
@@ -217,13 +217,6 @@
 					</li>
 				{/each}
 			</ol>
-			<div class="daily-status">
-				<span>Mai tanulás</span>
-				<span class="daily-badge" class:completed={stats.todayActive}>
-					{#if stats.todayActive}<Check size={14} aria-hidden="true" /><span>Teljesítve</span>
-					{:else}<span>Még hátravan</span>{/if}
-				</span>
-			</div>
 		{/if}
 	</section>
 </div>
@@ -315,14 +308,14 @@
 	h1, h2, .item-title { font-family: var(--font-display); }
 	h1 { font-size: 28px; font-weight: 800; letter-spacing: -.04em; line-height: 1.2; overflow-wrap: anywhere; }
 	.overview { display: grid; gap: 12px; margin-top: 20px; }
-	.next-step { padding: 20px; border-radius: var(--radius-card); background: var(--color-brand-600); color: white; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+	.next-step { padding: 16px; border-radius: var(--radius-card); background: var(--color-brand-600); color: white; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 	.hero-eyebrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; color: #dfe3ff; font-size: 12px; font-weight: 600; }
-	.next-step h2 { font-size: 25px; font-weight: 800; letter-spacing: -.035em; line-height: 1.15; margin-top: 12px; overflow-wrap: anywhere; }
-	.hero-description { color: #dfe3ff; font-size: 13px; line-height: 1.5; margin-top: 7px; margin-bottom: 18px; overflow-wrap: anywhere; }
+	.next-step h2 { font-size: 21px; font-weight: 800; letter-spacing: -.035em; line-height: 1.15; margin-top: 8px; overflow-wrap: anywhere; }
+	.hero-description { color: #dfe3ff; font-size: 13px; line-height: 1.5; margin-top: 5px; margin-bottom: 12px; overflow-wrap: anywhere; }
 	.hero-action { display: inline-flex; justify-content: center; align-items: center; gap: 10px; margin-top: auto; min-height: 44px; padding: 10px 16px; background: white; border-radius: 999px; color: var(--color-brand-700); font-size: 13px; font-weight: 750; cursor: pointer; transition: background .15s; }
 	.hero-action:hover { background: #eef0ff; }
 	.hero-action:focus-visible { outline-color: white; }
-	.hero-skeleton { width: 100%; min-height: 168px; }
+	.hero-skeleton { width: 100%; min-height: 140px; }
 	.streak-card { padding: 18px 20px; border: 1px solid #f5e8d8; border-radius: var(--radius-card); background: #fffbf5; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 	.streak-heading { display: flex; align-items: center; gap: 10px; }
 	.flame-tile { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; background: #ffedd9; color: #ba471b; border-radius: 14px; }
@@ -338,9 +331,6 @@
 	.day-dot.day-today { outline: 2px solid #c65329; outline-offset: 3px; }
 	.empty-dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
 	.streak-status { display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 1.5; color: #85674b; margin-top: 14px; }
-	.daily-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 12px; border-top: 1px solid #f0e3d3; color: #85674b; font-size: 12px; line-height: 1.4; }
-	.daily-badge { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 5px 9px; border-radius: 8px; background: #f0e8de; color: #735b44; font-size: 11px; font-weight: 650; }
-	.daily-badge.completed { background: #e4f1e8; color: #35724b; }
 	.skeleton-week { margin-top: 24px; }
 	.home-section { margin-top: 28px; }
 	.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 0 2px; }
@@ -368,8 +358,8 @@
 	@media (min-width: 640px) {
 		h1 { font-size: 32px; }
 		.overview { grid-template-columns: 1.15fr 1fr; gap: 14px; }
-		.next-step { padding: 22px; }
-		.next-step h2 { font-size: 27px; }
+		.next-step { padding: 18px; }
+		.next-step h2 { font-size: 23px; }
 	}
 	:global(.dark) .header-date, :global(.dark) .item-description, :global(.dark) .section-count, :global(.dark) .fresh-count, :global(.dark) .empty-task-label, :global(.dark) .inline-message { color: #a8a5a0; }
 	:global(.dark) .streak-card { background: #211b16; border-color: #3d2e23; }
@@ -380,9 +370,6 @@
 	:global(.dark) .day-dot.day-active { background: #c65329; color: white; }
 	:global(.dark) .day-dot.day-future { background: transparent; border-color: #604630; }
 	:global(.dark) .day-dot.day-today { outline-color: #ffad75; }
-	:global(.dark) .daily-status { border-color: #3d2e23; color: #c3aa91; }
-	:global(.dark) .daily-badge { background: #3c3026; color: #d4bea9; }
-	:global(.dark) .daily-badge.completed { background: #1b3526; color: #a3d6b3; }
 	:global(.dark) .words-icon { background: #252846; color: #acb6ff; }
 	:global(.dark) .grading-icon { background: #30253e; color: #cbb1ef; }
 	:global(.dark) .task-icon { background: #292723; color: #bcb7ad; }

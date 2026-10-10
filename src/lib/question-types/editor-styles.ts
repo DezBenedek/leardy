@@ -1,0 +1,3 @@
+export const fieldClass = 'w-full min-w-0 rounded-xl border border-stone-300 bg-white px-3 py-2 text-base text-ink-900 outline-none transition placeholder:text-stone-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:opacity-60 dark:border-white/15 dark:bg-white/5 dark:text-white dark:placeholder:text-stone-500 dark:focus:ring-brand-500/20';
+export const labelClass = 'block text-sm font-bold text-ink-900 dark:text-white';
+export const addClass = 'inline-flex min-h-9 items-center gap-1.5 rounded-lg px-1 text-xs font-bold text-stone-500 transition hover:text-brand-600 disabled:opacity-50 dark:text-stone-400';

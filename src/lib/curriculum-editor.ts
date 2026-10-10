@@ -25,6 +25,28 @@ export interface EditorLesson {
 	levelTitle: string;
 }
 
+/** Kvízblokk a lecke szerkesztőhöz: lecke szintű lista eleme. */
+export interface EditorQuestion {
+	id: string;
+	quiz_id: string;
+	question_text: string;
+	imageUrl?: string;
+	type: string;
+	options: string[];
+	pairs: { left: string; right: string }[];
+	correct_answer: string;
+	sectionSlug: string;
+	sort: number;
+}
+
+export interface EditorQuiz {
+	id: string;
+	title: string;
+	section_slug: string;
+	sort: number;
+	questions: EditorQuestion[];
+}
+
 /** A bekezdések címsorai és nyers tartalma veszteség nélkül szerkeszthetők. */
 export interface EditableSection {
 	id: string;

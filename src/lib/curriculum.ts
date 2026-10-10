@@ -48,13 +48,16 @@ export interface QuizPair {
 export interface QuizQuestion {
 	id: string;
 	question_text: string;
+	imageUrl?: string;
 	type: string;
 	/** choice/order/tf esetén string-tömb; match esetén üres. */
 	options: string[];
 	/** match esetén a párok. */
 	pairs: QuizPair[];
 	correct_answer: string;
-	/** Saját kártya bekezdés-besorolása (lecke szekció-slugja, üres = nincs). */
+	/** Kérdés szintű bekezdés bekötés (lecke szekció slug, üres = nincs).
+	    Ha kitöltött, felülírja a kvízblokk section_slug értékét. Saját kártya
+	    bekezdés besorolására is ez szolgál. */
 	sectionSlug?: string;
 }
 

@@ -57,7 +57,7 @@
 	</div>
 	<textarea
 		{id} bind:value {@attach fit} {disabled} {placeholder} rows={5} spellcheck="true"
-		class="block w-full resize-none overflow-y-auto rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm leading-6 font-normal text-ink-900 outline-none transition-[height] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:opacity-60 motion-reduce:transition-none dark:border-white/15 dark:bg-white/5 dark:text-white"
+		class="block w-full resize-none overflow-y-auto rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm leading-6 font-normal text-ink-900 outline-none transition-[height] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] focus:border-stone-500 disabled:opacity-60 motion-reduce:transition-none dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:border-stone-400"
 		style:min-height="9rem"
 	></textarea>
 </div>

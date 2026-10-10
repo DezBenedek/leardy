@@ -20,6 +20,8 @@
 		onEdit?: () => void;
 		editLabel?: string;
 		onClose: () => void;
+		/** Mentés közben megakadályozhatja a panel bezárását. */
+		canClose?: () => boolean;
 		children: Snippet;
 		/** Gépen szélesebb párbeszéd (pl. választók, hosszú űrlapok). */
 		wide?: boolean;
@@ -27,7 +29,7 @@
 		animateHeight?: boolean;
 	}
 
-	let { open, label, title, header, actions, onBack, onEdit, editLabel = 'Szerkesztés', onClose, children, wide = false, animateHeight = false }: Props = $props();
+	let { open, label, title, header, actions, onBack, onEdit, editLabel = 'Szerkesztés', onClose, canClose, children, wide = false, animateHeight = false }: Props = $props();
 
 	let panel: HTMLElement | null = $state(null);
 	let scroller: HTMLElement | null = $state(null);
@@ -100,12 +102,13 @@
 	});
 
 	function beginClose() {
+		dragging = false;
+		dragY = 0;
+		if (canClose && !canClose()) return;
 		if (!render) {
 			onClose();
 			return;
 		}
-		dragging = false;
-		dragY = 0;
 		const gen = ++generation;
 		shown = false;
 		setTimeout(() => {

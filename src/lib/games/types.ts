@@ -7,6 +7,10 @@ export interface GameQuestion {
 	type: string;
 	options: string[];
 	left?: string;
+	/** A teljes párosítós feladat bal oldalai, a helyes párok felfedése nélkül. */
+	lefts?: string[];
+	/** A bal oldalak kevert megjelenítési sorrendje, eredeti indexekkel. */
+	leftOrder?: number[];
 }
 
 export interface GameProps {

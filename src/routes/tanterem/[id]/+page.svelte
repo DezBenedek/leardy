@@ -2327,7 +2327,7 @@ import {
 				questions={quizQuestions}
 				title={quizTitle}
 				targetPct={detailTask?.target_pct ?? null}
-				onReview={() => (quizOpen = false)}
+				onExit={() => (quizOpen = false)}
 				onDone={onQuizDone}
 			/>
 		{/key}

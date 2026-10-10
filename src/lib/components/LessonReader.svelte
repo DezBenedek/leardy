@@ -58,14 +58,15 @@
 
 	function sectionQuizCount(slug: string): number {
 		return lessonPage.quizzes
-			.filter((q) => q.section_slug === slug)
-			.reduce((n, q) => n + q.questions.length, 0);
+			.flatMap((q) => q.questions.map((question) => ({ question, quiz: q })))
+			.filter(({ question, quiz }) => (question.sectionSlug || quiz.section_slug) === slug).length;
 	}
 
 	function sectionQuestions(slug: string): QuizQuestion[] {
 		return lessonPage.quizzes
-			.filter((q) => q.section_slug === slug)
-			.flatMap((q) => q.questions);
+			.flatMap((q) => q.questions.map((question) => ({ question, quiz: q })))
+			.filter(({ question, quiz }) => (question.sectionSlug || quiz.section_slug) === slug)
+			.map(({ question }) => question);
 	}
 
 	const goBack = createBackNavigation(() => resolve('/tanulas'), {
@@ -203,6 +204,7 @@
 			<QuizRunner
 				questions={quizModal.questions}
 				title={quizModal.title}
+				onExit={() => (quizModal = null)}
 				onDone={(score, total) => reportProgress(score, total)}
 			/>
 		{/key}

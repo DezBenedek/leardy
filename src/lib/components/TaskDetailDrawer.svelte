@@ -353,7 +353,7 @@
 				questions={quizQuestions}
 				title={task?.title || 'Kvízfeladat'}
 				targetPct={task?.targetPct ?? null}
-				onReview={() => (quizOpen = false)}
+				onExit={() => (quizOpen = false)}
 				onDone={onQuizDone}
 			/>
 		{/key}

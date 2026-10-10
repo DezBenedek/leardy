@@ -9,17 +9,17 @@
 	import { motionOK } from '$lib/overlay';
 	import ExpandableTextarea from '$lib/ui/ExpandableTextarea.svelte';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
-	import { ArrowDown, ArrowLeft, ArrowUp, Pencil, Plus, Save, Trash2 } from '@lucide/svelte';
+	import { ArrowDown, ArrowLeft, ArrowUp, ListChecks, Pencil, Plus, Save, Trash2 } from '@lucide/svelte';
 	import ActionMenu from '$lib/ui/ActionMenu.svelte';
 	import Drawer from './Drawer.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import { editCurriculum } from '$lib/curriculum-edit-api';
-	import { parseEditableSections, serializeEditableSections, withEditableSectionSlugs, type EditorLesson } from '$lib/curriculum-editor';
+	import { parseEditableSections, serializeEditableSections, withEditableSectionSlugs, type EditorLesson, type EditorQuiz } from '$lib/curriculum-editor';
 	import { toast } from '$lib/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 
-	let { lesson }: { lesson: EditorLesson } = $props();
+	let { lesson, initialQuizzes = [] }: { lesson: EditorLesson; initialQuizzes?: EditorQuiz[] } = $props();
 	const editorId = $props.id();
 	let nextSectionId = 0;
 	let title = $state(untrack(() => lesson.title));
@@ -32,6 +32,7 @@
 	let busy = $state(false);
 	let renameOpen = $state(false);
 	let deleteOpen = $state(false);
+	let quizTotal = $state(untrack(() => initialQuizzes.reduce((n, q) => n + (q.questions?.length ?? 0), 0)));
 	let rename = $state('');
 	let formError = $state('');
 	const fieldClass = 'w-full rounded-xl border border-stone-300 bg-white px-3 py-3 text-ink-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:opacity-60 dark:border-white/15 dark:bg-white/5 dark:text-white';
@@ -44,7 +45,7 @@
 			navigation.cancel();
 			return;
 		}
-		if (!confirm('A leckében nem mentett módosítások vannak. Elhagyod az oldalt?')) navigation.cancel();
+		if (!confirm('Nem mentett módosítások vannak a leckében. Elhagyod az oldalt?')) navigation.cancel();
 	});
 
 	function beforeUnload(event: BeforeUnloadEvent) {
@@ -55,14 +56,16 @@
 
 	const goBack = createBackNavigation(() => resolve(backUrl), { direct: true });
 
+	const quizLabel = $derived(quizTotal > 0 ? `Kvíz (${quizTotal})` : 'Kvíz');
+
 	function openRename() { rename = title; formError = ''; renameOpen = true; }
 	function openDelete() { formError = ''; deleteOpen = true; }
 
 	async function save(nextTitle = title) {
-		if (busy) return;
+		if (busy) return false;
 		if (sections.some((section) => !section.intro && (!section.title.trim() || /[\r\n]/.test(section.title)))) {
 			toast.error('Adj minden bekezdésnek egysoros címet.');
-			return;
+			return false;
 		}
 		busy = true;
 		formError = '';
@@ -80,10 +83,18 @@
 			savedSections = body;
 			renameOpen = false;
 			toast.success('A lecke mentve');
+			return true;
 		} catch (err) {
 			formError = err instanceof Error ? err.message : 'Nem sikerült menteni a leckét.';
 			toast.error(formError);
+			return false;
 		} finally { busy = false; }
+	}
+
+	async function openQuiz() {
+		if (busy) return;
+		if (dirty && !await save()) return;
+		await goto(resolve('/tanulas/szerkeszto/lecke/[id]/kviz', { id: lesson.id }));
 	}
 
 	async function deleteLesson() {
@@ -135,6 +146,7 @@
 		</div>
 		<ActionMenu label="Lecke műveletei" disabled={busy} actions={[
 			{ id: 'save', label: 'Mentés', icon: Save, promote: 'small', disabled: !dirty, onclick: () => { void save(); } },
+			{ id: 'quiz', label: quizLabel, icon: ListChecks, promote: 'small', onclick: () => { void openQuiz(); } },
 			{ id: 'rename', label: 'Átnevezés', icon: Pencil, promote: 'small', iconOnly: true, onclick: openRename },
 			{ id: 'delete', label: 'Törlés', icon: Trash2, promote: 'small', iconOnly: true, tone: 'danger', onclick: openDelete }
 		]} />

@@ -1,7 +1,8 @@
+import { isQuestionType, loadQuestionOptions, questionType, readQuestionOptions, storedQuestionOptions } from '../question-types/registry';
 import type { D1Database } from '@cloudflare/workers-types';
 import { error, type RequestEvent } from '@sveltejs/kit';
 import { getDb, requireUser, type PublicUser } from './db';
-import type { EditorCandidate, EditorLesson, EditorLevel } from '$lib/curriculum-editor';
+import type { EditorCandidate, EditorLesson, EditorLevel, EditorQuestion, EditorQuiz } from '$lib/curriculum-editor';
 import { publishedLevelSql } from './curriculum-publication';
 
 export function canCreateLevel(user: PublicUser): boolean {
@@ -100,6 +101,135 @@ export async function getEditorLesson(db: D1Database, user: PublicUser, id: stri
 	if (!lesson) error(404, 'Nincs ilyen lecke.');
 	await requireLevelEditor(db, user, lesson.levelId);
 	return lesson;
+}
+
+/** Kvízblokkok kérdésekkel a lecke szerkesztőhöz (lecke szintű lista). */
+export async function getEditorQuizzes(db: D1Database, user: PublicUser, lessonId: string): Promise<EditorQuiz[]> {
+	const lesson = await getEditorLesson(db, user, lessonId);
+	const quizRows = await db.prepare(
+		`SELECT id, title, COALESCE(section_slug, '') AS section_slug, COALESCE(sort, 0) AS sort
+		 FROM quizzes WHERE lesson_id = ? ORDER BY sort, title, id`
+	).bind(lesson.id).all<{ id: string; title: string; section_slug: string; sort: number }>();
+	const quizzes = quizRows.results ?? [];
+	if (quizzes.length === 0) return [];
+	// Régi adatbázison még hiányozhat a kérdés szintű oszlop: ilyenkor
+	// bekötés nélkül térünk vissza, íráskor pedig pótoljuk az oszlopot.
+	let questionRows: { id: string; quiz_id: string; question_text: string; type: string; options_json: string; correct_answer: string; section_slug?: string; sort: number }[] = [];
+	try {
+		const res = await db.prepare(
+			`SELECT id, quiz_id, question_text, COALESCE(type, 'choice') AS type,
+				COALESCE(options_json, '[]') AS options_json,
+				COALESCE(correct_answer, '') AS correct_answer,
+				COALESCE(section_slug, '') AS section_slug, COALESCE(sort, 0) AS sort
+			 FROM quiz_questions WHERE quiz_id IN (${quizzes.map(() => '?').join(', ')}) ORDER BY sort, id`
+		).bind(...quizzes.map((q) => q.id)).all<typeof questionRows[number]>();
+		questionRows = res.results ?? [];
+	} catch {
+		const res = await db.prepare(
+			`SELECT id, quiz_id, question_text, COALESCE(type, 'choice') AS type,
+				COALESCE(options_json, '[]') AS options_json,
+				COALESCE(correct_answer, '') AS correct_answer, COALESCE(sort, 0) AS sort
+			 FROM quiz_questions WHERE quiz_id IN (${quizzes.map(() => '?').join(', ')}) ORDER BY sort, id`
+		).bind(...quizzes.map((q) => q.id)).all<typeof questionRows[number]>();
+		questionRows = res.results ?? [];
+	}
+	return quizzes.map((quiz) => ({
+		id: quiz.id,
+		title: quiz.title,
+		section_slug: quiz.section_slug ?? '',
+		sort: quiz.sort ?? 0,
+		questions: questionRows
+			.filter((row) => row.quiz_id === quiz.id)
+			.map((row) => ({
+				id: row.id,
+				quiz_id: row.quiz_id,
+				question_text: row.question_text,
+				type: row.type ?? 'choice',
+				...loadQuestionOptions(row.type ?? 'choice', row.options_json),
+				correct_answer: row.correct_answer ?? '',
+				sectionSlug: row.section_slug ?? '',
+				sort: row.sort ?? 0
+			}))
+	}));
+}
+
+/** Kérdés szintű oszlop pótlása régi adatbázison (idempotens). */
+async function ensureQuestionSectionColumn(db: D1Database): Promise<void> {
+	try {
+		await db.prepare(`ALTER TABLE quiz_questions ADD COLUMN section_slug TEXT NOT NULL DEFAULT ''`).run();
+	} catch {
+		// az oszlop már létezik
+	}
+}
+
+function slugField(body: Record<string, unknown>, key: string): string {
+	const value = body[key];
+	if (value === undefined || value === null) return '';
+	if (typeof value !== 'string') error(400, 'Érvénytelen bekezdés bekötés.');
+	const slug = value.trim();
+	if (slug.length > 100) error(400, 'A bekezdés bekötés túl hosszú.');
+	return slug;
+}
+
+function questionTextField(body: Record<string, unknown>): string {
+	const value = body.question_text;
+	if (typeof value !== 'string' || !value.trim() || value.trim().length > 1000) {
+		error(400, 'A kérdés szövege kötelező, legfeljebb 1000 karakterrel.');
+	}
+	return value.trim();
+}
+
+function quizTypeField(body: Record<string, unknown>): string {
+	const type = body.type;
+	if (typeof type !== 'string' || !isQuestionType(type)) error(400, 'Ismeretlen kérdéstípus.');
+	return type;
+}
+
+/** Szerver oldali kérdés ellenőrzés a futtató szabályai szerint. */
+function validateServerQuestion(type: string, options: string[], pairs: { left: string; right: string }[], correct: string): string | null {
+	return questionType(type).validate({ options, pairs, correct_answer: correct });
+}
+
+function parseServerOptions(type: string, raw: unknown): { options: string[]; pairs: { left: string; right: string }[]; optionsJson: string } {
+	try {
+		const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+		const fields = readQuestionOptions(type, parsed);
+		const imageUrl = parsed && typeof parsed === 'object' ? (parsed as { imageUrl?: unknown }).imageUrl : undefined;
+		const stored = storedQuestionOptions(type, { ...fields, correct_answer: '', imageUrl });
+		return { ...readQuestionOptions(type, stored), optionsJson: JSON.stringify(stored) };
+	} catch {
+		error(400, 'A válaszok vagy a kép formátuma érvénytelen.');
+	}
+}
+
+/** Kvízblokk lekérése a tananyaghoz tartozás ellenőrzésével. */
+async function requireQuizInLevel(db: D1Database, quizId: string, levelId: string): Promise<{ id: string; lesson_id: string }> {
+	const quiz = await db.prepare(
+		`SELECT q.id, q.lesson_id FROM quizzes q
+		 JOIN lessons le ON le.id = q.lesson_id JOIN materials m ON m.id = le.material_id
+		 WHERE q.id = ? AND m.level_id = ?`
+	).bind(quizId, levelId).first<{ id: string; lesson_id: string }>();
+	if (!quiz) error(404, 'Nincs ilyen kvíz ezen a tananyagban.');
+	return quiz;
+}
+
+/** Kérdés lekérése a tananyaghoz tartozás ellenőrzésével. */
+async function requireQuestionInLevel(db: D1Database, questionId: string, levelId: string): Promise<{ id: string; quiz_id: string; lesson_id: string }> {
+	const row = await db.prepare(
+		`SELECT qq.id, qq.quiz_id, q.lesson_id FROM quiz_questions qq
+		 JOIN quizzes q ON q.id = qq.quiz_id
+		 JOIN lessons le ON le.id = q.lesson_id JOIN materials m ON m.id = le.material_id
+		 WHERE qq.id = ? AND m.level_id = ?`
+	).bind(questionId, levelId).first<{ id: string; quiz_id: string; lesson_id: string }>();
+	if (!row) error(404, 'Nincs ilyen kérdés ezen a tananyagban.');
+	return row;
+}
+
+async function nextSort(db: D1Database, table: 'quizzes' | 'quiz_questions', column: 'lesson_id' | 'quiz_id', parentId: string): Promise<number> {
+	const row = await db.prepare(
+		`SELECT COALESCE(MAX(sort), -1) + 1 AS next FROM ${table} WHERE ${column} = ?`
+	).bind(parentId).first<{ next: number }>();
+	return row?.next ?? 0;
 }
 
 export async function searchEditorCandidates(db: D1Database, user: PublicUser, levelId: string, query: string, limit = 8): Promise<EditorCandidate[]> {
@@ -222,6 +352,180 @@ export async function mutateCurriculum(db: D1Database, user: PublicUser, body: R
 			.bind(title, body.body_md, lessonId, body.originalTitle, body.originalBody).run();
 		if (!result.meta.changes) error(409, 'Egy másik szerkesztő már módosította a leckét. A munkád megmaradt; frissítés előtt másold ki.');
 		return { title, body_md: body.body_md };
+	}
+	if (action === 'createQuiz' || action === 'renameQuiz' || action === 'deleteQuiz' || action === 'duplicateQuiz' || action === 'reorderQuizzes') {
+		await ensureQuestionSectionColumn(db);
+		if (action === 'createQuiz') {
+			const lessonId = textField(body, 'lessonId');
+			const lesson = await getEditorLesson(db, user, lessonId);
+			if (lesson.levelId !== levelId) error(404, 'Nincs ilyen lecke ezen a tananyagban.');
+			const title = textField(body, 'title');
+			const sectionSlug = slugField(body, 'sectionSlug');
+			const id = crypto.randomUUID();
+			await db.prepare(`INSERT INTO quizzes (id, lesson_id, section_slug, title, sort) VALUES (?, ?, ?, ?, ?)`)
+				.bind(id, lessonId, sectionSlug, title, await nextSort(db, 'quizzes', 'lesson_id', lessonId)).run();
+			return { id };
+		}
+		if (action === 'reorderQuizzes') {
+			const lessonId = textField(body, 'lessonId');
+			const lesson = await getEditorLesson(db, user, lessonId);
+			if (lesson.levelId !== levelId) error(404, 'Nincs ilyen lecke ezen a tananyagban.');
+			const ids = body.ids;
+			if (!Array.isArray(ids) || ids.length > 500 || ids.some((id) => typeof id !== 'string') || new Set(ids).size !== ids.length) error(400, 'Érvénytelen sorrend.');
+			const existing = await db.prepare(`SELECT id FROM quizzes WHERE lesson_id = ?`).bind(lessonId).all<{ id: string }>();
+			if (existing.results.length !== ids.length || existing.results.some((row) => !ids.includes(row.id))) error(409, 'A lista megváltozott. Frissítsd az oldalt a rendezés előtt.');
+			if (ids.length) await db.batch(ids.map((id, sort) => db.prepare(`UPDATE quizzes SET sort = ? WHERE id = ? AND lesson_id = ?`).bind(sort, id, lessonId)));
+			return {};
+		}
+		const quizId = textField(body, 'quizId');
+		const quiz = await requireQuizInLevel(db, quizId, levelId);
+		if (action === 'deleteQuiz') {
+			await db.prepare('DELETE FROM quizzes WHERE id = ?').bind(quizId).run();
+			return {};
+		}
+		if (action === 'duplicateQuiz') {
+			const newQuizId = crypto.randomUUID();
+			const source = await db.prepare(`SELECT title, section_slug, sort FROM quizzes WHERE id = ?`).bind(quizId)
+				.first<{ title: string; section_slug: string; sort: number }>();
+			const questions = await db.prepare(
+				`SELECT question_text, type, options_json, correct_answer, sort FROM quiz_questions WHERE quiz_id = ? ORDER BY sort, id`
+			).bind(quizId).all<{ question_text: string; type: string; options_json: string; correct_answer: string; sort: number }>();
+			let sectionSlugs: string[] = [];
+			try {
+				const withSections = await db.prepare(`SELECT section_slug FROM quiz_questions WHERE quiz_id = ? ORDER BY sort, id`)
+					.bind(quizId).all<{ section_slug: string }>();
+				sectionSlugs = (withSections.results ?? []).map((r) => r.section_slug ?? '');
+			} catch {
+				sectionSlugs = [];
+			}
+			const batch = [
+				db.prepare(`INSERT INTO quizzes (id, lesson_id, section_slug, title, sort) VALUES (?, ?, ?, ?, ?)`)
+					.bind(newQuizId, quiz.lesson_id, source?.section_slug ?? '', `${source?.title ?? 'Kvíz'} (másolat)`, await nextSort(db, 'quizzes', 'lesson_id', quiz.lesson_id))
+			];
+			(questions.results ?? []).forEach((q, index) => {
+				batch.push(db.prepare(
+					`INSERT INTO quiz_questions (id, quiz_id, question_text, type, options_json, correct_answer, section_slug, sort)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+				).bind(crypto.randomUUID(), newQuizId, q.question_text, q.type, q.options_json, q.correct_answer, sectionSlugs[index] ?? '', q.sort ?? index));
+			});
+			await db.batch(batch);
+			return { id: newQuizId };
+		}
+		const title = textField(body, 'title');
+		const sectionSlug = slugField(body, 'sectionSlug');
+		await db.prepare(`UPDATE quizzes SET title = ?, section_slug = ? WHERE id = ?`).bind(title, sectionSlug, quizId).run();
+		return {};
+	}
+	if (action === 'saveQuestion' || action === 'deleteQuestion' || action === 'duplicateQuestion' || action === 'reorderQuestions' || action === 'reorderLessonQuestions' || action === 'moveQuestion') {
+		await ensureQuestionSectionColumn(db);
+		if (action === 'reorderLessonQuestions') {
+			const lessonId = textField(body, 'lessonId');
+			const lesson = await getEditorLesson(db, user, lessonId);
+			if (lesson.levelId !== levelId) error(404, 'Nincs ilyen lecke ezen a tananyagban.');
+			const ids = body.ids;
+			if (!Array.isArray(ids) || ids.length > 500 || ids.some((id) => typeof id !== 'string') || new Set(ids).size !== ids.length) error(400, 'Érvénytelen sorrend.');
+			const existing = await db.prepare(`SELECT qq.id, qq.quiz_id, qq.section_slug, q.section_slug AS quiz_section
+				FROM quiz_questions qq JOIN quizzes q ON q.id = qq.quiz_id
+				WHERE q.lesson_id = ? ORDER BY q.sort, q.title, q.id, qq.sort, qq.id`)
+				.bind(lessonId).all<{ id: string; quiz_id: string; section_slug: string; quiz_section: string }>();
+			if (existing.results.length !== ids.length || existing.results.some((row) => !ids.includes(row.id))) error(409, 'A lista megváltozott. Frissítsd az oldalt a rendezés előtt.');
+			const byId = new Map(existing.results.map((row) => [row.id, row]));
+			// A blokkok mérete megmarad, a kérdések a kívánt sorrendben kapják a helyeket.
+			// A bekezdés öröklését rögzítjük, így blokkhatáron átlépve sem változik.
+			const assignments = ids.map((id, index) => ({ id: id as string, quizId: existing.results[index].quiz_id }));
+			if (ids.length) await db.batch([...assignments.map(({ id, quizId }, sort) => {
+				const source = byId.get(id)!;
+				return db.prepare('UPDATE quiz_questions SET quiz_id = ?, sort = ?, section_slug = ? WHERE id = ?')
+					.bind(quizId, sort, source.section_slug || source.quiz_section || '', id);
+			}), db.prepare("UPDATE quizzes SET section_slug = '' WHERE lesson_id = ?").bind(lessonId)]);
+			return { assignments };
+		}
+		if (action === 'reorderQuestions') {
+			const quizId = textField(body, 'quizId');
+			await requireQuizInLevel(db, quizId, levelId);
+			const ids = body.ids;
+			if (!Array.isArray(ids) || ids.length > 500 || ids.some((id) => typeof id !== 'string') || new Set(ids).size !== ids.length) error(400, 'Érvénytelen sorrend.');
+			const existing = await db.prepare(`SELECT id FROM quiz_questions WHERE quiz_id = ?`).bind(quizId).all<{ id: string }>();
+			if (existing.results.length !== ids.length || existing.results.some((row) => !ids.includes(row.id))) error(409, 'A lista megváltozott. Frissítsd az oldalt a rendezés előtt.');
+			if (ids.length) await db.batch(ids.map((id, sort) => db.prepare(`UPDATE quiz_questions SET sort = ? WHERE id = ? AND quiz_id = ?`).bind(sort, id, quizId)));
+			return {};
+		}
+		if (action === 'deleteQuestion') {
+			await requireQuestionInLevel(db, textField(body, 'questionId'), levelId);
+			await db.prepare('DELETE FROM quiz_questions WHERE id = ?').bind(textField(body, 'questionId')).run();
+			return {};
+		}
+		if (action === 'duplicateQuestion') {
+			const questionId = textField(body, 'questionId');
+			const source = await requireQuestionInLevel(db, questionId, levelId);
+			const row = await db.prepare(
+				`SELECT question_text, type, options_json, correct_answer, sort FROM quiz_questions WHERE id = ?`
+			).bind(questionId).first<{ question_text: string; type: string; options_json: string; correct_answer: string; sort: number }>();
+			if (!row) error(404, 'Nincs ilyen kérdés.');
+			let sectionSlug = '';
+			try {
+				const withSection = await db.prepare(`SELECT section_slug FROM quiz_questions WHERE id = ?`).bind(questionId)
+					.first<{ section_slug: string }>();
+				sectionSlug = withSection?.section_slug ?? '';
+			} catch {
+				// régi séma: bekötés nélkül másolunk
+			}
+			const id = crypto.randomUUID();
+			const siblings = await db.prepare('SELECT id FROM quiz_questions WHERE quiz_id = ? ORDER BY sort, id').bind(source.quiz_id).all<{ id: string }>();
+			const ordered = siblings.results.map((q) => q.id);
+			ordered.splice(ordered.indexOf(questionId) + 1, 0, id);
+			await db.batch([
+				db.prepare(
+				`INSERT INTO quiz_questions (id, quiz_id, question_text, type, options_json, correct_answer, section_slug, sort)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+			).bind(id, source.quiz_id, row.question_text, row.type, row.options_json, row.correct_answer, sectionSlug, row.sort + 1),
+				...ordered.map((siblingId, sort) => db.prepare('UPDATE quiz_questions SET sort = ? WHERE id = ?').bind(sort, siblingId))
+			]);
+			return { id };
+		}
+		if (action === 'moveQuestion') {
+			const questionId = textField(body, 'questionId');
+			const targetQuizId = textField(body, 'targetQuizId');
+			const source = await requireQuestionInLevel(db, questionId, levelId);
+			const target = await requireQuizInLevel(db, targetQuizId, levelId);
+			if (source.lesson_id !== target.lesson_id) error(400, 'Kérdést csak ugyanazon lecke kvízblokkjai között lehet mozgatni.');
+			await db.prepare(`UPDATE quiz_questions SET quiz_id = ?, sort = ? WHERE id = ?`)
+				.bind(targetQuizId, await nextSort(db, 'quiz_questions', 'quiz_id', targetQuizId), questionId).run();
+			return {};
+		}
+		const quizId = textField(body, 'quizId');
+		await requireQuizInLevel(db, quizId, levelId);
+		const type = quizTypeField(body);
+		const questionText = questionTextField(body);
+		const { options, pairs, optionsJson } = parseServerOptions(type, body.options_json);
+		const correctRaw = typeof body.correct_answer === 'string' ? body.correct_answer.trim() : '';
+		const correct = questionType(type).correctAnswer({ options, pairs, correct_answer: correctRaw });
+		const problem = validateServerQuestion(type, options, pairs, correctRaw);
+		if (problem) error(400, problem);
+		const sectionSlug = slugField(body, 'sectionSlug');
+		const rawId = body.questionId;
+		// A lapos szerkesztő kérdésenként tárolja a bekezdéskapcsolatot.
+		// Régi blokkok örökölt kapcsolatát előbb rögzítjük minden testvérkérdésen.
+		const materializeSections = [
+			db.prepare(`UPDATE quiz_questions SET section_slug = COALESCE((SELECT section_slug FROM quizzes WHERE id = ?), '')
+				WHERE quiz_id = ? AND COALESCE(section_slug, '') = ''`).bind(quizId, quizId),
+			db.prepare("UPDATE quizzes SET section_slug = '' WHERE id = ?").bind(quizId)
+		];
+		if (rawId === undefined || rawId === null || rawId === '') {
+			const id = crypto.randomUUID();
+			await db.batch([...materializeSections, db.prepare(
+				`INSERT INTO quiz_questions (id, quiz_id, question_text, type, options_json, correct_answer, section_slug, sort)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+			).bind(id, quizId, questionText, type, optionsJson, correct, sectionSlug, await nextSort(db, 'quiz_questions', 'quiz_id', quizId))]);
+			return { id };
+		}
+		if (typeof rawId !== 'string' || !rawId.trim()) error(400, 'Érvénytelen kérdés azonosító.');
+		const existing = await requireQuestionInLevel(db, rawId, levelId);
+		if (existing.quiz_id !== quizId) error(400, 'A kérdés másik kvízblokkhoz tartozik. Mozgatáshoz a mozgatás műveletet használd.');
+		await db.batch([...materializeSections, db.prepare(
+			`UPDATE quiz_questions SET question_text = ?, type = ?, options_json = ?, correct_answer = ?, section_slug = ? WHERE id = ?`
+		).bind(questionText, type, optionsJson, correct, sectionSlug, rawId)]);
+		return { id: rawId };
 	}
 	error(400, 'Ismeretlen szerkesztési művelet.');
 }

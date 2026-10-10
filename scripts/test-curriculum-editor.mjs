@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import ts from 'typescript';
+import { typescriptModuleUrl } from './typescript-module.mjs';
 
 async function moduleUrl(path, replacements = {}) {
 	let source = await readFile(new URL(path, import.meta.url), 'utf8');
@@ -12,17 +13,18 @@ async function moduleUrl(path, replacements = {}) {
 	return `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`;
 }
 
+const questionTypesUrl = await typescriptModuleUrl(new URL('../src/lib/question-types/registry.ts', import.meta.url));
 const dbUrl = await moduleUrl('../src/lib/server/db.ts');
 const publicationUrl = await moduleUrl('../src/lib/server/curriculum-publication.ts');
 const sm2Url = await moduleUrl('../src/lib/sm2.ts');
 const activityUrl = await moduleUrl('../src/lib/learning-activity.ts');
 const editorUrl = await moduleUrl('../src/lib/server/curriculum-editor.ts', {
-	'@sveltejs/kit': import.meta.resolve('@sveltejs/kit'), './db': dbUrl, './curriculum-publication': publicationUrl
+	'@sveltejs/kit': import.meta.resolve('@sveltejs/kit'), './db': dbUrl, './curriculum-publication': publicationUrl, '../question-types/registry': questionTypesUrl
 });
 const curriculumUrl = await moduleUrl('../src/lib/server/curriculum.ts', {
-	'./db': dbUrl, './curriculum-publication': publicationUrl, '$lib/sm2': sm2Url, '$lib/learning-activity': activityUrl
+	'./db': dbUrl, './curriculum-publication': publicationUrl, '../question-types/registry': questionTypesUrl, '$lib/sm2': sm2Url, '$lib/learning-activity': activityUrl
 });
-const { mutateCurriculum, getEditorLevels, getEditorLesson, canEnterEditor, countEditorLevelsBySubject, searchEditorCandidates } = await import(editorUrl);
+const { mutateCurriculum, getEditorLevels, getEditorLesson, getEditorQuizzes, canEnterEditor, countEditorLevelsBySubject, searchEditorCandidates } = await import(editorUrl);
 const { listSubjects, getSubjectTree, getLessonPage, countQuizzesByLesson, listScopedPackages } = await import(curriculumUrl);
 const markdownUrl = await moduleUrl('../src/lib/markdown.ts');
 const { splitSections, renderMarkdown } = await import(markdownUrl);
@@ -380,5 +382,120 @@ test('Száznál több szint is betölthető a D1 paraméterkorlátján belül', 
 			await mutateCurriculum(db, owner, { action: 'createLevel', subjectId, title: `Saját szint ${i}` });
 		}
 		assert.equal((await getEditorLevels(db, owner, subjectId)).filter((level) => level.canEdit).length, 105);
+	} finally { db.sqlite.close(); }
+});
+
+test('Mind az öt kérdéstípus létrehozható és visszatölthető a leckében', async () => {
+	const db = testDb();
+	try {
+		const fixture = await createFixture(db);
+		const { id: quizId } = await mutateCurriculum(db, owner, { action: 'createQuiz', ...fixture, title: 'Gyakorlás' });
+		const cases = [
+			{ type: 'choice', options_json: '["Budapest","Szeged"]', correct_answer: 'Budapest' },
+			{ type: 'tf', options_json: '[]', correct_answer: 'Igaz' },
+			{ type: 'text', options_json: '[]', correct_answer: 'Budapest' },
+			{ type: 'match', options_json: '{"pairs":[{"left":"Magyarország","right":"Budapest"},{"left":"Ausztria","right":"Bécs"}]}', correct_answer: '' },
+			{ type: 'order', options_json: '["Első","Második"]', correct_answer: '' }
+		];
+		for (const item of cases) await mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId, question_text: `Kérdés: ${item.type}`, ...item });
+		const quizzes = await getEditorQuizzes(db, owner, fixture.lessonId);
+		assert.deepEqual(quizzes[0].questions.map(q => q.type), cases.map(q => q.type));
+		assert.equal(quizzes[0].questions[4].correct_answer, '["Első","Második"]');
+		assert.equal(quizzes[0].questions[3].pairs[1].right, 'Bécs');
+	} finally { db.sqlite.close(); }
+});
+
+test('A másolat közvetlenül az eredeti után marad újratöltéskor, törlés után eltűnik', async () => {
+	const db = testDb();
+	try {
+		const fixture = await createFixture(db);
+		const { id: quizId } = await mutateCurriculum(db, owner, { action: 'createQuiz', ...fixture, title: 'Kvíz' });
+		const first = await mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId, type: 'tf', question_text: 'Első kérdés', correct_answer: 'Igaz' });
+		const second = await mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId, type: 'tf', question_text: 'Második kérdés', correct_answer: 'Hamis' });
+		// Régi adatbázisban egyező rendezési értékek is előfordulhatnak.
+		db.sqlite.prepare('UPDATE quiz_questions SET sort = 0 WHERE quiz_id = ?').run(quizId);
+		const before = (await getEditorQuizzes(db, owner, fixture.lessonId))[0].questions.map(q => q.id);
+		const copy = await mutateCurriculum(db, owner, { action: 'duplicateQuestion', ...fixture, questionId: first.id });
+		const expected = [...before]; expected.splice(expected.indexOf(first.id) + 1, 0, copy.id);
+		assert.deepEqual((await getEditorQuizzes(db, owner, fixture.lessonId))[0].questions.map(q => q.id), expected);
+		await mutateCurriculum(db, owner, { action: 'deleteQuestion', ...fixture, questionId: copy.id });
+		assert.deepEqual((await getEditorQuizzes(db, owner, fixture.lessonId))[0].questions.map(q => q.id), before);
+		assert.ok(before.includes(second.id));
+	} finally { db.sqlite.close(); }
+});
+
+test('Blokkhatáron át is tartós a kérdéssorrend, a bekezdéskapcsolatok megmaradnak', async () => {
+	const db = testDb();
+	try {
+		const fixture = await createFixture(db);
+		const a = await mutateCurriculum(db, owner, { action: 'createQuiz', ...fixture, title: 'Első blokk' });
+		const b = await mutateCurriculum(db, owner, { action: 'createQuiz', ...fixture, title: 'Második blokk' });
+		const first = await mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId: a.id, type: 'tf', question_text: 'Első kérdés', correct_answer: 'Igaz' });
+		const second = await mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId: b.id, type: 'tf', question_text: 'Második kérdés', correct_answer: 'Hamis' });
+		db.sqlite.prepare('UPDATE quizzes SET section_slug = ? WHERE id = ?').run('elso-bekezdes', a.id);
+		const reordered = await mutateCurriculum(db, owner, { action: 'reorderLessonQuestions', ...fixture, ids: [second.id, first.id] });
+		assert.deepEqual(reordered.assignments, [{ id: second.id, quizId: a.id }, { id: first.id, quizId: b.id }]);
+		const questions = (await getEditorQuizzes(db, owner, fixture.lessonId)).flatMap(q => q.questions);
+		assert.deepEqual(questions.map(q => q.id), [second.id, first.id]);
+		assert.deepEqual(questions.map(q => q.sectionSlug), ['', 'elso-bekezdes']);
+		assert.ok((await getEditorQuizzes(db, owner, fixture.lessonId)).every(q => q.section_slug === ''));
+	} finally { db.sqlite.close(); }
+});
+
+test('Az örökölt bekezdés leválasztható egy kérdésről, a testvérkérdések kapcsolata megmarad', async () => {
+	const db = testDb();
+	try {
+		const fixture = await createFixture(db);
+		const { id: quizId } = await mutateCurriculum(db, owner, { action: 'createQuiz', ...fixture, title: 'Kvíz' });
+		const question = { action: 'saveQuestion', ...fixture, quizId, type: 'tf', question_text: 'Állítás', correct_answer: 'Igaz' };
+		const a = await mutateCurriculum(db, owner, question);
+		const b = await mutateCurriculum(db, owner, question);
+		db.sqlite.prepare('UPDATE quizzes SET section_slug = ? WHERE id = ?').run('orokolt', quizId);
+		await mutateCurriculum(db, owner, { ...question, questionId: a.id, sectionSlug: '' });
+		const quiz = (await getEditorQuizzes(db, owner, fixture.lessonId))[0];
+		assert.equal(quiz.section_slug, '');
+		assert.equal(quiz.questions.find(q => q.id === a.id).sectionSlug, '');
+		assert.equal(quiz.questions.find(q => q.id === b.id).sectionSlug, 'orokolt');
+	} finally { db.sqlite.close(); }
+});
+
+test('A kérdésrendezés elutasítja az idegen, hiányos, ismételt és jogosulatlan kéréseket', async () => {
+	const db = testDb();
+	try {
+		const fixture = await createFixture(db);
+		const other = await createFixture(db);
+		const { id: quizId } = await mutateCurriculum(db, owner, { action: 'createQuiz', ...fixture, title: 'Kvíz' });
+		const { id } = await mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId, type: 'tf', question_text: 'Kérdés', correct_answer: 'Igaz' });
+		const request = { action: 'reorderLessonQuestions', ...fixture };
+		await assert.rejects(mutateCurriculum(db, owner, { ...request, ids: [] }), failsWith(409));
+		await assert.rejects(mutateCurriculum(db, owner, { ...request, ids: [id, id] }), failsWith(400));
+		await assert.rejects(mutateCurriculum(db, owner, { ...request, ids: ['idegen'] }), failsWith(409));
+		await assert.rejects(mutateCurriculum(db, owner, { ...request, levelId: other.levelId, ids: [id] }), failsWith(404));
+		await assert.rejects(mutateCurriculum(db, editor, { ...request, ids: [id] }), failsWith(403));
+		assert.equal((await getEditorQuizzes(db, owner, fixture.lessonId))[0].questions[0].id, id);
+	} finally { db.sqlite.close(); }
+});
+
+test('Minden kérdéstípus képe megmarad újratöltés, másolás és publikálás után, és eltávolítható', async () => {
+	const db = testDb();
+	try {
+		const fixture = await createFixture(db);
+		const { id: quizId } = await mutateCurriculum(db, owner, { action: 'createQuiz', ...fixture, title: 'Képes kvíz' });
+		const imageUrl = '/api/quiz-images/12345678-1234-1234-1234-123456789abc';
+		for (const type of ['choice', 'tf', 'text', 'match', 'order']) {
+			const raw = type === 'match' ? { pairs: [{ left: 'Első fogalom', right: 'Első pár' }, { left: 'Második fogalom', right: 'Második pár' }], imageUrl } : { options: ['Első', 'Második'], imageUrl };
+			await mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId, type, question_text: `Képes kérdés: ${type}`, options_json: JSON.stringify(raw), correct_answer: type === 'tf' ? 'Igaz' : 'Első' });
+		}
+		const questions = (await getEditorQuizzes(db, owner, fixture.lessonId))[0].questions;
+		assert.equal(questions.length, 5);
+		assert.ok(questions.every(question => question.imageUrl === imageUrl));
+		await mutateCurriculum(db, owner, { action: 'duplicateQuestion', ...fixture, questionId: questions[0].id });
+		await mutateCurriculum(db, owner, { action: 'updateLevel', levelId: fixture.levelId, title: 'Képes tananyag', published: true });
+		const lesson = await getLessonPage(db, fixture.lessonId);
+		assert.equal(lesson.quizzes[0].questions.length, 6);
+		assert.ok(lesson.quizzes[0].questions.every(question => question.imageUrl === imageUrl));
+		await mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId, questionId: questions[0].id, type: 'choice', question_text: 'Kép nélkül', options_json: '["Első","Második"]', correct_answer: 'Első' });
+		assert.equal((await getEditorQuizzes(db, owner, fixture.lessonId))[0].questions.find(question => question.id === questions[0].id).imageUrl, undefined);
+		await assert.rejects(mutateCurriculum(db, owner, { action: 'saveQuestion', ...fixture, quizId, type: 'tf', question_text: 'Tiltott képhivatkozás', options_json: JSON.stringify({ options: [], imageUrl: 'javascript:alert(1)' }), correct_answer: 'Igaz' }), failsWith(400));
 	} finally { db.sqlite.close(); }
 });

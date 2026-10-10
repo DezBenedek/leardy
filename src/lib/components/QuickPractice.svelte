@@ -25,7 +25,7 @@
 	{:else}
 		{#key questions}
 			<div class="pt-1">
-				<QuizRunner {questions} title="Véletlen {questions.length} kérdés" />
+				<QuizRunner {questions} title="Véletlen {questions.length} kérdés" onExit={onClose} />
 			</div>
 		{/key}
 	{/if}

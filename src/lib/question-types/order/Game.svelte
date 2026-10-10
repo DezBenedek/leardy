@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { ArrowDown, RotateCcw } from '@lucide/svelte';
-	import type { GameProps } from './types';
+	import type { GameProps } from '../../games/types';
 
 	let { q, onAnswer, picked = null, correct = null }: GameProps = $props();
 	let chosen = $state<string[]>([]);
@@ -53,8 +53,6 @@
 				{opt}
 				{#if i < remaining.length - 1}<ArrowDown size={14} class="mt-1 text-stone-300" />{/if}
 			</button>
-		{:else}
-			<p class="text-sm text-stone-500 dark:text-stone-400">Tedd sorba mindet, aztán küldd be!</p>
 		{/each}
 	</div>
 	<div class="mt-3 flex gap-2">

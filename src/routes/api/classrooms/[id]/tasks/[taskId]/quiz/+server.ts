@@ -1,3 +1,4 @@
+import { loadQuestionOptions } from '$lib/question-types/registry';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
 import { ensureClassContentSchema } from '$lib/server/classroom';
@@ -71,7 +72,8 @@ export const GET: RequestHandler = async (event) => {
 		.prepare(
 			`SELECT id, quiz_id, question_text, COALESCE(type, 'choice') AS type,
 				COALESCE(options_json, '[]') AS options_json,
-				COALESCE(correct_answer, '') AS correct_answer
+				COALESCE(correct_answer, '') AS correct_answer,
+				COALESCE(section_slug, '') AS section_slug
 			 FROM quiz_questions WHERE quiz_id IN (${quizIds.map(() => '?').join(',')})
 			 ORDER BY sort, id`
 		)
@@ -83,41 +85,29 @@ export const GET: RequestHandler = async (event) => {
 			type: string;
 			options_json: string;
 			correct_answer: string;
+			section_slug: string;
 		}>();
 
 	interface QuizQuestion {
 		id: string;
 		question_text: string;
+		imageUrl?: string;
 		type: string;
 		options: string[];
 		pairs: { left: string; right: string }[];
 		correct_answer: string;
+		sectionSlug?: string;
 	}
 
 	const all: QuizQuestion[] = [];
 	for (const row of qRes.results ?? []) {
-		let options: string[] = [];
-		let pairs: { left: string; right: string }[] = [];
-		try {
-			const parsed: unknown = JSON.parse(row.options_json ?? '[]');
-			if (Array.isArray(parsed)) {
-				options = parsed.map((v) => String(v));
-			} else if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { pairs?: unknown }).pairs)) {
-				const rawPairs = (parsed as { pairs: unknown[] }).pairs;
-				pairs = rawPairs
-					.filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
-					.map((p) => ({ left: String(p.left ?? ''), right: String(p.right ?? '') }));
-			}
-		} catch {
-			// hibás JSON: üres marad
-		}
 		all.push({
 			id: row.id,
 			question_text: row.question_text,
 			type: row.type ?? 'choice',
-			options,
-			pairs,
-			correct_answer: row.correct_answer ?? ''
+			...loadQuestionOptions(row.type ?? 'choice', row.options_json),
+			correct_answer: row.correct_answer ?? '',
+			sectionSlug: (row as { section_slug?: string }).section_slug ?? ''
 		});
 	}
 

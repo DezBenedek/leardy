@@ -32,6 +32,7 @@ export const GET: RequestHandler = async (event) => {
 		lesson_progress: await q(`SELECT * FROM lesson_progress WHERE user_id = ?`, user.id),
 		card_progress: await q(`SELECT * FROM card_progress WHERE user_id = ?`, user.id),
 		decks: await q(`SELECT * FROM decks WHERE user_id = ?`, user.id),
+		quiz_templates: await q(`SELECT * FROM quiz_templates WHERE user_id = ?`, user.id),
 		library: await q(`SELECT * FROM library WHERE user_id = ?`, user.id),
 		task_submissions: await q(`SELECT * FROM task_submissions WHERE user_id = ?`, user.id),
 		assignment_submissions: await q(`SELECT * FROM assignment_submissions WHERE user_id = ?`, user.id),
