@@ -3,7 +3,8 @@
 	import { resolve } from '$app/paths';
 	import { ArrowLeft } from '@lucide/svelte';
 	import { createBackNavigation } from '$lib/back-navigation';
-	import { parseEditableSections, withEditableSectionSlugs, type EditorLesson, type EditorQuiz } from '$lib/curriculum-editor';
+	import { type EditorLesson, type EditorQuiz } from '$lib/curriculum-editor';
+	import { lessonSections } from '$lib/lesson-content';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import QuizEditorCore from './QuizEditorCore.svelte';
 	import { createLessonQuizAdapter } from './quiz-adapter';
@@ -12,7 +13,7 @@
 	let hasUnsavedChanges = $state(false);
 	let busy = $state(false);
 	const adapter = $derived(createLessonQuizAdapter(lesson.levelId, lesson.id));
-	const sections = $derived(withEditableSectionSlugs(parseEditableSections(lesson.body_md))
+	const sections = $derived(lessonSections(lesson)
 		.filter((section) => !section.intro && section.title.trim())
 		.map((section) => ({ slug: section.slug!, title: section.title.trim() })));
 	const goBack = createBackNavigation(() => resolve('/tanulas/szerkeszto/lecke/[id]', { id: lesson.id }));

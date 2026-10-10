@@ -1,4 +1,5 @@
 import { loadQuestionOptions } from '../question-types/registry';
+import { readLessonContent } from '../lesson-content';
 /* Szerveroldali tanterv-lekérdezések D1-re (Svelte 5 runes nem kell szerveroldalra).
    Típusszerződés: $lib/curriculum. Függőség: csak D1. */
 import type { D1Database } from '@cloudflare/workers-types';
@@ -71,6 +72,8 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 				material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
 				title TEXT NOT NULL,
 				body_md TEXT NOT NULL DEFAULT '',
+				content_json TEXT,
+				content_revision INTEGER NOT NULL DEFAULT 0,
 				sort INTEGER NOT NULL DEFAULT 0
 			)`
 		),
@@ -869,7 +872,7 @@ export async function getLessonPage(
 	const [lessonRes, quizzesRes] = await db.batch([
 		db
 			.prepare(
-				`SELECT le.id, le.title, COALESCE(le.body_md, '') AS body_md,
+				`SELECT le.id, le.title, COALESCE(le.body_md, '') AS body_md, le.content_json,
 				m.id AS material_id, m.title AS material_title,
 				l.id AS level_id, l.title AS level_title,
 				s.id AS subject_id, s.title AS subject_title
@@ -893,6 +896,7 @@ export async function getLessonPage(
 				id: string;
 				title: string;
 				body_md: string;
+				content_json: string | null;
 				material_id: string;
 				material_title: string;
 				level_id: string;
@@ -936,7 +940,7 @@ export async function getLessonPage(
 	}));
 
 	return {
-		lesson: { id: lesson.id, title: lesson.title, body_md: lesson.body_md ?? '' },
+		lesson: { id: lesson.id, title: lesson.title, body_md: lesson.body_md ?? '', content: readLessonContent(lesson.content_json) },
 		material: { id: lesson.material_id, title: lesson.material_title },
 		level: { id: lesson.level_id, title: lesson.level_title },
 		subject: { id: lesson.subject_id, title: lesson.subject_title },

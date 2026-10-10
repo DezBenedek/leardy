@@ -34,6 +34,7 @@ export function splitSections(md: string): LessonSection[] {
 	let title: string | null = null;
 	let stableSlug: string | null = null;
 	let buf: string[] = [];
+	let fence: { char: string; size: number } | null = null;
 
 	function uniqueSlug(base: string): string {
 		let slug = base;
@@ -54,6 +55,15 @@ export function splitSections(md: string): LessonSection[] {
 	}
 
 	for (const line of lines) {
+		const codeFence = line.match(/^ {0,3}(`{3,}|~{3,})/);
+		if (codeFence) {
+			const run = codeFence[1];
+			if (!fence) fence = { char: run[0], size: run.length };
+			else if (run[0] === fence.char && run.length >= fence.size && /^ {0,3}(?:`+|~+)[ \t]*$/.test(line)) fence = null;
+			buf.push(line);
+			continue;
+		}
+		if (fence) { buf.push(line); continue; }
 		const m = line.match(/^##[ \t]+(.*)$/);
 		if (m) {
 			flush();

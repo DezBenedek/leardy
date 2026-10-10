@@ -18,11 +18,12 @@ const dbUrl = await moduleUrl('../src/lib/server/db.ts');
 const publicationUrl = await moduleUrl('../src/lib/server/curriculum-publication.ts');
 const sm2Url = await moduleUrl('../src/lib/sm2.ts');
 const activityUrl = await moduleUrl('../src/lib/learning-activity.ts');
+const lessonContentUrl = await typescriptModuleUrl(new URL('../src/lib/lesson-content.ts', import.meta.url));
 const editorUrl = await moduleUrl('../src/lib/server/curriculum-editor.ts', {
-	'@sveltejs/kit': import.meta.resolve('@sveltejs/kit'), './db': dbUrl, './curriculum-publication': publicationUrl, '../question-types/registry': questionTypesUrl
+	'@sveltejs/kit': import.meta.resolve('@sveltejs/kit'), './db': dbUrl, './curriculum-publication': publicationUrl, '../question-types/registry': questionTypesUrl, '../lesson-content': lessonContentUrl
 });
 const curriculumUrl = await moduleUrl('../src/lib/server/curriculum.ts', {
-	'./db': dbUrl, './curriculum-publication': publicationUrl, '../question-types/registry': questionTypesUrl, '$lib/sm2': sm2Url, '$lib/learning-activity': activityUrl
+	'./db': dbUrl, './curriculum-publication': publicationUrl, '../question-types/registry': questionTypesUrl, '../lesson-content': lessonContentUrl, '$lib/sm2': sm2Url, '$lib/learning-activity': activityUrl
 });
 const { mutateCurriculum, getEditorLevels, getEditorLesson, getEditorQuizzes, canEnterEditor, countEditorLevelsBySubject, searchEditorCandidates } = await import(editorUrl);
 const { listSubjects, getSubjectTree, getLessonPage, countQuizzesByLesson, listScopedPackages } = await import(curriculumUrl);
@@ -30,7 +31,35 @@ const markdownUrl = await moduleUrl('../src/lib/markdown.ts');
 const { splitSections, renderMarkdown } = await import(markdownUrl);
 const { parseEditableSections, serializeEditableSections, withEditableSectionSlugs } = await import(await moduleUrl('../src/lib/curriculum-editor.ts', { './markdown': markdownUrl }));
 const { cachedEditorSearch } = await import(await moduleUrl('../src/lib/editor-candidate-search.ts'));
+const { lessonContentMarkdown } = await import(lessonContentUrl);
+const lessonMigration = await readFile(new URL('../migrations/0006_lesson_content.sql', import.meta.url), 'utf8');
 const schema = await readFile(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8');
+
+test('A vizuális lecke mentése megőrzi a kvízkapcsolatot és védi az újabb revíziót', async () => {
+	const db = testDb();
+	try {
+		const fixture = await createFixture(db);
+		const markdown = '## Régi cím\n<!-- section:allando -->\n\nRégi tartalom';
+		await mutateCurriculum(db, owner, { action: 'saveLesson', ...fixture, title: 'Lecke', body_md: markdown, originalTitle: 'Lecke', originalBody: '' });
+		const { id: quizId } = await mutateCurriculum(db, owner, { action: 'createQuiz', ...fixture, title: 'Kvíz', sectionSlug: 'allando' });
+		const content = { version: 1, sections: [{ slug: 'allando', title: 'Új cím', intro: false, doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Új tartalom', marks: [{ type: 'highlight' }] }] }, { type: 'figure', attrs: { src: 'https://example.com/kep.png', alt: 'Ábra', caption: 'Felirat', width: 'half' } }] } }] };
+		const request = { action: 'saveLesson', ...fixture, title: 'Lecke', body_md: markdown, originalTitle: 'Lecke', originalBody: markdown, originalRevision: 1, content };
+		const saved = await mutateCurriculum(db, owner, request);
+		assert.equal(saved.contentRevision, 2);
+		assert.deepEqual((await getEditorLesson(db, owner, fixture.lessonId)).content, content);
+		assert.equal(saved.body_md, lessonContentMarkdown(content));
+		assert.equal((await getEditorQuizzes(db, owner, fixture.lessonId)).find((q) => q.id === quizId).section_slug, 'allando');
+		await assert.rejects(mutateCurriculum(db, owner, request), failsWith(409));
+		await assert.rejects(mutateCurriculum(db, owner, { ...request, content: undefined, originalBody: saved.body_md }), failsWith(409));
+		await assert.rejects(mutateCurriculum(db, student, { ...request, originalBody: saved.body_md, originalRevision: 2 }), failsWith(403));
+		const newer = structuredClone(content); newer.sections[0].doc.content[0].content[0].marks = [{ type: 'underline' }];
+		const next = await mutateCurriculum(db, owner, { ...request, content: newer, originalBody: saved.body_md, originalRevision: 2 });
+		assert.equal(next.body_md, saved.body_md);
+		await assert.rejects(mutateCurriculum(db, owner, { ...request, originalBody: saved.body_md, originalRevision: 2 }), failsWith(409));
+		await mutateCurriculum(db, owner, { action: 'updateLevel', levelId: fixture.levelId, title: 'Szint', published: true });
+		assert.deepEqual((await getLessonPage(db, fixture.lessonId)).lesson.content, newer);
+	} finally { db.sqlite.close(); }
+});
 
 test('Az init csak a hét tantárgyat tölti fel, újrafuttatva megőrzi az adatokat', () => {
 	const sqlite = new DatabaseSync(':memory:');
@@ -55,6 +84,7 @@ test('Az init csak a hét tantárgyat tölti fel, újrafuttatva megőrzi az adat
 function testDb() {
 	const sqlite = new DatabaseSync(':memory:');
 	sqlite.exec(schema);
+	sqlite.exec(lessonMigration);
 	sqlite.exec('PRAGMA foreign_keys=ON');
 	for (const [id, email, role] of [['owner', 'owner@example.invalid', 'teacher'], ['editor', 'editor@example.invalid', 'teacher'], ['student', 'student@example.invalid', 'student']]) {
 		sqlite.prepare("INSERT INTO users (id, name, email, pass_hash, salt, created_at, role) VALUES (?, ?, ?, '', '', 0, ?)").run(id, id, email, role);

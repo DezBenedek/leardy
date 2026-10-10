@@ -10,12 +10,15 @@ const kitUrl = import.meta.resolve('@sveltejs/kit');
 const authUrl = `data:text/javascript;base64,${Buffer.from(`import { error } from '${kitUrl}'; export async function editorContext(event) { if (!event.locals.user) error(401, 'Jelentkezz be.'); return { db: {}, user: event.locals.user }; } export async function getEditorLesson(db, user, id) { if (!user.canEdit || id !== 'test-lesson') error(403, 'Nincs jogosultságod.'); return { id }; }`).toString('base64')}`;
 async function routeModule(path) {
 	let source = await readFile(new URL(path, import.meta.url), 'utf8');
-	for (const [name, url] of Object.entries({ '@sveltejs/kit': kitUrl, '$lib/server/curriculum-editor': authUrl, '$lib/server/uploads': uploadsUrl, '$lib/question-image': imageUrl })) source = source.replaceAll(`from '${name}'`, `from '${url}'`);
+	for (const [name, url] of Object.entries({ '@sveltejs/kit': kitUrl, '$lib/server/curriculum-editor': authUrl, '$lib/server/uploads': uploadsUrl, '$lib/question-image': imageUrl, ...(path.includes('/lesson-image-upload.ts') ? {} : { '$lib/server/lesson-image-upload': uploadModuleUrl }) })) source = source.replaceAll(`from '${name}'`, `from '${url}'`);
 	const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-	return import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+	return `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`;
 }
-const { POST } = await routeModule('../src/routes/api/quiz-images/+server.ts');
-const { GET } = await routeModule('../src/routes/api/quiz-images/[id]/+server.ts');
+const uploadModuleUrl = await routeModule('../src/lib/server/lesson-image-upload.ts');
+const { POST } = await import(await routeModule('../src/routes/api/quiz-images/+server.ts'));
+const { GET } = await import(await routeModule('../src/routes/api/quiz-images/[id]/+server.ts'));
+const { POST: lessonPOST } = await import(await routeModule('../src/routes/api/lesson-images/+server.ts'));
+const { GET: lessonGET } = await import(await routeModule('../src/routes/api/lesson-images/[id]/+server.ts'));
 const { normalizeQuestionImageUrl, questionImageMime, MAX_QUESTION_IMAGE_BYTES } = await import(imageUrl);
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGxkAAAAASUVORK5CYII=', 'base64');
 function memoryBucket() {
@@ -77,16 +80,30 @@ test('Jogosulatlan, üres, túl nagy és hamis képfeltöltés nem kerül R2-be'
 test('A valódi helyi R2 feltöltés után bájtra pontosan kiszolgálja a képet', { skip: process.env.LEARDY_TEST_LOCAL_R2 !== '1' }, async () => {
 	const { getPlatformProxy } = await import('wrangler');
 	const proxy = await getPlatformProxy({ persist: { path: '/tmp/leardy-quiz-images-r2-test' }, remoteBindings: false });
-	let key;
+	const keys = [];
 	try {
-		const result = await POST(event(proxy.env.UPLOADS));
-		assert.equal(result.status, 201);
-		const { imageUrl: url } = await result.json();
-		key = url.replace('/api/', '');
-		const image = await GET(readEvent(proxy.env.UPLOADS, url));
-		assert.deepEqual(Buffer.from(await image.arrayBuffer()), png);
+		for (const [upload, read] of [[POST, GET], [lessonPOST, lessonGET]]) {
+			const result = await upload(event(proxy.env.UPLOADS));
+			assert.equal(result.status, 201);
+			const { imageUrl: url } = await result.json();
+			keys.push(url.replace('/api/', ''));
+			const image = await read(readEvent(proxy.env.UPLOADS, url));
+			assert.deepEqual(Buffer.from(await image.arrayBuffer()), png);
+		}
 	} finally {
-		if (key) await proxy.env.UPLOADS.delete(key);
+		for (const key of keys) await proxy.env.UPLOADS.delete(key);
 		await proxy.dispose();
 	}
+});
+
+
+test('A lecke képfeltöltése külön R2-névteret használ, azonos jogosultságellenőrzéssel', async () => {
+ const bucket = memoryBucket();
+ const response = await lessonPOST(event(bucket));
+ const { imageUrl } = await response.json();
+ assert.match(imageUrl, /^\/api\/lesson-images\//);
+ assert.deepEqual(Buffer.from(await (await lessonGET(readEvent(bucket, imageUrl))).arrayBuffer()), png);
+ await assert.rejects(GET(readEvent(bucket, imageUrl)), failsWith(404));
+ await assert.rejects(lessonPOST(event(bucket, { user: null })), failsWith(401));
+ await assert.rejects(lessonPOST(event(bucket, { user: { canEdit: false } })), failsWith(403));
 });

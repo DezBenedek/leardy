@@ -7,6 +7,7 @@ const manifest = self.__WB_MANIFEST;
 const CACHE = `leardy-static-${__APP_BUILD_TIME__}`;
 const MAX_ENTRIES = 300;
 const MAX_BYTES = 50 * 1024 * 1024;
+const LESSON_IMAGE_CACHE = 'leardy-lesson-images-v1';
 const flights = new Map<string, Promise<Response>>();
 let generation = 0;
 let sequence = 0;
@@ -84,7 +85,7 @@ async function trim(name: string, url: string, bytes: number): Promise<void> {
 	if (!cacheIndex) {
 		const index = new Map<string, CacheEntry>();
 		cacheIndex = index;
-		for (const cacheName of (await caches.keys()).filter((k) => k === CONTENT_CACHE || k.startsWith(PRIVATE_CACHE_PREFIX))) {
+		for (const cacheName of (await caches.keys()).filter((k) => k === CONTENT_CACHE || k === LESSON_IMAGE_CACHE || k.startsWith(PRIVATE_CACHE_PREFIX))) {
 			const cache = await caches.open(cacheName);
 			await Promise.all((await cache.keys()).map(async (key) => {
 				const response = await cache.match(key, { ignoreVary: true });
@@ -269,6 +270,33 @@ self.addEventListener('fetch', (event) => {
 	const req = event.request;
 	const url = new URL(req.url);
 	if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+	if (/^\/api\/(?:lesson|quiz)-images\/[a-f0-9-]{36}$/.test(url.pathname)) {
+		const run = generation;
+		const load = (async () => {
+			const cache = await caches.open(LESSON_IMAGE_CACHE);
+			const hit = await cache.match(req);
+			if (hit) return hit;
+			const response = await fetch(req);
+			if (response.ok && response.headers.get('content-type')?.startsWith('image/') && Number(response.headers.get('content-length')) <= 10 * 1024 * 1024) {
+				const bytes = await response.clone().arrayBuffer();
+				if (bytes.byteLength <= 10 * 1024 * 1024) {
+					const task = writes.then(async () => {
+						if (run !== generation) return;
+						const headers = new Headers(response.headers);
+						headers.set('x-sw-used', String(Date.now())); headers.set('x-sw-bytes', String(bytes.byteLength));
+						await trim(LESSON_IMAGE_CACHE, req.url, bytes.byteLength);
+						await cache.put(req, new Response(bytes, { headers }));
+					});
+					writes = task.catch(() => undefined);
+					await writes;
+				}
+			}
+			return response;
+		})().catch(() => fetch(req));
+		event.respondWith(load);
+		event.waitUntil(load.then(() => undefined).catch(() => undefined));
+		return;
+	}
 	if (isContentUrl(url) && req.cache !== 'no-store') {
 		const key = contentUrl(req.url, self.location.origin);
 		const owner = req.headers.get('x-content-user') ?? 'public';

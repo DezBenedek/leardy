@@ -1,0 +1,40 @@
+.lesson-prose { color: var(--color-ink-600); font-size: .95rem; line-height: 1.7; overflow-wrap: anywhere; min-width: 0; }
+.dark .lesson-prose { color: var(--color-stone-300); }
+.lesson-prose p { margin: .55em 0; }
+.lesson-prose h3, .lesson-prose h4 { color: var(--color-ink-900); font-weight: 800; line-height: 1.35; margin: 1em 0 .4em; }
+.dark .lesson-prose h3, .dark .lesson-prose h4 { color: white; }
+.lesson-prose h3 { font-size: 1.15rem; }
+.lesson-prose h4 { font-size: 1.02rem; }
+.lesson-prose ul, .lesson-prose ol { padding-left: 1.5em; margin: .5em 0; }
+.lesson-prose ul { list-style: disc; }
+.lesson-prose ol { list-style: decimal; }
+.lesson-prose li > p { margin: .15em 0; }
+.lesson-prose a { color: var(--color-brand-600); text-decoration: underline; text-underline-offset: 3px; }
+.dark .lesson-prose a { color: var(--color-brand-300); }
+.lesson-prose mark { background: #fef08a; color: #292524; border-radius: 3px; padding: 0 2px; }
+.lesson-prose blockquote { border-left: 3px solid var(--color-stone-300); padding: .25em 1em; margin: .8em 0; }
+.lesson-prose code { background: rgb(120 113 108 / .1); border-radius: 4px; padding: .1em .3em; font-size: .9em; }
+.lesson-prose pre { overflow-x: auto; white-space: pre; border-radius: 12px; background: rgb(120 113 108 / .08); padding: 12px; margin: .8em 0; }
+.lesson-prose pre code { background: transparent; padding: 0; }
+.lesson-prose .lesson-raw { white-space: pre-wrap; }
+.lesson-prose hr { border-color: rgb(120 113 108 / .2); margin: 1.25em 0; }
+.lesson-prose figure { margin: 1em auto; width: 100%; }
+.lesson-prose figure[data-width='half'] { width: 50%; min-width: min(240px, 100%); }
+.lesson-prose img { width: 100%; max-height: 560px; object-fit: contain; border-radius: 12px; }
+.lesson-prose figcaption { text-align: center; font-size: .85em; color: var(--color-stone-500); margin-top: .5em; }
+.lesson-prose [data-callout] { border-radius: 12px; border-left: 3px solid var(--color-brand-400); background: rgb(99 102 241 / .07); padding: 12px 16px; margin: 1em 0; }
+.lesson-prose [data-callout='example'] { border-color: #34d399; background: rgb(16 185 129 / .07); }
+.lesson-prose [data-callout='tip'] { border-color: #fbbf24; background: rgb(245 158 11 / .07); }
+.lesson-prose .callout-label { display: block; font-size: .85em; margin-bottom: 4px; }
+.lesson-prose details { border: 1px solid rgb(120 113 108 / .2); border-radius: 12px; padding: 10px 14px; margin: 1em 0; }
+.lesson-prose summary { cursor: pointer; font-weight: 700; }
+.lesson-prose details > div { padding-top: 6px; }
+.lesson-prose .lesson-table-scroll, .lesson-prose .tableWrapper { overflow-x: auto; margin: .8em 0; }
+.lesson-prose table { border-collapse: collapse; table-layout: fixed; width: 100%; min-width: 280px; }
+.lesson-prose td, .lesson-prose th { border: 1px solid rgb(120 113 108 / .25); padding: 7px 10px; min-width: 80px; vertical-align: top; }
+.lesson-prose th { background: rgb(120 113 108 / .08); font-weight: 700; }
+.lesson-prose .lesson-math-block { overflow-x: auto; max-width: 100%; padding-block: 4px; }
+.lesson-prose .lesson-math:not(.lesson-math-block), .lesson-prose [data-type='inline-math'] { display: inline-block; max-width: 100%; overflow-x: auto; vertical-align: middle; }
+.lesson-prose .lesson-math-error { color: var(--color-red-600); font-family: monospace; }
+.lesson-prose .katex { font-size: 1.1em; overflow-wrap: normal; }
+.lesson-prose .katex-display { margin: .7em 0; }

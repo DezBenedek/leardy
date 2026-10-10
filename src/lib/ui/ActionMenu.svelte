@@ -19,8 +19,10 @@
 	import { tick } from 'svelte';
 	import { Ellipsis } from '@lucide/svelte';
 	import IconButton from './IconButton.svelte';
-	let { actions, label = 'Műveletek', disabled = false, compact = false, menuIconsOnly = false, floating = false, align = 'auto' }: {
+	let { actions, label = 'Műveletek', triggerLabel, triggerIcon: TriggerIcon, disabled = false, compact = false, menuIconsOnly = false, floating = false, align = 'auto' }: {
 		actions: ActionMenuItem[];
+		triggerLabel?: string;
+		triggerIcon?: typeof Ellipsis;
 		label?: string;
 		disabled?: boolean;
 		compact?: boolean;
@@ -137,7 +139,10 @@
 	<div class="menu" data-collapse={collapseAt}>
 		<button type="button" class="action-button toggle text-ink-600 dark:text-stone-300" aria-label={label}
 			aria-expanded={open} aria-controls={id} {disabled} onclick={toggle}>
-			{#if compact}
+			{#if triggerLabel}
+				{#if TriggerIcon}<TriggerIcon size={18} aria-hidden="true" />{/if}
+				<span>{triggerLabel}</span>
+			{:else if compact}
 				<Ellipsis size={20} aria-hidden="true" />
 			{:else}
 				<span class="hamburger" aria-hidden="true"><span></span><span></span><span></span></span>

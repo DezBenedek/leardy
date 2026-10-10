@@ -13,7 +13,7 @@ export async function publicContent<T>(event: RequestEvent, key: string, subject
 	const scope = subjectId ? `subject:${subjectId}` : 'catalog';
 	const revision = await db.prepare('SELECT revision FROM curriculum_revisions WHERE scope = ?').bind(scope).first<{ revision: number }>();
 	const version = revision?.revision ?? 0;
-	const url = new URL(`/__content-cache/v1/${encodeURIComponent(key)}`, event.url.origin);
+	const url = new URL(`/__content-cache/v2/${encodeURIComponent(key)}`, event.url.origin);
 	url.searchParams.set('scope', scope);
 	url.searchParams.set('version', String(version));
 	const cache = event.platform?.caches?.default;

@@ -22,7 +22,9 @@ function harness(network = async () => new Response('network')) {
 				const key = (request) => new URL(typeof request === 'string' ? request : request.url, origin).href;
 				storage.set(name, {
 					async put(request, response) { entries.set(key(request), response.clone()); },
-					async match(request) { return entries.get(key(request))?.clone(); }
+					async match(request) { return entries.get(key(request))?.clone(); },
+					async keys() { return [...entries.keys()].map((url) => new Request(url)); },
+					async delete(request) { return entries.delete(key(request)); }
 				});
 			}
 			return storage.get(name);
@@ -48,10 +50,13 @@ function harness(network = async () => new Response('network')) {
 		},
 		async fetch(path, navigate = false) {
 			let response;
+			const pending = [];
 			const request = new Request(new URL(path, origin));
 			if (navigate) Object.defineProperty(request, 'mode', { value: 'navigate' });
-			handlers.get('fetch')({ request, respondWith(promise) { response = promise; } });
-			return response;
+			handlers.get('fetch')({ request, respondWith(promise) { response = promise; }, waitUntil(promise) { pending.push(promise); } });
+			const result = await response;
+			await Promise.all(pending);
+			return result;
 		}
 	};
 }
@@ -110,6 +115,30 @@ test('Tiltott vagy sérült Cache Storage mellett az online alkalmazás betölt�
 test('Az OAuth-kérés nem kerül a service worker gyorsítótárába', async () => {
 	const h = harness();
 	assert.equal(await h.fetch('/api/auth/google'), undefined);
+});
+
+test('A megnyitott lecke- és kvízkép frissítés után offline is elérhető, a hibás válasz nem mentődik', async () => {
+	let online = true;
+	let requests = 0;
+	const h = harness(async (request) => {
+		requests++;
+		if (!online) throw new TypeError('Nincs hálózat.');
+		return request.url.endsWith('000000000000')
+			? new Response('Hiba', { status: 503 })
+			: new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/png', 'content-length': '3' } });
+	});
+	const paths = ['lesson', 'quiz'].map((kind) => `/api/${kind}-images/12345678-1234-1234-1234-123456789abc`);
+	for (const path of paths) assert.equal((await h.fetch(path)).status, 200);
+	const missing = '/api/lesson-images/12345678-1234-1234-1234-000000000000';
+	assert.equal((await h.fetch(missing)).status, 503);
+	const imageCache = await h.caches.open('leardy-lesson-images-v1');
+	assert.equal(await imageCache.match(missing), undefined);
+	assert.equal((await imageCache.keys()).length, 2);
+	await h.activate();
+	online = false;
+	const before = requests;
+	for (const path of paths) assert.deepEqual(new Uint8Array(await (await h.fetch(path)).arrayBuffer()), new Uint8Array([1, 2, 3]));
+	assert.equal(requests, before);
 });
 
 test('A PWA-frissítés nem indít újratöltést, nem dupláz induláskor, és korlátozza az ébresztési kéréseket', async () => {

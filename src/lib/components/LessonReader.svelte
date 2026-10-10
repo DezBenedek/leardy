@@ -14,10 +14,11 @@
 	import type { LessonPage, Package, QuizQuestion } from '$lib/curriculum';
 	import { markLessonOpened } from '$lib/lesson-history';
 	import IconButton from '$lib/ui/IconButton.svelte';
-	import { renderMarkdown, splitSections } from '$lib/markdown';
+	import { lessonSections } from '$lib/lesson-content';
+	import LessonContent from './lesson/LessonContent.svelte';
 	let { lessonPage, quizVersion, offline = false, onBusyChange, onBack }: { lessonPage: LessonPage; quizVersion: string; offline?: boolean; onBusyChange?: (busy: boolean) => void; onBack?: () => void } = $props();
 
-	let sections = $derived(splitSections(lessonPage.lesson.body_md));
+	let sections = $derived(lessonSections(lessonPage.lesson));
 	let allQuestions = $derived(lessonPage.quizzes.flatMap((q) => q.questions));
 
 	let openSecs = $state<Record<string, boolean>>({});
@@ -161,7 +162,7 @@
 			>
 				<div class="min-h-0 overflow-hidden">
 					<div class="leardy-md border-t border-stone-100 px-4 py-4 dark:border-white/5">
-						{@html renderMarkdown(section.md)}
+						<LessonContent doc={section.doc} md={section.md} />
 					</div>
 				</div>
 			</div>

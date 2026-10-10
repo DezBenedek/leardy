@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { getLessonPage } from '$lib/server/curriculum';
-import { splitSections } from '$lib/markdown';
+import { lessonSections } from '$lib/lesson-content';
 
 /* Egy lecke bekezdései (szekciói): [{ slug, title }] a kártya-besoroláshoz. */
 
@@ -12,7 +12,7 @@ export const GET: RequestHandler = async (event) => {
 		const lessonPage = await getLessonPage(event, event.params.id ?? '');
 		if (!lessonPage) return json({ error: 'Nincs ilyen lecke.' }, { status: 404 });
 		return json({
-			sections: splitSections(lessonPage.lesson.body_md).map((s) => ({
+			sections: lessonSections(lessonPage.lesson).map((s) => ({
 				slug: s.slug,
 				title: s.title
 			}))

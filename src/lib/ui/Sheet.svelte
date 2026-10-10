@@ -10,12 +10,13 @@
 		label: string;
 		title?: string;
 		wide?: boolean;
+		canClose?: boolean;
 		onClose: () => void;
 		children: Snippet;
 		footer?: Snippet;
 	}
 
-	let { open, label, title, wide = false, onClose, children, footer }: Props = $props();
+	let { open, label, title, wide = false, canClose = true, onClose, children, footer }: Props = $props();
 
 	let panel: HTMLElement | null = $state(null);
 	let scroller: HTMLElement | null = $state(null);
@@ -74,6 +75,7 @@
 	});
 
 	function beginClose() {
+		if (!canClose) { dragging = false; dragY = 0; return; }
 		if (!render) {
 			onClose();
 			return;
@@ -235,6 +237,7 @@
 									type="button"
 									onclick={beginClose}
 									aria-label="Bezárás"
+									disabled={!canClose}
 									class="hidden size-9 shrink-0 place-items-center rounded-full text-stone-400 transition duration-300 hover:rotate-90 hover:bg-stone-100 hover:text-ink-900 active:scale-95 motion-reduce:transition-none motion-reduce:hover:rotate-0 sm:grid dark:text-stone-500 dark:hover:bg-white/10 dark:hover:text-white"
 								>
 									<X size={18} />

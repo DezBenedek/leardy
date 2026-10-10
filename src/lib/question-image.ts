@@ -8,7 +8,7 @@ export function normalizeQuestionImageUrl(value: unknown): string | null {
 	const trimmed = value.trim();
 	if (!trimmed) return '';
 	if (trimmed.length > 2048) return null;
-	if (/^\/api\/quiz-images\/[a-f0-9-]{36}$/.test(trimmed)) return trimmed;
+	if (/^\/api\/(?:quiz|lesson)-images\/[a-f0-9-]{36}$/.test(trimmed)) return trimmed;
 	try {
 		const url = new URL(trimmed);
 		if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;

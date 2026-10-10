@@ -4,8 +4,9 @@ import { DatabaseSync } from 'node:sqlite';
 import vm from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { typescriptModuleUrl } from './typescript-module.mjs';
 
-const migrations = await Promise.all(['0001_init.sql', '0002_learning_days.sql', '0003_content_cache.sql'].map((name) => readFile(new URL(`../migrations/${name}`, import.meta.url), 'utf8')));
+const migrations = await Promise.all(['0001_init.sql', '0002_learning_days.sql', '0003_content_cache.sql', '0004_quiz_question_sections.sql', '0006_lesson_content.sql'].map((name) => readFile(new URL(`../migrations/${name}`, import.meta.url), 'utf8')));
 async function moduleUrl(path, replacements = {}) {
  let source = await readFile(new URL(path, import.meta.url), 'utf8');
  for (const [from, to] of Object.entries(replacements)) source = source.replaceAll(`from '${from}'`, `from '${to}'`);
@@ -15,7 +16,7 @@ const dbUrl = await moduleUrl('../src/lib/server/db.ts');
 const cacheUrl = await moduleUrl('../src/lib/server/content-cache.ts', { '@sveltejs/kit': import.meta.resolve('@sveltejs/kit'), './db': dbUrl });
 const activityUrl = await moduleUrl('../src/lib/learning-activity.ts');
 const curriculumUrl = await moduleUrl('../src/lib/server/curriculum.ts', {
- './db': dbUrl, './curriculum-publication': await moduleUrl('../src/lib/server/curriculum-publication.ts'),
+ '../lesson-content': await typescriptModuleUrl(new URL('../src/lib/lesson-content.ts', import.meta.url)), '../question-types/registry': await typescriptModuleUrl(new URL('../src/lib/question-types/registry.ts', import.meta.url)), './db': dbUrl, './curriculum-publication': await moduleUrl('../src/lib/server/curriculum-publication.ts'),
  '$lib/sm2': await moduleUrl('../src/lib/sm2.ts'), '$lib/learning-activity': activityUrl
 });
 const { getLessonPage } = await import(curriculumUrl);

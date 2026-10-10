@@ -4,6 +4,7 @@ import { error, type RequestEvent } from '@sveltejs/kit';
 import { getDb, requireUser, type PublicUser } from './db';
 import type { EditorCandidate, EditorLesson, EditorLevel, EditorQuestion, EditorQuiz } from '$lib/curriculum-editor';
 import { publishedLevelSql } from './curriculum-publication';
+import { lessonContentMarkdown, readLessonContent, validateLessonContent } from '../lesson-content';
 
 export function canCreateLevel(user: PublicUser): boolean {
 	return user.role === 'teacher' || !!user.is_admin;
@@ -94,13 +95,16 @@ export async function getEditorLevels(db: D1Database, user: PublicUser, subjectI
 }
 
 export async function getEditorLesson(db: D1Database, user: PublicUser, id: string): Promise<EditorLesson> {
-	const lesson = await db.prepare(`SELECT le.id, le.title, le.body_md, m.level_id AS levelId,
+	const lesson = await db.prepare(`SELECT le.id, le.title, le.body_md, le.content_json, le.content_revision AS contentRevision, m.level_id AS levelId,
 		l.subject_id AS subjectId, m.title AS materialTitle, l.title AS levelTitle
 		FROM lessons le JOIN materials m ON m.id = le.material_id JOIN levels l ON l.id = m.level_id WHERE le.id = ?`)
-		.bind(id).first<EditorLesson>();
+		.bind(id).first<EditorLesson & { content_json: string | null }>();
 	if (!lesson) error(404, 'Nincs ilyen lecke.');
 	await requireLevelEditor(db, user, lesson.levelId);
-	return lesson;
+	const { content_json, ...fields } = lesson;
+	const content = readLessonContent(content_json);
+	if (content_json && !content) error(409, 'Ez a lecke újabb tartalomformátumot használ. Frissítsd a szerkesztőt.');
+	return { ...fields, content };
 }
 
 /** Kvízblokkok kérdésekkel a lecke szerkesztőhöz (lecke szintű lista). */
@@ -345,13 +349,23 @@ export async function mutateCurriculum(db: D1Database, user: PublicUser, body: R
 			return {};
 		}
 		const title = textField(body, 'title');
-		if (typeof body.body_md !== 'string' || body.body_md.length > 200_000) error(400, 'A lecke tartalma legfeljebb 200 000 karakter lehet.');
+		if (typeof body.body_md !== 'string' || body.body_md.length > 1_000_000) error(400, 'A lecke tartalma túl hosszú.');
 		if (typeof body.originalTitle !== 'string' || typeof body.originalBody !== 'string') error(400, 'Hiányzik a lecke eredeti változata.');
-		const result = await db.prepare(`UPDATE lessons SET title = ?, body_md = ?
-			WHERE id = ? AND title = ? AND body_md = ?`)
-			.bind(title, body.body_md, lessonId, body.originalTitle, body.originalBody).run();
+		if (lesson.content && !body.content) error(409, 'A lecke már vizuális tartalmat használ. Frissítsd a szerkesztőt a mentés előtt.');
+		let content = null;
+		if (body.content !== undefined && body.content !== null) {
+			try { content = validateLessonContent(body.content); } catch (problem) { error(400, problem instanceof Error ? problem.message : 'Érvénytelen tartalom.'); }
+			if (!Number.isSafeInteger(body.originalRevision)) error(400, 'Hiányzik a lecke eredeti verziója.');
+		}
+		const markdown = content ? lessonContentMarkdown(content) : body.body_md;
+		if (!content && markdown.length > 200_000) error(400, 'A lecke tartalma legfeljebb 200 000 karakter lehet.');
+		if (body.originalRevision !== undefined && !Number.isSafeInteger(body.originalRevision)) error(400, 'A lecke verziója érvénytelen.');
+		const revision = body.originalRevision !== undefined ? Number(body.originalRevision) : lesson.contentRevision ?? 0;
+		const result = await db.prepare(`UPDATE lessons SET title = ?, body_md = ?, content_json = ?, content_revision = content_revision + 1
+			WHERE id = ? AND title = ? AND body_md = ? AND content_revision = ?`)
+			.bind(title, markdown, content ? JSON.stringify(content) : null, lessonId, body.originalTitle, body.originalBody, revision).run();
 		if (!result.meta.changes) error(409, 'Egy másik szerkesztő már módosította a leckét. A munkád megmaradt; frissítés előtt másold ki.');
-		return { title, body_md: body.body_md };
+		return { title, body_md: markdown, content, contentRevision: revision + 1 };
 	}
 	if (action === 'createQuiz' || action === 'renameQuiz' || action === 'deleteQuiz' || action === 'duplicateQuiz' || action === 'reorderQuizzes') {
 		await ensureQuestionSectionColumn(db);

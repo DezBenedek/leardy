@@ -70,7 +70,7 @@ export interface Quiz {
 }
 
 export interface LessonPage {
-	lesson: { id: string; title: string; body_md: string };
+	lesson: { id: string; title: string; body_md: string; content?: import('./lesson-content').LessonContentV1 | null };
 	material: { id: string; title: string };
 	level: { id: string; title: string };
 	subject: { id: string; title: string };

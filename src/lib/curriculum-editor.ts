@@ -1,5 +1,6 @@
 import type { LevelNode } from './curriculum';
 import { slugify, splitSections } from './markdown';
+import type { LessonContentV1 } from './lesson-content';
 
 export interface EditorLevel extends LevelNode {
 	published: boolean;
@@ -19,6 +20,8 @@ export interface EditorLesson {
 	id: string;
 	title: string;
 	body_md: string;
+	content?: LessonContentV1 | null;
+	contentRevision?: number;
 	levelId: string;
 	subjectId: string;
 	materialTitle: string;
