@@ -1,0 +1,676 @@
+<script lang="ts">
+	import { getTutorial } from '$lib/tutorial/controller.svelte';
+	import { contentFetch, offlineIdentity, subscribeContent } from '$lib/content-client';
+	import { buildOfflineCatalog, readOfflineCatalog } from '$lib/offline-content';
+	import { pendingProgress, outbox } from '$lib/progress-outbox.svelte';
+	import { lessonPath } from '$lib/lesson-paths';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
+	import {
+		ArrowDownAZ,
+		BookOpenText,
+		Check,
+		ChevronDown,
+		ChevronRight,
+		Dices,
+		Gauge,
+		Landmark,
+		Languages,
+		Leaf,
+		ListOrdered,
+		Play,
+		Pencil,
+		Shapes,
+		SlidersHorizontal,
+		FunnelX
+	} from '@lucide/svelte';
+	import Drawer from '$lib/components/Drawer.svelte';
+	import ContentPicker, { type ContentPick } from '$lib/components/ContentPicker.svelte';
+	import { auth } from '$lib/auth.svelte';
+	import QuickPractice from '$lib/components/QuickPractice.svelte';
+	import type { Package, QuizQuestion, Subject, SubjectTree } from '$lib/curriculum';
+	import { normHu } from '$lib/deck-history';
+	import { loadLastLesson } from '$lib/lesson-history';
+	import { Query, getOrFetch, peek } from '$lib/query.svelte';
+	import { loadScope, saveScope } from '$lib/scope';
+	import { loadSettings } from '$lib/settings';
+	import { toast } from '$lib/toast.svelte';
+	import Card from '$lib/ui/Card.svelte';
+	import Button from '$lib/ui/Button.svelte';
+	import EmptyState from '$lib/ui/EmptyState.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import SearchInput from '$lib/ui/SearchInput.svelte';
+	import Sheet from '$lib/ui/Sheet.svelte';
+	import Skeleton from '$lib/ui/Skeleton.svelte';
+	import type { PageData } from './$types';
+
+	const tutorial = getTutorial();
+	let { data }: { data: PageData } = $props();
+	let user = $derived(auth.ready ? auth.user : data.user);
+	let connected = $state(true);
+	let localMode = $state(false);
+	let offlineCatalog = $state.raw(buildOfflineCatalog([]));
+	let offlineLoading = $state(true);
+	let canEdit = $derived(!localMode && (user?.role === 'teacher' || !!user?.is_admin || data.isEditor));
+	let catalogVersion = 0;
+	async function refreshOfflineCatalog() {
+		const version = ++catalogVersion;
+		try {
+			const catalog = await readOfflineCatalog(offlineIdentity()?.id);
+			const pending = await pendingProgress().catch(() => []);
+			const done = new Set(pending.filter((event) => !event.status).map((event) => event.lessonId));
+			for (const tree of Object.values(catalog.trees)) for (const level of tree.levels) for (const material of level.materials) for (const lesson of material.lessons) {
+				if (done.has(lesson.id)) lesson.done = true;
+			}
+			if (version === catalogVersion) offlineCatalog = catalog;
+		} catch {
+			if (version === catalogVersion) offlineCatalog = buildOfflineCatalog([]);
+		} finally {
+			if (version === catalogVersion) offlineLoading = false;
+		}
+	}
+	function goOffline() {
+		connected = false;
+		localMode = true;
+		void refreshOfflineCatalog();
+	}
+	function goOnline() {
+		connected = true;
+		localMode = false;
+	}
+	const loadOfflineTree = async (id: string) => offlineCatalog.trees[id] ?? null;
+
+	/* A memóriában őrzött adat azonnal látszik, megnyitáskor újraellenőrizzük. */
+	const TREE_TTL = 10 * 60_000;
+	const TREE_STALE = 30 * 60_000;
+	const PACKAGES_TTL = 10 * 60_000;
+	const SORT_KEY = 'leardy-tanulas-sort';
+
+	const savedScope = loadScope('tanulas');
+	let subjectId = $state(savedScope.subject);
+	let levelId = $state(savedScope.level);
+	const treeQ = new Query<SubjectTree | null>();
+	const subjectsQ = new Query<Subject[]>();
+	let subjects = $derived(localMode ? offlineCatalog.subjects : subjectsQ.data ?? []);
+	let downloadedLessons = $derived(new Set(offlineCatalog.lessons.map((document) => document.lessonPage.lesson.id)));
+	$effect(() => {
+		subjectsQ.load('subjects', async (cached) => {
+			const response = await contentFetch('/api/browse', cached);
+			if (!connected || response.headers.get('x-content-offline') === 'true') localMode = true;
+			if (!response.ok) throw new Error(`http ${response.status}`);
+			return (await response.json()).subjects;
+		});
+	});
+
+	// Első paint előtti előtöltés: visszalépéskor rögtön adat, skeleton nélkül.
+	untrack(() => {
+		treeQ.prime(subjectId ? `tree:${subjectId}` : null, TREE_STALE);
+	});
+
+	// Mentett tantárgy érvényesítése, különben az első.
+	$effect(() => {
+		if (!subjectId || !subjects.some((s) => s.id === subjectId)) {
+			if (subjects[0]) subjectId = subjects[0].id;
+			else if (localMode && !offlineLoading) subjectId = '';
+		}
+	});
+
+	let qpOpen = $state(false);
+	let qpicks = $state<QuizQuestion[]>([]);
+
+	let activeTree = $derived(localMode ? offlineCatalog.trees[subjectId] : treeQ.data);
+	let levels = $derived(activeTree?.levels ?? []);
+	let activeSubject = $derived(subjects.find((s) => s.id === subjectId) ?? null);
+	let activeLevelTitle = $derived(
+		levelId ? (levels.find((l) => l.id === levelId)?.title ?? 'Tananyag') : 'Minden tananyag'
+	);
+
+	const subjectIcons: Record<string, typeof Landmark> = {
+		landmark: Landmark,
+		leaf: Leaf,
+		languages: Languages,
+		book: BookOpenText
+	};
+	let scopeIconReady = $state(false);
+	// Hydráláskor ugyanaz az ikon kell, mint a szerveren. A mentett tantárgy
+	// csak mount után válthatja le, különben eltérő SVG-elemek maradhatnak bent.
+	let ScopeIcon = $derived(
+		subjectIcons[(scopeIconReady ? activeSubject : subjects[0])?.icon ?? ''] ?? Shapes
+	);
+
+	let scopeOpen = $state(false);
+	let prevSubject = $state<string | null>(null);
+	function openScope() { scopeOpen = true; tutorial?.signal('scope-open'); }
+	function pickScope(picks: ContentPick[]) {
+		const pick = picks[0];
+		if (!pick) return;
+		prevSubject = pick.subjectId;
+		subjectId = pick.subjectId;
+		levelId = pick.levelId;
+		scopeOpen = false;
+		tutorial?.signal('scope-level', { subjectId: pick.subjectId, levelId: pick.levelId, levelLabel: pick.levelLabel });
+	}
+
+	async function fetchTreeRaw(id: string, cacheOnly = false): Promise<SubjectTree | null> {
+		const res = await contentFetch(`/api/browse?subject=${encodeURIComponent(id)}`, cacheOnly);
+		if (!connected || res.headers.get('x-content-offline') === 'true') localMode = true;
+		if (!res.ok) throw new Error(`http ${res.status}`);
+		const j = await res.json();
+		return res.ok ? (j.tree ?? null) : null;
+	}
+
+	// Visszatöltött tananyagot az első betöltés nem nullázza, váltáskor igen.
+	$effect(() => {
+		if (prevSubject !== null && prevSubject !== subjectId) levelId = '';
+		prevSubject = subjectId;
+		treeQ.load(!localMode && subjectId ? `tree:${subjectId}` : null, (cached) => fetchTreeRaw(subjectId, cached), TREE_TTL, TREE_STALE);
+	});
+
+	// Mentett tananyag érvényesítése, de csak kész fához: tantárgyváltáskor
+	// a régi fa még látszhat töltés alatt, az nem érvénytelenítheti az új tananyagot.
+	$effect(() => {
+		if (localMode ? offlineLoading : treeQ.loading) return;
+		const ls = activeTree?.levels;
+		if (ls && levelId && !ls.some((l) => l.id === levelId)) levelId = '';
+	});
+
+	// Utolsó választás mentése.
+	$effect(() => {
+		saveScope('tanulas', { subject: subjectId, level: levelId });
+	});
+
+	/* Keresés + szűrő + rendezés. A kereső fókuszban kinyílik, a fejléc
+	   gombjai összehúzódnak (Kártya oldal mintája). A rendezés a szűrőben él. */
+	let query = $state('');
+	let searchFocus = $state(false);
+	let filterOpen = $state(false);
+	let fPicker = $state<'sort' | null>(null);
+	let status = $state<'all' | 'done' | 'todo'>('all');
+
+	function loadTanulasSort(): string {
+		if (typeof localStorage === 'undefined') return 'eredeti';
+		const v = localStorage.getItem(SORT_KEY);
+		return v === 'nev' || v === 'haladas' ? v : 'eredeti';
+	}
+
+	let sortId = $state(loadTanulasSort());
+
+	const sortOptions = [
+		{ id: 'eredeti', title: 'Eredeti sorrend', desc: 'A tananyag sorrendje', icon: ListOrdered },
+		{ id: 'nev', title: 'Név szerint', desc: 'A-tól Z-ig', icon: ArrowDownAZ },
+		{ id: 'haladas', title: 'Haladás szerint', desc: 'A legkevésbé teljesített elöl', icon: Gauge }
+	];
+
+	let sortTitle = $derived(sortOptions.find((o) => o.id === sortId)?.title ?? 'Rendezés');
+
+	let activeFilterCount = $derived(
+		(sortId !== 'eredeti' ? 1 : 0) + (status !== 'all' ? 1 : 0)
+	);
+
+	function resetFilters() {
+		sortId = 'eredeti';
+		status = 'all';
+	}
+
+	$effect(() => {
+		try {
+			localStorage.setItem(SORT_KEY, sortId);
+		} catch {
+			// tiltott storage
+		}
+	});
+
+	/* Látható tananyagok: szintszűrés, állapot, keresés, rendezés. Üres témakör
+	   és üres tananyag nem rajzolódik ki. */
+	let visibleLevels = $derived.by(() => {
+		const q = normHu(query.trim());
+		let ls = levels.filter((l) => (levelId ? l.id === levelId : true));
+		if (sortId === 'nev') ls = [...ls].sort((a, b) => a.title.localeCompare(b.title, 'hu'));
+		return ls
+			.map((l) => {
+				let mats = l.materials
+					.map((m) => {
+						let les = m.lessons.filter((le) => {
+							if (status === 'done' && !le.done) return false;
+							if (status === 'todo' && le.done) return false;
+							if (q && !normHu(`${m.title} ${le.title}`).includes(q)) return false;
+							return true;
+						});
+						if (sortId === 'nev') les = [...les].sort((a, b) => a.title.localeCompare(b.title, 'hu'));
+						else if (sortId === 'haladas')
+							les = [...les].sort(
+								(a, b) => Number(a.done) - Number(b.done) || a.title.localeCompare(b.title, 'hu')
+							);
+						const total = m.lessons.length;
+						const done = m.lessons.filter((x) => x.done).length;
+						return { ...m, lessons: les, doneCount: done, totalCount: total };
+					})
+					.filter((m) => m.lessons.length > 0);
+				if (sortId === 'nev') mats = [...mats].sort((a, b) => a.title.localeCompare(b.title, 'hu'));
+				else if (sortId === 'haladas')
+					mats = [...mats].sort(
+						(a, b) => doneRatio(a.doneCount, a.totalCount) - doneRatio(b.doneCount, b.totalCount)
+					);
+				return { ...l, materials: mats };
+			})
+			.filter((l) => l.materials.length > 0);
+	});
+
+	function doneRatio(done: number, total: number): number {
+		return total === 0 ? 0 : done / total;
+	}
+
+	/* Témakör-kártyák lenyitása. Kereséskor minden találat nyitva van. */
+	let collapsed = $state<Record<string, boolean>>({});
+
+	function isMatOpen(id: string): boolean {
+		if (query.trim() !== '') return true;
+		return !collapsed[id];
+	}
+
+	function toggleMat(id: string) {
+		collapsed = { ...collapsed, [id]: !collapsed[id] };
+	}
+
+	function shuffle<T>(arr: T[]): T[] {
+		const a = [...arr];
+		for (let i = a.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[a[i], a[j]] = [a[j], a[i]];
+		}
+		return a;
+	}
+
+	async function fetchPackagesRaw(cacheOnly = false): Promise<Package[]> {
+		if (localMode) return offlineCatalog.lessons
+			.filter(({ lessonPage }) => lessonPage.subject.id === subjectId && (!levelId || lessonPage.level.id === levelId))
+			.flatMap(({ lessonPage }) => lessonPage.quizzes.map((quiz) => ({
+				quizId: quiz.id, title: quiz.title, sectionSlug: quiz.section_slug,
+				lessonId: lessonPage.lesson.id, lessonTitle: lessonPage.lesson.title,
+				materialTitle: lessonPage.material.title, subjectTitle: lessonPage.subject.title,
+				levelTitle: lessonPage.level.title, questionCount: quiz.questions.length, questions: quiz.questions
+			})));
+		const params = new URLSearchParams();
+		if (subjectId) params.set('subject', subjectId);
+		if (levelId) params.set('level', levelId);
+		const res = await contentFetch(`/api/packages?${params}`, cacheOnly);
+		if (!res.ok) throw new Error(`http ${res.status}`);
+		const j = await res.json();
+		return res.ok ? (j.packages ?? []) : [];
+	}
+
+	function pickRandom(questions: QuizQuestion[]): QuizQuestion[] {
+		return shuffle(questions).slice(0, loadSettings().quickQuizCount);
+	}
+
+	/* Jobb felső gomb: az utoljára megnyitott lecke folytatása ott, ahol abbahagytad. */
+	let lastLesson = $state<{ id: string; title: string } | null>(null);
+
+	onMount(() => {
+		connected = navigator.onLine;
+		localMode = !connected || data.offline;
+		void refreshOfflineCatalog();
+		scopeIconReady = true;
+		lastLesson = loadLastLesson();
+		return subscribeContent((message) => {
+			if (message.type === 'content-status') {
+				if (message.url && new URL(message.url).pathname === '/api/browse') {
+					localMode = !connected || !!message.offline;
+					if (localMode) void refreshOfflineCatalog();
+				}
+			} else void refreshOfflineCatalog();
+			if (message.type === 'content-deleted') lastLesson = loadLastLesson();
+		});
+	});
+	$effect(() => {
+		void outbox.pending;
+		void refreshOfflineCatalog();
+	});
+
+	/** Folytatás: az utolsó lecke megnyitása, előzmény nélkül az első lecke. */
+	function continueLastLesson() {
+		const last = loadLastLesson();
+		if (last?.id && (!localMode || offlineCatalog.lessons.some((document) => document.lessonPage.lesson.id === last.id))) {
+			lastLesson = last;
+			void goto(lessonPath(last.id));
+			return;
+		}
+		const fallback = visibleLevels
+			.flatMap((l) => l.materials.flatMap((m) => m.lessons))
+			.find((le) => !le.done) ?? visibleLevels.flatMap((l) => l.materials.flatMap((m) => m.lessons))[0];
+		if (fallback) {
+			void goto(lessonPath(fallback.id));
+			return;
+		}
+		toast.warning('Nincs folytatható lecke', 'Nyiss meg egy leckét a listából!');
+	}
+
+	/** Témakör play: véletlen kvíz a témakör leckéiből. */
+	async function playMaterial(lessonIds: string[]) {
+		const key = `packages:${subjectId}:${levelId}`;
+		const wanted = new Set(lessonIds);
+		try {
+			const pkgs = await getOrFetch(key, fetchPackagesRaw, PACKAGES_TTL, 0, true);
+			qpicks = pickRandom(
+				pkgs.filter((p) => p.lessonId && wanted.has(p.lessonId)).flatMap((p) => p.questions)
+			);
+		} catch {
+			const stale = peek<Package[]>(key, Number.POSITIVE_INFINITY) ?? [];
+			qpicks = pickRandom(
+				stale.filter((p) => p.lessonId && wanted.has(p.lessonId)).flatMap((p) => p.questions)
+			);
+		}
+		qpOpen = true;
+	}
+
+	$effect(() => tutorial?.register('learning', {
+		prepare(step, context) {
+			if (subjectsQ.error) subjectsQ.refresh();
+			if (treeQ.error) treeQ.refresh();
+			query = ''; searchFocus = false; status = 'all'; collapsed = {};
+			if (context.subjectId) subjectId = context.subjectId;
+			if (context.levelId) levelId = context.levelId;
+			if (step.id === 'scope-subject' || step.id === 'scope-level') scopeOpen = true;
+			else scopeOpen = false;
+			filterOpen = false;
+		},
+		close() { scopeOpen = false; filterOpen = false; }
+	}));
+
+	const pickRowBtn =
+		'flex w-full items-center gap-3 rounded-2xl border border-stone-200 bg-white p-3 text-left transition hover:bg-stone-50 active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 disabled:opacity-50 dark:border-white/10 dark:bg-transparent dark:hover:bg-white/5';
+	const optRowBtn =
+		'flex w-full items-center gap-2.5 rounded-2xl p-2.5 text-left transition active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100';
+	const optTile = (selected: boolean) =>
+		[
+			'grid size-9 shrink-0 place-items-center rounded-xl',
+			selected
+				? 'bg-brand-500 text-white'
+				: 'bg-stone-100 text-stone-500 dark:bg-white/10 dark:text-stone-300'
+		].join(' ');
+	const chevronBtn =
+		'grid size-9 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-stone-100 hover:text-ink-900 active:scale-95 motion-reduce:transition-none dark:text-stone-500 dark:hover:bg-white/10 dark:hover:text-white';
+</script>
+
+<svelte:window onoffline={goOffline} ononline={goOnline} />
+
+<svelte:head>
+	<title>Tanulás | Leardy</title>
+	<meta name="description" content="Tantárgyak, tananyagok és leckék böngészése." />
+</svelte:head>
+
+<div class="flex items-stretch {searchFocus ? 'gap-0' : 'gap-2'}">
+	<div
+		class="shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none"
+		style:width={searchFocus ? '0px' : '46px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<div class="grid h-full w-[46px] place-items-center">
+			<IconButton
+				tutorialId="scope-open"
+				ariaLabel="Tantárgy és tananyag: {activeSubject?.title ?? 'Választás'}, {activeLevelTitle}"
+				size={46}
+				disabled={searchFocus}
+				onclick={openScope}
+			>
+				{#key ScopeIcon}
+					<ScopeIcon size={24} strokeWidth={1.75} class="size-6 shrink-0" aria-hidden="true" />
+				{/key}
+			</IconButton>
+		</div>
+	</div>
+	<SearchInput
+		tutorialId="learning-search"
+		bind:value={query}
+		placeholder="Keresés…"
+		ariaLabel="Keresés a leckék között"
+		onfocus={() => (searchFocus = true)}
+		onblur={() => (searchFocus = false)}
+	/>
+	<div
+		class="relative shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none"
+		style:width={searchFocus ? '0px' : '46px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<div class="grid h-full w-[46px] place-items-center">
+			<IconButton
+				tutorialId="learning-filters" ariaLabel="Szűrők és rendezés"
+				size={46}
+				disabled={searchFocus}
+				onclick={() => (filterOpen = true)}
+			>
+				<SlidersHorizontal size={22} />
+			</IconButton>
+		</div>
+		{#if activeFilterCount > 0}
+			<span
+				class="absolute -top-0.5 -right-0.5 grid size-5 place-items-center rounded-full bg-brand-500 text-[10px] font-extrabold text-white"
+				aria-hidden="true"
+			>
+				{activeFilterCount}
+			</span>
+		{/if}
+	</div>
+	<div
+		class="shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none"
+		style:width={searchFocus ? '0px' : '46px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<div class="grid h-full w-[46px] place-items-center">
+			<IconButton
+				tutorialId={canEdit ? undefined : "learning-continue"} ariaLabel={canEdit ? 'Tananyag szerkesztése' : lastLesson?.title ? `Folytatás: ${lastLesson.title}` : 'Folytatás: utolsó lecke megnyitása'}
+				title={canEdit ? 'Tananyag szerkesztése' : lastLesson?.title ? `Folytatás: ${lastLesson.title}` : 'Folytatás'}
+				size={46}
+				disabled={searchFocus}
+				onclick={canEdit ? () => { void goto(resolve(`/tanulas/szerkeszto?${new URLSearchParams({ subject: subjectId, level: levelId })}`)); } : continueLastLesson}
+			>
+				{#if canEdit}<Pencil size={22} />{:else}<Play size={22} />{/if}
+			</IconButton>
+		</div>
+	</div>
+</div>
+
+{#if localMode}
+	<p role="status" class="mt-3 rounded-xl bg-stone-100 px-3 py-2 text-sm text-stone-600 dark:bg-white/5 dark:text-stone-300">
+		Offline vagy. A tárolt tantárgyak és tananyagok listája látható. A korábban megnyitott leckék olvashatók, a keresés és a szűrők helyben működnek.
+	</p>
+{/if}
+
+<div class="mt-4" data-tutorial-empty={(localMode ? !offlineLoading : !subjectsQ.loading && subjectsQ.data != null) && subjects.every((s) => s.lessonCount === 0) ? 'learning' : undefined}>
+	{#if localMode ? offlineLoading : treeQ.loading || subjectsQ.loading}
+		<div role="status" aria-label="Betöltés" class="grid gap-2.5">
+			{#each [0, 1] as i (i)}
+				<Card>
+					<Skeleton cls="h-[18px] w-2/5 rounded-lg" />
+					<div class="mt-3 space-y-2.5">
+						<Skeleton cls="h-4 w-full rounded-md" />
+						<Skeleton cls="h-4 w-11/12 rounded-md" />
+						<Skeleton cls="h-4 w-3/4 rounded-md" />
+					</div>
+				</Card>
+			{/each}
+			<span class="sr-only">Betöltés…</span>
+		</div>
+	{:else if !activeTree || visibleLevels.length === 0}
+		{#if activeTree && (query.trim() !== '' || status !== 'all')}
+			<EmptyState
+				title="Nincs találat"
+				description="Próbálj másik keresést, vagy állíts a szűrőkön."
+			/>
+		{:else if localMode && offlineCatalog.lessons.length === 0}
+			<EmptyState title="Még nincs mentett lecke" description="Nyiss meg leckéket internetkapcsolattal! Ezután itt, a Tanulás oldalon internet nélkül is megtalálod őket." />
+		{:else}
+			<EmptyState
+				title="Nincs tananyag"
+				description="Ehhez a választáshoz most nincs megjeleníthető lecke."
+			/>
+		{/if}
+	{:else}
+		{@const singleLevel = levelId !== ''}
+		<div class="grid gap-4">
+			{#each visibleLevels as level (level.id)}
+				<section aria-label={level.title}>
+					{#if !singleLevel}
+						<h2 class="font-display px-1 text-[17px] font-extrabold tracking-tight text-ink-900 dark:text-white">
+							{level.title}
+						</h2>
+					{/if}
+					<div class="{singleLevel ? '' : 'mt-2 '}grid gap-2.5">
+						{#each level.materials as mat (mat.id)}
+							{@const matOpen = isMatOpen(mat.id)}
+							<Card>
+								<div class="flex items-center gap-1.5">
+									<p class="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-[15px] font-extrabold text-ink-900 dark:text-white">{mat.title}</p>
+									<IconButton
+										ariaLabel="Véletlen kvíz: {mat.title}"
+										title="Véletlen kvíz: {mat.title}"
+										size={36}
+										onclick={() => void playMaterial(mat.lessons.map((le) => le.id))}
+									>
+										<Dices size={16} />
+									</IconButton>
+									<button
+										type="button"
+										onclick={() => toggleMat(mat.id)}
+										aria-expanded={matOpen}
+										aria-label={matOpen ? `Témakör összecsukása: ${mat.title}` : `Témakör kinyitása: ${mat.title}`}
+										class={chevronBtn}
+									>
+										<ChevronDown
+											size={18}
+											class={matOpen ? 'rotate-180 transition' : 'transition'}
+											aria-hidden="true"
+										/>
+									</button>
+								</div>
+								{#if matOpen}
+									<ul class="mt-1 divide-y divide-stone-100 dark:divide-white/5">
+										{#each mat.lessons as le (le.id)}
+											<li>
+												<a
+													data-tutorial="lesson-link" data-tutorial-content-id={le.id}
+													href={lessonPath(le.id)}
+													class="flex items-center gap-2 py-2 text-[14px] font-semibold text-ink-600 transition hover:text-brand-600 dark:text-stone-300 dark:hover:text-white"
+												>
+													{#if le.done}
+														<span class="grid size-5 shrink-0 place-items-center rounded-full bg-emerald-500 text-white" aria-label="Teljesítve">
+															<Check size={13} strokeWidth={3.5} aria-hidden="true" />
+														</span>
+													{/if}
+													<span class="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{le.title}</span>
+													{#if localMode && !downloadedLessons.has(le.id)}
+														<span class="shrink-0 text-xs font-normal text-stone-500">Nincs letöltve</span>
+													{/if}
+													<ChevronRight size={16} class="shrink-0 text-stone-300 dark:text-stone-600" />
+												</a>
+											</li>
+										{/each}
+									</ul>
+								{/if}
+							</Card>
+						{/each}
+					</div>
+				</section>
+			{/each}
+		</div>
+	{/if}
+</div>
+
+<ContentPicker
+	open={scopeOpen}
+	subjects={subjects}
+	select="level"
+	tutorialStep={tutorial?.active && tutorial.stepId === 'scope-subject' ? 'subject' : tutorial?.active && tutorial.stepId === 'scope-level' ? 'level' : undefined}
+	startSubjectId={tutorial?.active ? tutorial.stepId === 'scope-level' ? tutorial.context.subjectId ?? '' : '' : levelId ? subjectId : ''}
+	selectedSubjectId={subjectId}
+	selectedLevelId={levelId}
+	initialTree={activeTree}
+	loadTree={localMode ? loadOfflineTree : undefined}
+	cacheVersion={localMode ? offlineCatalog : undefined}
+	includeAllLevels={!tutorial?.active}
+	onPick={pickScope}
+	onClose={() => (scopeOpen = false)}
+/>
+
+<Sheet open={filterOpen} label="Szűrők és rendezés" onClose={() => (filterOpen = false)}>
+	<div class="mt-1 flex items-center gap-2">
+		<h2 class="font-display min-w-0 flex-1 text-[20px] leading-snug font-extrabold tracking-tight text-ink-900 dark:text-white">
+			Szűrők
+		</h2>
+		{#if activeFilterCount > 0}
+			<Button variant="outline" size="sm" onclick={resetFilters}>
+				<FunnelX size={16} aria-hidden="true" /> Szűrők törlése
+			</Button>
+		{/if}
+	</div>
+	<div class="mt-2 grid gap-2">
+		<button type="button" onclick={() => (fPicker = 'sort')} aria-haspopup="dialog" class={pickRowBtn}>
+			<span class="min-w-0 flex-1">
+				<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Rendezés</span>
+				<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
+					{sortTitle}
+				</span>
+			</span>
+			<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
+		</button>
+	</div>
+
+	<p class="mt-4 text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Állapot</p>
+	<div
+		role="group"
+		aria-label="Állapot szűrő"
+		class="mt-1 grid grid-cols-3 gap-1 rounded-2xl bg-stone-100 p-1 dark:bg-white/10"
+	>
+		{#each [{ id: 'all', label: 'Mind' }, { id: 'done', label: 'Teljesített' }, { id: 'todo', label: 'Folyamatban' }] as o (o.id)}
+			{@const selected = status === o.id}
+			<button
+				type="button"
+				aria-pressed={selected}
+				onclick={() => (status = o.id as typeof status)}
+				class={[
+					'rounded-xl px-2 py-2 text-[13px] leading-none transition active:scale-[0.97]',
+					selected
+						? 'bg-white font-extrabold text-ink-900 shadow-sm dark:bg-stone-800 dark:text-white dark:shadow-black/40'
+						: 'font-semibold text-stone-500 hover:text-ink-900 dark:text-stone-400 dark:hover:text-white'
+				]}
+			>
+				{o.label}
+			</button>
+		{/each}
+	</div>
+</Sheet>
+
+<Sheet open={fPicker === 'sort'} label="Rendezés választása" title="Rendezés" onClose={() => (fPicker = null)}>
+	<ul class="-mx-1 mt-2 space-y-0.5">
+		{#each sortOptions as o (o.id)}
+			{@const Icon = o.icon}
+			{@const selected = o.id === sortId}
+			<li>
+				<button
+					type="button"
+					aria-pressed={selected}
+					onclick={() => {
+						sortId = o.id;
+						fPicker = null;
+					}}
+					class={[optRowBtn, selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
+				>
+					<span class={optTile(selected)}>
+						<Icon size={18} aria-hidden="true" />
+					</span>
+					<span class="min-w-0 flex-1">
+						<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{o.title}</span>
+						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">{o.desc}</span>
+					</span>
+					{#if selected}
+						<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
+					{/if}
+				</button>
+			</li>
+		{/each}
+	</ul>
+</Sheet>
+
+<QuickPractice questions={qpicks} open={qpOpen} onClose={() => (qpOpen = false)} />

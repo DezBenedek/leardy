@@ -1,0 +1,2 @@
+ALTER TABLE lessons ADD COLUMN content_json TEXT;
+ALTER TABLE lessons ADD COLUMN content_revision INTEGER NOT NULL DEFAULT 0;

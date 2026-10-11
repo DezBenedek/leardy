@@ -1,0 +1,7 @@
+.row-input { min-width: 0; flex: 1; width: 100%; padding: 9px 2px; background: transparent; font-size: 16px; line-height: 24px; color: var(--color-ink-900); outline: none; }
+	.dark .row-input { color: white; }
+	.row-input::placeholder { color: var(--color-stone-400); }
+	.row-input:disabled { opacity: .6; }
+	.answer-row:focus-within { border-color: var(--color-brand-500); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-brand-500) 15%, transparent); }
+	.row-button { display: grid; width: 32px; min-height: 36px; flex-shrink: 0; place-items: center; border-radius: 8px; transition: background-color 150ms, color 150ms; }
+	.row-button:disabled { opacity: .3; cursor: default; }
