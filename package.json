@@ -1,6 +1,6 @@
 {
 	"name": "leardy",
-  "version": "1.0.0-beta",
+  "version": "1.0.1-beta",
 	"private": true,
 	"scripts": {
 		"deploy": "pnpm run build && wrangler deploy",

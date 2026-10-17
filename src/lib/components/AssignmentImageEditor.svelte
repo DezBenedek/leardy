@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import { Camera, Check, FlipHorizontal2, FolderOpen, RotateCcw, RotateCw, X } from '@lucide/svelte';
+	import { Camera, Check, FlipHorizontal, FolderOpen, RotateCcw, RotateCw, X } from '@lucide/svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import Sheet from '$lib/ui/Sheet.svelte';
@@ -8,8 +8,8 @@
 	import MediaPermissionHelp from '$lib/components/MediaPermissionHelp.svelte';
 	import { lockBody } from '$lib/overlay';
 
-	/* Képszerkesztő beadandóhoz: fotózás vagy választás, kétféle körülvágás
-	   (téglalap / szabad 4 pont, a pontok közt vonal), forgatás, tükrözés,
+	/* Képszerkesztő beadandóhoz: fotózás vagy választás, téglalapos körülvágás,
+	   forgatás, tükrözés,
 	   feltöltés előtt optimalizált WebP/JPEG. */
 
 	interface Props {
@@ -21,7 +21,6 @@
 	let { open, onClose, onDone }: Props = $props();
 
 	type Step = 'pick' | 'camera' | 'edit';
-	type CropMode = 'rect' | 'free';
 	interface Pt {
 		x: number;
 		y: number;
@@ -46,7 +45,6 @@
 	let imgH = $state(1);
 	let rotation = $state(0);
 	let mirror = $state(false);
-	let cropMode = $state<CropMode>('rect');
 	/** Vágópontok a kész (forgatott + tükrözött) képhez mérve, 0..1 között. */
 	let points = $state<Pt[]>([
 		{ x: 0, y: 0 },
@@ -84,7 +82,6 @@
 		helpOpen = false;
 		rotation = 0;
 		mirror = false;
-		cropMode = 'rect';
 		points = fullRect();
 		dragIdx = null;
 		stopCamera();
@@ -144,8 +141,7 @@
 			imgH = img.naturalHeight || 1;
 			rotation = 0;
 			mirror = false;
-			cropMode = 'rect';
-			points = fullRect();
+				points = fullRect();
 			dragIdx = null;
 			step = 'edit';
 			requestAnimationFrame(drawPreview);
@@ -304,14 +300,22 @@
 	}
 
 	function rotate(delta: number) {
-		rotation = (rotation + delta + 360) % 360;
+		rotation = (rotation + (mirror ? -delta : delta) + 360) % 360;
 		const cw = delta === 90 || delta === -270;
-		points = points.map((p) => (cw ? { x: 1 - p.y, y: p.x } : { x: p.y, y: 1 - p.x }));
+		points = rectangle(points.map((p) => (cw ? { x: 1 - p.y, y: p.x } : { x: p.y, y: 1 - p.x })));
 	}
 
 	function toggleMirror() {
 		mirror = !mirror;
-		points = points.map((p) => ({ x: 1 - p.x, y: p.y }));
+		points = rectangle(points.map((p) => ({ x: 1 - p.x, y: p.y })));
+	}
+
+	function rectangle(corners: Pt[]): Pt[] {
+		const left = Math.min(...corners.map((p) => p.x));
+		const right = Math.max(...corners.map((p) => p.x));
+		const top = Math.min(...corners.map((p) => p.y));
+		const bottom = Math.max(...corners.map((p) => p.y));
+		return [{ x: left, y: top }, { x: right, y: top }, { x: right, y: bottom }, { x: left, y: bottom }];
 	}
 
 	/** Előnézet: a kész kép kicsinyítve, rajta a 4 pont és a köztük futó vonal. */
@@ -328,7 +332,8 @@
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		ctx.fillStyle = '#111';
 		ctx.fillRect(0, 0, cssW, cssH);
-		const s = Math.min(cssW / dispW, cssH / dispH);
+		const padding = 26;
+		const s = Math.min((cssW - padding * 2) / dispW, (cssH - padding * 2) / dispH);
 		const dw = dispW * s;
 		const dh = dispH * s;
 		const ox = (cssW - dw) / 2;
@@ -337,8 +342,8 @@
 		const rot = ((rotation % 360) + 360) % 360;
 		ctx.save();
 		ctx.translate(ox + dw / 2, oy + dh / 2);
-		ctx.rotate((rot * Math.PI) / 180);
 		if (mirror) ctx.scale(-1, 1);
+		ctx.rotate((rot * Math.PI) / 180);
 		ctx.drawImage(imgEl, (-imgW * s) / 2, (-imgH * s) / 2, imgW * s, imgH * s);
 		ctx.restore();
 		const P = points.map((p) => ({ x: ox + p.x * dw, y: oy + p.y * dh }));
@@ -376,20 +381,15 @@
 			mirror;
 			points;
 			imgEl;
-			cropMode;
 			requestAnimationFrame(drawPreview);
 		}
 	});
 
 	$effect(() => {
-		if (!browser || !open || step !== 'edit') return;
-		const onResize = () => requestAnimationFrame(drawPreview);
-		window.addEventListener('resize', onResize);
-		window.addEventListener('orientationchange', onResize);
-		return () => {
-			window.removeEventListener('resize', onResize);
-			window.removeEventListener('orientationchange', onResize);
-		};
+		if (!open || step !== 'edit' || !canvasEl) return;
+		const observer = new ResizeObserver(() => requestAnimationFrame(drawPreview));
+		observer.observe(canvasEl);
+		return () => observer.disconnect();
 	});
 
 	function clamp01(v: number): number {
@@ -432,12 +432,7 @@
 	function onPointerMove(e: PointerEvent) {
 		if (dragIdx === null || dragIdx === undefined) return;
 		const n = toNorm(e);
-		if (cropMode === 'rect') dragRect(dragIdx, n.x, n.y);
-		else {
-			const q = points.map((p) => ({ ...p }));
-			q[dragIdx] = n;
-			points = q;
-		}
+		dragRect(dragIdx, n.x, n.y);
 	}
 
 	function onPointerUp() {
@@ -450,8 +445,8 @@
 		const o = (i + 2) % 4;
 		const ox = points[o].x;
 		const oy = points[o].y;
-		nx = nx < ox ? Math.min(nx, ox - MIN) : Math.max(nx, ox + MIN);
-		ny = ny < oy ? Math.min(ny, oy - MIN) : Math.max(ny, oy + MIN);
+		nx = i === 0 || i === 3 ? Math.min(nx, ox - MIN) : Math.max(nx, ox + MIN);
+		ny = i < 2 ? Math.min(ny, oy - MIN) : Math.max(ny, oy + MIN);
 		nx = clamp01(nx);
 		ny = clamp01(ny);
 		const q = points.map((p) => ({ ...p }));
@@ -466,10 +461,6 @@
 			q[b].y = ny;
 		}
 		points = q;
-	}
-
-	function dist(a: Pt, b: Pt): number {
-		return Math.hypot(a.x - b.x, a.y - b.y);
 	}
 
 	/** Kész kép renderelése (forgatás + tükrözés), legfeljebb 2048 px. */
@@ -491,50 +482,11 @@
 		ctx.fillRect(0, 0, ow, oh);
 		ctx.save();
 		ctx.translate(ow / 2, oh / 2);
-		ctx.rotate((rot * Math.PI) / 180);
 		if (mirror) ctx.scale(-1, 1);
+		ctx.rotate((rot * Math.PI) / 180);
 		ctx.drawImage(imgEl, (-imgW * k) / 2, (-imgH * k) / 2, imgW * k, imgH * k);
 		ctx.restore();
 		return out;
-	}
-
-	/** Háromszög affín leképezése: forrásból célba. */
-	function warpTriangle(
-		ctx: CanvasRenderingContext2D,
-		img: HTMLCanvasElement,
-		s0: Pt,
-		s1: Pt,
-		s2: Pt,
-		d0: Pt,
-		d1: Pt,
-		d2: Pt
-	) {
-		const ux1 = s1.x - s0.x;
-		const uy1 = s1.y - s0.y;
-		const ux2 = s2.x - s0.x;
-		const uy2 = s2.y - s0.y;
-		const det = ux1 * uy2 - ux2 * uy1;
-		if (Math.abs(det) < 1e-8) return;
-		const vx1 = d1.x - d0.x;
-		const vy1 = d1.y - d0.y;
-		const vx2 = d2.x - d0.x;
-		const vy2 = d2.y - d0.y;
-		const a = (vx1 * uy2 - vx2 * uy1) / det;
-		const b = (vy1 * uy2 - vy2 * uy1) / det;
-		const c = (vx2 * ux1 - vx1 * ux2) / det;
-		const d = (vy2 * ux1 - vy1 * ux2) / det;
-		const e = d0.x - a * s0.x - c * s0.y;
-		const f = d0.y - b * s0.x - d * s0.y;
-		ctx.save();
-		ctx.beginPath();
-		ctx.moveTo(d0.x, d0.y);
-		ctx.lineTo(d1.x, d1.y);
-		ctx.lineTo(d2.x, d2.y);
-		ctx.closePath();
-		ctx.clip();
-		ctx.transform(a, b, c, d, e, f);
-		ctx.drawImage(img, 0, 0);
-		ctx.restore();
 	}
 
 	function encodeCanvas(out: HTMLCanvasElement): Promise<Blob | null> {
@@ -565,47 +517,23 @@
 			const fh = fin.height;
 			const S = points.map((p) => ({ x: p.x * fw, y: p.y * fh }));
 			const out = document.createElement('canvas');
-			if (cropMode === 'rect') {
-				const x0 = Math.max(0, Math.min(S[0].x, S[1].x, S[2].x, S[3].x));
-				const x1 = Math.min(fw, Math.max(S[0].x, S[1].x, S[2].x, S[3].x));
-				const y0 = Math.max(0, Math.min(S[0].y, S[1].y, S[2].y, S[3].y));
-				const y1 = Math.min(fh, Math.max(S[0].y, S[1].y, S[2].y, S[3].y));
-				const w = Math.round(x1 - x0);
-				const h = Math.round(y1 - y0);
-				if (w < 8 || h < 8) {
-					error = 'Túl kicsi a kijelölés, húzd kijjebb a sarkokat!';
-					return;
-				}
-				out.width = w;
-				out.height = h;
-				const ctx = out.getContext('2d');
-				if (!ctx) throw new Error('ctx');
-				ctx.fillStyle = '#fff';
-				ctx.fillRect(0, 0, w, h);
-				ctx.drawImage(fin, x0, y0, w, h, 0, 0, w, h);
-			} else {
-				const top = dist(S[0], S[1]);
-				const bottom = dist(S[2], S[3]);
-				const left = dist(S[0], S[3]);
-				const right = dist(S[1], S[2]);
-				let W = Math.round(Math.max(top, bottom));
-				let H = Math.round(Math.max(left, right));
-				if (W < 8 || H < 8) {
-					error = 'Túl kicsi a kijelölés, húzd kijjebb a pontokat!';
-					return;
-				}
-				const kk = Math.min(1, 2048 / Math.max(W, H));
-				W = Math.max(1, Math.round(W * kk));
-				H = Math.max(1, Math.round(H * kk));
-				out.width = W;
-				out.height = H;
-				const ctx = out.getContext('2d');
-				if (!ctx) throw new Error('ctx');
-				ctx.fillStyle = '#fff';
-				ctx.fillRect(0, 0, W, H);
-				warpTriangle(ctx, fin, S[0], S[1], S[2], { x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H });
-				warpTriangle(ctx, fin, S[0], S[2], S[3], { x: 0, y: 0 }, { x: W, y: H }, { x: 0, y: H });
+			const x0 = Math.max(0, Math.min(S[0].x, S[1].x, S[2].x, S[3].x));
+			const x1 = Math.min(fw, Math.max(S[0].x, S[1].x, S[2].x, S[3].x));
+			const y0 = Math.max(0, Math.min(S[0].y, S[1].y, S[2].y, S[3].y));
+			const y1 = Math.min(fh, Math.max(S[0].y, S[1].y, S[2].y, S[3].y));
+			const w = Math.round(x1 - x0);
+			const h = Math.round(y1 - y0);
+			if (w < 8 || h < 8) {
+				error = 'Túl kicsi a kijelölés, húzd kijjebb a sarkokat!';
+				return;
 			}
+			out.width = w;
+			out.height = h;
+			const ctx = out.getContext('2d');
+			if (!ctx) throw new Error('ctx');
+			ctx.fillStyle = '#fff';
+			ctx.fillRect(0, 0, w, h);
+			ctx.drawImage(fin, x0, y0, w, h, 0, 0, w, h);
 			const blob = await encodeCanvas(out);
 			if (!blob) throw new Error('encode');
 			const done = onDone;
@@ -622,6 +550,7 @@
 </script>
 
 {#if open && step !== 'pick'}
+	<div use:portal>
 	<div
 		tabindex="-1"
 		role="dialog"
@@ -670,8 +599,8 @@
 						<div class="mx-auto w-full max-w-[520px]">
 							<canvas
 								bind:this={canvasEl}
-								class="w-full touch-none rounded-2xl"
-								style={`aspect-ratio: ${dispW} / ${dispH};`}
+								class="w-full touch-none"
+								style="height: clamp(180px, calc(100dvh - 290px), 560px)"
 								onpointerdown={onPointerDown}
 								onpointermove={onPointerMove}
 								onpointerup={onPointerUp}
@@ -679,11 +608,7 @@
 							></canvas>
 						</div>
 						<p class="text-center text-[13px] text-stone-500 dark:text-stone-400">
-							{#if cropMode === 'rect'}
-								Húzd a sarkokat a téglalap alakú vágáshoz.
-							{:else}
-								Húzd a 4 pontot a vágáshoz, nem muszáj téglalapnak lennie.
-							{/if}
+							Húzd a fehér sarkokat a téglalap alakú vágáshoz.
 						</p>
 						{#if error}
 							<p role="alert" class="text-center text-[13px] font-medium text-red-600 dark:text-red-300">{error}</p>
@@ -715,29 +640,7 @@
 						</Button>
 					</div>
 				{:else}
-					<div class="flex items-center gap-2">
-						<div
-							role="group"
-							aria-label="Vágás módja"
-							class="grid min-w-0 flex-1 grid-cols-2 gap-1 rounded-2xl bg-stone-100 p-1 dark:bg-white/10"
-						>
-							<button
-								type="button"
-								aria-pressed={cropMode === 'rect'}
-								onclick={() => (cropMode = 'rect')}
-								class={['rounded-xl px-2 py-2 text-[13px] font-extrabold transition', cropMode === 'rect' ? 'bg-white text-ink-900 shadow dark:bg-white/15 dark:text-white' : 'text-stone-500 dark:text-stone-400']}
-							>
-								Téglalap
-							</button>
-							<button
-								type="button"
-								aria-pressed={cropMode === 'free'}
-								onclick={() => (cropMode = 'free')}
-								class={['rounded-xl px-2 py-2 text-[13px] font-extrabold transition', cropMode === 'free' ? 'bg-white text-ink-900 shadow dark:bg-white/15 dark:text-white' : 'text-stone-500 dark:text-stone-400']}
-							>
-								Szabad
-							</button>
-						</div>
+					<div class="flex items-center justify-center gap-3">
 						<IconButton ariaLabel="Forgatás balra" size={44} onclick={() => rotate(-90)}>
 							<RotateCcw size={19} />
 						</IconButton>
@@ -746,7 +649,7 @@
 						</IconButton>
 						<IconButton ariaLabel="Tükrözés" size={44} onclick={toggleMirror}>
 							<span class={mirror ? 'text-brand-600 dark:text-brand-300' : ''}>
-								<FlipHorizontal2 size={19} />
+								<FlipHorizontal size={19} />
 							</span>
 						</IconButton>
 					</div>
@@ -768,6 +671,7 @@
 				{/if}
 			</div>
 		</footer>
+	</div>
 	</div>
 {/if}
 

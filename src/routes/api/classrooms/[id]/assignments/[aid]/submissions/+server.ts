@@ -148,9 +148,18 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	const now = Date.now();
-	const text = String(body.text ?? '').slice(0, 20000);
+	let text = String(body.text ?? '').slice(0, 20000);
 	const wantSubmit = body.submitted === true || body.submitted === 1;
 	const wantWithdraw = body.submitted === false || body.submitted === 0;
+	const prev = await db
+		.prepare(`SELECT submitted, submitted_at, text_body FROM assignment_submissions WHERE assignment_id = ? AND user_id = ?`)
+		.bind(aid, user.id)
+		.first<{ submitted: number; submitted_at: number | null; text_body: string }>();
+	if (prev?.submitted === 1) {
+		if (!wantWithdraw)
+			return json({ error: 'A beküldött beadandó nem szerkeszthető.' }, { status: 403 });
+		text = prev.text_body;
+	}
 
 	if (wantSubmit) {
 		if (assignment.due_date && now > assignment.due_date)
@@ -161,20 +170,10 @@ export const POST: RequestHandler = async (event) => {
 	if (wantWithdraw && assignment.due_date && now > assignment.due_date)
 		return json({ error: 'Határidő után nem vonható vissza.' }, { status: 403 });
 
-	// Piszkozat mentése mindig mehet (határidő után is menthető szöveg? nem: zároljuk).
+	// A piszkozat csak határidő előtt szerkeszthető.
 	if (!wantSubmit && !wantWithdraw && assignment.due_date && now > assignment.due_date) {
-		const prev = await db
-			.prepare(`SELECT submitted FROM assignment_submissions WHERE assignment_id = ? AND user_id = ?`)
-			.bind(aid, user.id)
-			.first<{ submitted: number }>();
-		if (!prev || prev.submitted !== 1)
-			return json({ error: 'A határidő lejárt.' }, { status: 403 });
+		return json({ error: 'A határidő lejárt.' }, { status: 403 });
 	}
-
-	const prev = await db
-		.prepare(`SELECT submitted, submitted_at FROM assignment_submissions WHERE assignment_id = ? AND user_id = ?`)
-		.bind(aid, user.id)
-		.first<{ submitted: number; submitted_at: number | null }>();
 
 	let submitted = prev?.submitted ?? 0;
 	let submittedAt = prev?.submitted_at ?? null;
@@ -192,12 +191,13 @@ export const POST: RequestHandler = async (event) => {
 				(assignment_id, user_id, classroom_id, text_body, submitted, submitted_at, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(assignment_id, user_id) DO UPDATE SET
-				text_body = excluded.text_body,
+				text_body = CASE WHEN ? = 1 THEN assignment_submissions.text_body ELSE excluded.text_body END,
 				submitted = excluded.submitted,
 				submitted_at = excluded.submitted_at,
-				updated_at = excluded.updated_at`
+				updated_at = excluded.updated_at
+			 WHERE assignment_submissions.submitted = 0 OR ? = 1`
 		)
-		.bind(aid, user.id, classroomId, text, submitted, submittedAt, now)
+		.bind(aid, user.id, classroomId, text, submitted, submittedAt, now, wantWithdraw ? 1 : 0, wantWithdraw ? 1 : 0)
 		.run();
 
 	const mine = await db

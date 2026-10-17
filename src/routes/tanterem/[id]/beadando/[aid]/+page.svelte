@@ -9,7 +9,7 @@
 		Check,
 		ChevronRight,
 		FileText,
-		Settings,
+		Pencil,
 		Trash2,
 		X
 	} from '@lucide/svelte';
@@ -108,17 +108,6 @@
 		if (s === 'submitted') return 'Beküldve';
 		if (s === 'working') return 'Dolgozik rajta';
 		return 'Még nem küldött';
-	}
-
-	function reqSummary(): string {
-		const parts: string[] = [];
-		if (assignment.require_text) parts.push('Szöveg');
-		if (assignment.require_images)
-			parts.push(assignment.max_images > 0 ? `Kép (max. ${assignment.max_images})` : 'Kép');
-		if ((assignment.require_audio ?? 0) === 1) parts.push('Hang');
-		if (assignment.require_files)
-			parts.push(assignment.max_files > 0 ? `Fájl (max. ${assignment.max_files})` : 'Fájl');
-		return parts.length > 0 ? parts.join(' · ') : 'Szabad beküldés';
 	}
 
 	let submittedCount = $derived(results.filter((r) => r.submitted === 1).length);
@@ -275,12 +264,13 @@
 		</p>
 	</div>
 	<IconButton ariaLabel="Beadandó szerkesztése" size={44} onclick={openEdit}>
-		<Settings size={20} />
+		<Pencil size={20} />
 	</IconButton>
 </div>
 
+{#if assignment.description?.trim() || assignment.due_date}
 <section aria-label="Részletek" class="mt-4 rounded-[20px] border border-stone-200 bg-white p-4 dark:border-white/10 dark:bg-stone-900">
-	{#if assignment.description}
+	{#if assignment.description?.trim()}
 		<p class="text-sm leading-relaxed break-words whitespace-pre-line text-stone-600 dark:text-stone-300">{assignment.description}</p>
 	{/if}
 	{#if assignment.due_date}
@@ -289,10 +279,8 @@
 			{pastDue ? 'Lejárt: ' : 'Határidő: '}{fmtDate(assignment.due_date)}
 		</p>
 	{/if}
-	<p class="mt-2 inline-block rounded-full bg-amber-500/10 px-2.5 py-1 text-[12px] font-extrabold text-amber-700 dark:text-amber-300">
-		{reqSummary()}
-	</p>
 </section>
+{/if}
 
 <section aria-label="Haladás" class="mt-2.5 rounded-[20px] border border-stone-200 bg-white p-4 dark:border-white/10 dark:bg-stone-900">
 	<div class="flex items-baseline justify-between gap-2">
@@ -329,6 +317,8 @@
 	<SearchInput bind:value={query} placeholder="Keresés név alapján…" ariaLabel="Keresés név alapján" />
 	<Segmented
 		ariaLabel="Szűrés állapot szerint"
+		animated
+		mobileDropdown
 		bind:value={filter}
 		options={[
 			{ value: 'all', label: 'Mind' },
@@ -440,7 +430,7 @@
 										type="button"
 										onclick={() => (previewId = u.id)}
 										aria-label="{u.file_name} előnézete"
-										class="block w-full overflow-hidden rounded-xl bg-stone-100 transition hover:opacity-90 active:scale-[0.99] dark:bg-white/10"
+										class="block w-full overflow-hidden bg-stone-100 transition hover:opacity-90 active:scale-[0.99] dark:bg-white/10"
 									>
 										<img src={uploadUrl(assignment.id, u.id)} alt={u.file_name} loading="lazy" class="max-h-64 w-full object-cover" />
 									</button>
@@ -488,7 +478,7 @@
 	<div class="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4" role="presentation">
 		<button type="button" tabindex="-1" aria-label="Előnézet bezárása" onclick={() => (previewId = null)} class="absolute inset-0"></button>
 		<div class="relative max-h-full max-w-full overflow-auto">
-			<img src={uploadUrl(assignment.id, previewUpload.id)} alt={previewUpload.file_name} class="max-h-[80dvh] w-auto max-w-full rounded-xl" />
+			<img src={uploadUrl(assignment.id, previewUpload.id)} alt={previewUpload.file_name} class="max-h-[80dvh] w-auto max-w-full" />
 			<button
 				type="button"
 				onclick={() => (previewId = null)}

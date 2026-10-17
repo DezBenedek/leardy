@@ -45,9 +45,9 @@ export const loadClassroomTaskPage = async (event: RequestEvent) => {
 	const taskId = event.params.taskId ?? '';
 
 	const room = await db
-		.prepare(`SELECT id, teacher_id, name FROM classrooms WHERE id = ?`)
+		.prepare(`SELECT id, teacher_id, name, subject FROM classrooms WHERE id = ?`)
 		.bind(roomId)
-		.first<{ id: string; teacher_id: string; name: string }>();
+		.first<{ id: string; teacher_id: string; name: string; subject: string | null }>();
 	if (!room) throw error(404 as NumericRange<400, 599>, 'Nincs ilyen osztály.');
 	if (room.teacher_id !== user.id) throw redirect(303, `/tanterem/${roomId}`);
 
@@ -74,7 +74,7 @@ export const loadClassroomTaskPage = async (event: RequestEvent) => {
 		.all<TaskResultRow>();
 
 	return {
-		room: { id: room.id, name: room.name },
+		room: { id: room.id, name: room.name, subject: room.subject ?? '' },
 		task,
 		lessons: parseLessons(task.lesson_ids_json ?? '[]'),
 		results: results.results ?? []

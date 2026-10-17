@@ -304,6 +304,24 @@
 		return cached.tree;
 	}
 
+	/** A korábbi csatolmányoknál csak az elem azonosítója maradhatott meg. */
+	function refreshSelected(id: string, updated: SubjectTree) {
+		selected = selected.flatMap((pick) => {
+			if (pick.subjectId !== id) return [pick];
+			for (const l of updated.levels) {
+				if (pick.kind === 'level' && pick.levelId === l.id) return [pick];
+				for (const m of l.materials) {
+					const lesson = pick.kind === 'lesson' ? m.lessons.find((le) => le.id === pick.lessonId) : null;
+					if (!lesson && !(pick.kind === 'topic' && pick.topicId === m.id)) continue;
+					return [{ ...pick, subjectTitle: updated.title, levelId: l.id, levelTitle: l.title,
+						topicId: m.id, topicTitle: m.title, lessonTitle: lesson?.title ?? '',
+						crumb: [updated.title, l.title, m.title, lesson?.title].filter(Boolean).join(' - ') }];
+				}
+			}
+			return [];
+		});
+	}
+
 	async function ensureTree(id: string, cacheOnly = false): Promise<SubjectTree | null> {
 		const version = ++treeVersion;
 		treeError = false;
@@ -348,7 +366,7 @@
 					if (level && !nextLevel) trail = trail.filter((s) => s === 'subject' || s === 'level');
 					else if (topic && !nextTopic) trail = trail.filter((s) => s !== 'lesson');
 					level = nextLevel; topic = nextTopic;
-					selected = selected.filter((p) => p.subjectId !== id || got.tree.levels.some((l) => l.id === p.levelId && (p.kind === 'level' || l.materials.some((m) => m.id === p.topicId && (p.kind === 'topic' || m.lessons.some((le) => le.id === p.lessonId))))));
+					refreshSelected(id, got.tree);
 				}
 			}
 			return got.tree;
@@ -582,7 +600,7 @@
 
 	function crumbSoFar(): string {
 		const parts: string[] = [];
-		if (subject && step !== 'subject') parts.push(subject.title);
+		if (subject && step !== 'subject' && step !== 'level') parts.push(subject.title);
 		if (level && (step === 'topic' || step === 'lesson')) parts.push(level.title);
 		if (topic && step === 'lesson' && query.trim() === '') parts.push(topic.title);
 		return parts.join(' - ');
@@ -668,7 +686,7 @@
 <Drawer
 	{open}
 	label="Tananyag választása"
-	title={step === 'level' ? (select === 'level' ? subject?.title ?? levelLabel : levelLabel) : stepTitles[step]}
+	title={step === 'level' ? subject?.title ?? levelLabel : stepTitles[step]}
 	onBack={trail.length > 1 ? goBack : undefined}
 	{onClose}
 	canClose={() => !tutorialStep}

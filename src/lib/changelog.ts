@@ -26,6 +26,28 @@ export interface ChangeEntry {
 
 export const CHANGES: ChangeEntry[] = [
 	{
+		version: '1.0.1-beta',
+		title: 'Kényelmesebb tanterem és beadandók',
+		items: [
+			{
+				title: 'Rugalmasabb tananyagcsatolás',
+				desc: 'A választó az osztály tantárgyáról indul, de másikra is válthatsz. Az üzenetek csatolmányai és a feladatok leckéi utólag is módosíthatók.'
+			},
+			{
+				title: 'Átláthatóbb beadandók és értékelés',
+				desc: 'A beküldött válasz olvasási nézetben jelenik meg, fölötte a tanári értékeléssel. A tanári szűrő telefonon lenyíló listát, gépen animált váltást kapott.'
+			},
+			{
+				title: 'Könnyebben kezelhető képkivágás',
+				desc: 'A téglalapos kivágás mind a négy sarka elérhető telefonon is. Javult a forgatás és a tükrözés, a kész kép sarkai szögletesek maradnak.'
+			},
+			{
+				title: 'Javított kereső és útmutató',
+				desc: 'A keresőikon a mező bal szélén marad, a helyőrző keskeny nézetben is látható. Az útmutató nyitóablakának ikonja a cím mellé került.'
+			}
+		]
+	},
+	{
 		version: '1.0.0-beta',
 		title: 'Első béta kiadás',
 		items: [

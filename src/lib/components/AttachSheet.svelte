@@ -13,7 +13,7 @@
 </script>
 
 <script lang="ts">
-	import { BookOpen, Check, Layers, Minus, Plus, Search, Target, X } from '@lucide/svelte';
+	import { BookMarked, BookOpen, Check, Layers, Minus, Plus, Search, Target, X } from '@lucide/svelte';
 	import type { Subject } from '$lib/curriculum';
 	import Button from '$lib/ui/Button.svelte';
 	import Drawer from './Drawer.svelte';
@@ -28,11 +28,12 @@
 		open: boolean;
 		subjects: Subject[];
 		decks: DeckOpt[];
+		startSubjectId?: string;
 		onClose: () => void;
 		onPick: (picks: AttachPick[]) => void;
 	}
 
-	let { open, subjects, decks, onClose, onPick }: Props = $props();
+	let { open, subjects, decks, startSubjectId = '', onClose, onPick }: Props = $props();
 
 	type Kind = 'lesson' | 'quiz' | 'deck' | 'topic';
 
@@ -96,13 +97,13 @@
 		const out: AttachPick[] = [];
 		for (const p of picks) {
 			if (p.kind === 'topic') {
-				out.push({ type: 'topic', id: p.topicId, title: p.topicTitle, crumb: p.crumb });
+				out.push({ type: 'topic', id: p.topicId, title: p.topicTitle, crumb: `${p.levelTitle} - ${p.topicTitle}` });
 			} else if (p.lessonId) {
 				out.push({
 					type: kind === 'quiz' ? 'quiz' : 'lesson',
 					id: p.lessonId,
 					title: p.lessonTitle,
-					crumb: p.crumb
+					crumb: `${p.levelTitle} - ${p.lessonTitle}`
 				});
 			}
 		}
@@ -113,7 +114,7 @@
 	const kindTiles: { id: Kind; label: string; desc: string; icon: typeof BookOpen }[] = [
 		{ id: 'lesson', label: 'Lecke', desc: 'Elmélet a leckéből', icon: BookOpen },
 		{ id: 'quiz', label: 'Kvíz', desc: 'Kvízes leckék', icon: Target },
-		{ id: 'topic', label: 'Témakör', desc: 'Egy témakör a tananyagból', icon: BookOpen },
+		{ id: 'topic', label: 'Témakör', desc: 'Egy témakör a tananyagból', icon: BookMarked },
 		{ id: 'deck', label: 'Kártya', desc: 'Kártyacsomag', icon: Layers }
 	];
 
@@ -181,7 +182,7 @@
 {/snippet}
 
 <Drawer
-	{open}
+	open={open && !pickerOpen}
 	label="Csatolmány választása"
 	title={deckView ? 'Kártyacsomag' : 'Csatolmány típusa'}
 	onBack={deckView ? backToTypes : undefined}
@@ -258,6 +259,7 @@
 <ContentPicker
 	open={pickerOpen}
 	{subjects}
+	{startSubjectId}
 	select={kind === 'topic' ? 'topic' : 'lesson'}
 	multi
 	onlyWithQuiz={kind === 'quiz'}

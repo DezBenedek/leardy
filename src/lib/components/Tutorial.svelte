@@ -350,7 +350,12 @@
 
 <div {@attach portal} data-tutorial-root>
 	<Drawer open={tutorial.offer} label="Ismerd meg a Leardyt!" title="Mutassuk meg, hogyan működik a Leardy?" onClose={() => tutorial.dismissOffer()}>
-		<div class="intro-icon"><Compass size={30} /></div>
+		{#snippet header()}
+			<div class="intro-heading">
+				<span class="intro-icon"><Compass size={24} aria-hidden="true" /></span>
+				<h2>Mutassuk meg, hogyan működik a Leardy?</h2>
+			</div>
+		{/snippet}
 		<p class="intro-text">Néhány perc alatt megmutatjuk, hol találod a leckéket, a feladataidat és a kártyákat. Közben ki is próbálhatod a navigációt.</p>
 		<p class="hint">Kb. 3 perc · Bármikor kiléphetsz</p>
 		<button class="primary wide" onclick={() => start('basics')}><Play size={17} /> Mutasd meg</button>
@@ -421,7 +426,10 @@
 </div>
 
 <style>
-	.intro-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 20px; margin: 18px 0; background: var(--color-brand-50); color: var(--color-brand-600); }
+	.intro-heading { display: flex; flex: 1; min-width: 0; align-items: center; gap: 12px; padding-top: 12px; }
+	.intro-heading h2 { min-width: 0; font-size: 20px; line-height: 1.3; font-weight: 800; letter-spacing: -.025em; color: var(--color-ink-900); }
+	:global(.dark) .intro-heading h2 { color: white; }
+	.intro-icon { display: grid; place-items: center; width: 48px; height: 48px; flex-shrink: 0; border-radius: 16px; background: var(--color-brand-50); color: var(--color-brand-600); }
 	.intro-text { margin: 12px 0; font-size: 15px; line-height: 1.65; color: var(--color-stone-500); }
 	.hint { font-size: 12px; line-height: 1.5; color: var(--color-stone-500); }
 	.primary, .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 10px 15px; border-radius: 999px; font-size: 14px; font-weight: 700; cursor: pointer; }

@@ -327,7 +327,7 @@
 	<div class="shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none" style:width={searchFocus ? '0px' : '44px'} style:opacity={searchFocus ? 0 : 1}>
 		<IconButton ariaLabel="Vissza a tanuláshoz" size={44} disabled={searchFocus} onclick={goBack}><ArrowLeft size={21} /></IconButton>
 	</div>
-	<h1 class={['min-w-0 shrink-0 overflow-hidden transition-[max-width,opacity] duration-200 motion-reduce:transition-none', !level && 'flex-1']} style:max-width={searchFocus ? '0px' : level ? 'calc(100% - 160px)' : 'calc(100% - 52px)'} style:opacity={searchFocus ? 0 : 1}>
+	<h1 class={['min-w-0 shrink-0 overflow-hidden transition-[max-width,opacity] duration-200 motion-reduce:transition-none', !level && 'flex-1']} style:max-width={searchFocus ? '0px' : level ? 'calc(100% - 216px)' : 'calc(100% - 52px)'} style:opacity={searchFocus ? 0 : 1}>
 		<button
 			type="button"
 			aria-label={level ? `Tantárgy és tananyag választása: ${subject?.title}, ${level.title}` : 'Tantárgy és tananyag választása'}

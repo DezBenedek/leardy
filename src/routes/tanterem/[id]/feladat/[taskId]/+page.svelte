@@ -3,7 +3,9 @@
 	import { createBackNavigation } from '$lib/back-navigation';
 	import { lessonPath } from '$lib/lesson-paths';
 	import { resolve } from '$app/paths';
-	import { ArrowLeft, CalendarDays, Check, Settings } from '@lucide/svelte';
+	import { ArrowLeft, CalendarDays, Check, Pencil, Plus, Target, X } from '@lucide/svelte';
+	import ContentPicker, { type ContentPick } from '$lib/components/ContentPicker.svelte';
+	import type { Subject } from '$lib/curriculum';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
@@ -15,7 +17,12 @@
 
 	let { data }: { data: PageData } = $props();
 	let room = $derived(data.room);
-	let lessons = $derived(data.lessons);
+	let lessonPatch = $state<{ id: string; title: string }[] | null>(null);
+	let lessons = $derived(lessonPatch ?? data.lessons);
+	let editLessons = $state<ContentPick[]>([]);
+	let subjects = $state<Subject[]>([]);
+	let pickerOpen = $state(false);
+	let subjectId = $derived(subjects.find((s) => s.id === room.subject || s.title.toLocaleLowerCase('hu-HU') === (room.subject ?? '').trim().toLocaleLowerCase('hu-HU'))?.id ?? '');
 	// Helyi felülírás szerkesztés után; új adat érkezésekor a szerver az igazság.
 	let taskPatch = $state<Partial<typeof data.task> | null>(null);
 	let task = $derived({ ...data.task, ...(taskPatch ?? {}) });
@@ -87,7 +94,22 @@
 		});
 	});
 
-	function openEdit() {
+	function lessonTitle(p: ContentPick) { return p.levelTitle ? `${p.levelTitle} - ${p.lessonTitle}` : p.lessonTitle; }
+	async function loadSubjects() {
+		try {
+			const response = await fetch('/api/browse');
+			if (!response.ok) throw new Error('browse');
+			const result = await response.json();
+			subjects = result.subjects ?? [];
+			return true;
+		} catch { toast.error('Nem sikerült betölteni a tantárgyakat.'); return false; }
+	}
+	async function openPicker() { if (await loadSubjects()) pickerOpen = true; }
+
+	async function openEdit() {
+		await loadSubjects();
+		editLessons = lessons.map((l) => ({ kind: 'lesson', subjectId, subjectTitle: room.subject,
+			levelId: '', levelTitle: '', levelLabel: 'Tananyag', topicId: '', topicTitle: '', lessonId: l.id, lessonTitle: l.title, quizCount: 1, crumb: l.title }));
 		editTitle = task.title ?? '';
 		editCount = task.question_count ?? 10;
 		editTarget = task.target_pct ?? 80;
@@ -99,6 +121,7 @@
 	async function saveEdit(e: SubmitEvent) {
 		e.preventDefault();
 		if (savingEdit) return;
+		if (!editLessons.length) { editError = 'Válassz legalább egy leckét!'; return; }
 		savingEdit = true;
 		editError = null;
 		let due: number | null = null;
@@ -117,6 +140,7 @@
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
 					title: editTitle,
+					lessons: editLessons.map((p) => ({ id: p.lessonId, title: lessonTitle(p) })),
 					question_count: editCount,
 					target_pct: editTarget,
 					due_date: due
@@ -133,6 +157,7 @@
 				target_pct: j.target_pct,
 				due_date: j.due_date
 			};
+			lessonPatch = JSON.parse(j.lesson_ids_json);
 			editOpen = false;
 			toast.success('Feladat frissítve');
 		} catch {
@@ -164,7 +189,7 @@
 		</p>
 	</div>
 	<IconButton ariaLabel="Feladat szerkesztése" size={44} onclick={openEdit}>
-		<Settings size={20} />
+		<Pencil size={20} />
 	</IconButton>
 </div>
 
@@ -286,6 +311,22 @@
 <Drawer open={editOpen} label="Feladat szerkesztése" title="Feladat szerkesztése" onClose={() => (editOpen = false)}>
 	<form onsubmit={saveEdit} class="mt-3 grid gap-3.5" novalidate>
 		<Input label="Feladat címe" placeholder="pl. 3. lecke kvíz" bind:value={editTitle} disabled={savingEdit} error={editError} />
+		<div>
+			<div class="mb-2 flex items-center justify-between gap-2">
+				<p class="text-[13px] font-semibold text-ink-900 dark:text-white">Leckék ({editLessons.length})</p>
+				<IconButton ariaLabel="Leckék választása" size={44} disabled={savingEdit} onclick={openPicker}><Plus size={18} /></IconButton>
+			</div>
+			<ul class="grid gap-2">
+				{#each editLessons as lesson (lesson.lessonId)}
+					<li class="flex min-w-0 items-center gap-2 rounded-xl bg-stone-100 p-2 dark:bg-white/10">
+						<Target size={16} class="shrink-0 text-stone-500" />
+						<span class="min-w-0 flex-1 truncate text-[13px] font-bold text-ink-700 dark:text-stone-200">{lessonTitle(lesson)}</span>
+						<IconButton ariaLabel="Lecke kivétele" size={44} disabled={savingEdit} onclick={() => editLessons = editLessons.filter((p) => p.lessonId !== lesson.lessonId)}><X size={16} /></IconButton>
+					</li>
+				{/each}
+			</ul>
+		</div>
+
 		<div class="grid grid-cols-2 gap-3">
 			<div>
 				<p class="mb-1.5 text-[13px] font-semibold text-ink-900 dark:text-white">Kérdések száma</p>
@@ -338,3 +379,6 @@
 		</div>
 	</form>
 </Drawer>
+
+<ContentPicker open={pickerOpen} {subjects} startSubjectId={subjectId} select="lesson" multi onlyWithQuiz
+	initialSelected={editLessons} onClose={() => pickerOpen = false} onPick={(picks) => { editLessons = picks; pickerOpen = false; }} />

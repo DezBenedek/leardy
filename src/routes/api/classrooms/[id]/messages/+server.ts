@@ -1,16 +1,10 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { getDb, requireUser } from '$lib/server/db';
 import type { MessageRefType } from '$lib/server/classroom';
+import { parseMessageAttachments } from '$lib/message-attachments';
 import { fireNotify, notifyClassroom } from '$lib/server/push';
 
 const REF_TYPES: MessageRefType[] = ['', 'subject', 'lesson', 'quiz', 'deck', 'topic'];
-const MAX_REFS = 10;
-
-interface RefInput {
-	ref_type?: unknown;
-	ref_id?: unknown;
-	ref_title?: unknown;
-}
 
 /* Üzenet küldése az osztályfalra: csak a saját tanár.
    Body: { title, body?, ref_type?, ref_id?, ref_title?, refs?: [{ref_type, ref_id, ref_title}] } */
@@ -50,14 +44,7 @@ export const POST: RequestHandler = async (event) => {
 	// Több csatolmány (új), vagy egy csatolmány (régi forma).
 	let refs: { refType: string; refId: string; refTitle: string }[] = [];
 	if (Array.isArray(body.refs)) {
-		for (const r of (body.refs as RefInput[]).slice(0, MAX_REFS)) {
-			const t = String(r?.ref_type ?? '') as MessageRefType;
-			const rid = String(r?.ref_id ?? '').trim().slice(0, 120);
-			const rtitle = String(r?.ref_title ?? '').trim().slice(0, 300);
-			if (!REF_TYPES.includes(t) || t === '' || !rid) continue;
-			if (refs.some((x) => x.refType === t && x.refId === rid)) continue;
-			refs.push({ refType: t, refId: rid, refTitle: rtitle });
-		}
+		refs = parseMessageAttachments(body.refs).map((r) => ({ refType: r.ref_type, refId: r.ref_id, refTitle: r.ref_title }));
 	} else {
 		const refType = String(body.ref_type ?? '') as MessageRefType;
 		const refId = String(body.ref_id ?? '').trim().slice(0, 120);

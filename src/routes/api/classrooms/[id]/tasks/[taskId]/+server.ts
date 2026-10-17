@@ -2,7 +2,7 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 import { getDb, requireUser } from '$lib/server/db';
 
 /* Feladat szerkesztése: csak a saját tanár.
-   Cím, kérdésszám, célszázalék, határidő (leckék és sorrend nem változik). */
+   Cím, leckék, kérdésszám, célszázalék és határidő. */
 export const PATCH: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
@@ -27,6 +27,7 @@ export const PATCH: RequestHandler = async (event) => {
 
 	let body: {
 		title?: unknown;
+		lessons?: unknown;
 		question_count?: unknown;
 		target_pct?: unknown;
 		due_date?: unknown;
@@ -50,12 +51,27 @@ export const PATCH: RequestHandler = async (event) => {
 	if (!Number.isInteger(targetPct) || targetPct < 10 || targetPct > 100)
 		return json({ error: 'A célszázalék 10 és 100 között legyen!' }, { status: 400 });
 
+	let lessonIdsJson: string | undefined;
+	if (body.lessons !== undefined) {
+		if (!Array.isArray(body.lessons)) return json({ error: 'Hibás leckelista.' }, { status: 400 });
+		const lessons: { id: string; title: string }[] = [];
+		for (const item of body.lessons) {
+			if (!item || typeof item !== 'object') continue;
+			const id = String(item.id ?? '').trim().slice(0, 120);
+			if (!id || lessons.some((l) => l.id === id)) continue;
+			lessons.push({ id, title: String(item.title ?? 'Lecke').slice(0, 120) });
+			if (lessons.length === 20) break;
+		}
+		if (!lessons.length) return json({ error: 'Válassz legalább egy leckét!' }, { status: 400 });
+		lessonIdsJson = JSON.stringify(lessons);
+	}
+
 	await db
 		.prepare(
-			`UPDATE classroom_tasks SET title = ?, question_count = ?, target_pct = ?, due_date = ?
+			`UPDATE classroom_tasks SET title = ?, question_count = ?, target_pct = ?, due_date = ?, lesson_ids_json = COALESCE(?, lesson_ids_json)
 			 WHERE id = ?`
 		)
-		.bind(title, questionCount, targetPct, dueDate, taskId)
+		.bind(title, questionCount, targetPct, dueDate, lessonIdsJson ?? null, taskId)
 		.run();
-	return json({ ok: true, title, question_count: questionCount, target_pct: targetPct, due_date: dueDate }, { status: 200 });
+	return json({ ok: true, title, question_count: questionCount, target_pct: targetPct, due_date: dueDate, ...(lessonIdsJson ? { lesson_ids_json: lessonIdsJson } : {}) }, { status: 200 });
 };

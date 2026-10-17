@@ -284,7 +284,7 @@
 
 	async function saveText() {
 		const a = assignment;
-		if (!a || saving || a.own) return;
+		if (!a || saving || submitBusy || a.own || submitted) return;
 		if (a.dueDate != null && Date.now() > a.dueDate && (mine?.submitted ?? 0) !== 1) return;
 		saving = true;
 		try {
@@ -310,7 +310,9 @@
 
 	async function submit(want: boolean) {
 		const a = assignment;
-		if (!a || submitBusy) return;
+		if (!a || submitBusy || saving || uploadBusy) return;
+		if (textTimer) clearTimeout(textTimer);
+		textTimer = null;
 		submitBusy = true;
 		try {
 			const res = await mutationFetch(`/api/classrooms/${a.classroomId}/assignments/${a.id}/submissions`, {
@@ -357,34 +359,15 @@
 			{#if loading}
 				<p class="text-[13px] text-stone-400 dark:text-stone-500">Betöltés…</p>
 			{:else if !a.own}
-				{#if a.require_text}
-					<div>
-						<label for="home-assignment-text" class="mb-1.5 block text-[13px] font-semibold text-ink-900 dark:text-white">
-							Szöveges válasz
-						</label>
-						<textarea
-							id="home-assignment-text"
-							rows="5"
-							maxlength="20000"
-							placeholder="Írd ide a beadandót…"
-							bind:value={text}
-							oninput={scheduleAutosave}
-							disabled={submitBusy || (submitted && pastDue)}
-							class={inputCls}
-						></textarea>
-						<p class="mt-1 text-[12px] text-stone-400 tabular-nums dark:text-stone-500">
-							{text.trim().length} karakter{saving ? ' · Mentés…' : textSaved ? ' · Mentve' : ''}
-						</p>
-					</div>
-				{/if}
 				{#if submitted && mine && (mine.grade !== null || (mine.feedback ?? '') !== '')}
 					<div class="rounded-2xl border border-brand-200 bg-brand-50 p-3 dark:border-brand-500/30 dark:bg-brand-500/10">
+						<p class="text-[12px] font-bold text-brand-600 dark:text-brand-300">Tanári értékelés</p>
 						{#if mine.grade !== null}
 							<p class="flex items-center gap-2 text-[15px] font-extrabold text-ink-900 dark:text-white">
 								<span class="grid size-7 place-items-center rounded-full bg-brand-500 text-[14px] text-white">
 									{mine.grade}
 								</span>
-								Tanári értékelés
+								Érdemjegy
 							</p>
 						{/if}
 						{#if mine.feedback}
@@ -392,6 +375,30 @@
 						{/if}
 					</div>
 				{/if}
+				{#if a.require_text}
+					<div>
+						<p class="mb-1.5 text-[13px] font-semibold text-ink-900 dark:text-white">Szöveges válasz</p>
+						{#if submitted}
+							<p class="text-sm leading-relaxed break-words whitespace-pre-wrap text-stone-700 dark:text-stone-200">{mine?.text_body || 'Nincs szöveges válasz.'}</p>
+						{:else}
+							<label for="home-assignment-text" class="sr-only">Szöveges válasz</label>
+						<textarea
+							id="home-assignment-text"
+							rows="5"
+							maxlength="20000"
+							placeholder="Írd ide a beadandót…"
+							bind:value={text}
+							oninput={scheduleAutosave}
+							disabled={submitBusy || pastDue}
+							class={inputCls}
+						></textarea>
+						<p class="mt-1 text-[12px] text-stone-400 tabular-nums dark:text-stone-500">
+							{text.trim().length} karakter{saving ? ' · Mentés…' : textSaved ? ' · Mentve' : ''}
+						</p>
+					{/if}
+					</div>
+				{/if}
+
 				{#if a.require_images || a.require_audio || a.require_files}
 					<div class="rounded-2xl border border-stone-200 {submitted ? 'p-2.5' : 'p-3.5'} dark:border-white/10">
 						<div class="mb-1 flex items-center gap-2">
@@ -421,7 +428,7 @@
 						{#if a.require_images && images.length > 0}
 							<div class="mt-1.5 grid {submitted ? 'grid-cols-4 gap-1' : 'grid-cols-3 gap-1.5'}">
 								{#each images as u (u.id)}
-									<div class="group relative overflow-hidden rounded-lg bg-stone-100 dark:bg-white/10">
+									<div class="group relative overflow-hidden bg-stone-100 dark:bg-white/10">
 										<img src={uploadUrl(a.id, u.id)} alt={u.file_name} loading="lazy" class="aspect-square w-full object-cover" />
 										{#if !submitted && !pastDue}
 											<button
@@ -488,7 +495,7 @@
 					<p class="flex items-center gap-1.5 text-[14px] font-extrabold text-emerald-700 dark:text-emerald-300">
 						<Check size={16} /> {total > 0 ? 'Beküldve' : 'Késznek jelölve'}{#if mine?.submitted_at} · {fmtDate(mine.submitted_at)}{/if}
 					</p>
-					<Button variant="outline" block disabled={submitBusy || pastDue} onclick={() => submit(false)}>
+					<Button variant="outline" block disabled={submitBusy || saving || uploadBusy || pastDue} onclick={() => submit(false)}>
 						<Undo2 size={16} /> {submitBusy ? '…' : 'Visszavonom'}
 					</Button>
 					{#if pastDue}
@@ -497,7 +504,7 @@
 						</p>
 					{/if}
 				{:else}
-					<Button block disabled={submitBusy} onclick={() => submit(true)}>
+					<Button block disabled={submitBusy || saving || uploadBusy || pastDue} onclick={() => submit(true)}>
 						<Send size={16} /> {submitBusy ? '…' : total > 0 ? 'Beküldöm' : 'Megjelölés készként'}
 					</Button>
 				{/if}
@@ -602,7 +609,7 @@
 										type="button"
 										onclick={() => (preview = u)}
 										aria-label="{u.file_name} előnézete"
-										class="block w-full overflow-hidden rounded-xl bg-stone-100 transition hover:opacity-90 active:scale-[0.99] dark:bg-white/10"
+										class="block w-full overflow-hidden bg-stone-100 transition hover:opacity-90 active:scale-[0.99] dark:bg-white/10"
 									>
 										<img src={uploadUrl(assignment.id, u.id)} alt={u.file_name} loading="lazy" class="max-h-64 w-full object-cover" />
 									</button>
@@ -650,7 +657,7 @@
 	<div class="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4" role="presentation">
 		<button type="button" tabindex="-1" aria-label="Előnézet bezárása" onclick={() => (preview = null)} class="absolute inset-0"></button>
 		<div class="relative max-h-full max-w-full overflow-auto">
-			<img src={uploadUrl(assignment.id, preview.id)} alt={preview.file_name} class="max-h-[80dvh] w-auto max-w-full rounded-xl" />
+			<img src={uploadUrl(assignment.id, preview.id)} alt={preview.file_name} class="max-h-[80dvh] w-auto max-w-full" />
 			<button
 				type="button"
 				onclick={() => (preview = null)}
