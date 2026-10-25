@@ -472,12 +472,6 @@
 	</div>
 </div>
 
-{#if localMode}
-	<p role="status" class="mt-3 rounded-xl bg-stone-100 px-3 py-2 text-sm text-stone-600 dark:bg-white/5 dark:text-stone-300">
-		Offline vagy. A tárolt tantárgyak és tananyagok listája látható. A korábban megnyitott leckék olvashatók, a keresés és a szűrők helyben működnek.
-	</p>
-{/if}
-
 <div class="mt-4" data-tutorial-empty={(localMode ? !offlineLoading : !subjectsQ.loading && subjectsQ.data != null) && subjects.every((s) => s.lessonCount === 0) ? 'learning' : undefined}>
 	{#if localMode ? offlineLoading : treeQ.loading || subjectsQ.loading}
 		<div role="status" aria-label="Betöltés" class="grid gap-2.5">

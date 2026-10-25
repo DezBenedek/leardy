@@ -16,6 +16,7 @@ async function handler(path, method) {
  return (await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`))[method];
 }
 const editMessage = await handler('messages/[msgId]', 'PATCH');
+const deleteMessage = await handler('messages/[msgId]', 'DELETE');
 const editTask = await handler('tasks/[taskId]', 'PATCH');
 const submit = await handler('assignments/[aid]/submissions', 'POST');
 function setup() {
@@ -40,6 +41,39 @@ function setup() {
  const event = (body, userId='teacher') => ({ db, user:{id:userId}, params:{id:'room',msgId:'message',taskId:'task',aid:'assignment'}, request:new Request('https://example.invalid/api',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}) });
  return {sql,db,event};
 }
+
+test('A tanár az üzenetet és csatolmányait törölheti', async () => {
+ const {sql,event}=setup();
+ assert.equal((await deleteMessage(event({}))).status,200);
+ assert.equal(sql.prepare('SELECT count(*) AS n FROM messages').get().n,0);
+ assert.equal(sql.prepare('SELECT count(*) AS n FROM message_refs').get().n,0);
+ assert.equal((await deleteMessage(event({}))).status,404);
+});
+
+test('Diák és másik tanár nem törölhet üzenetet', async () => {
+ const {sql,event}=setup();
+ for (const userId of ['student','other-teacher']) {
+  assert.equal((await deleteMessage(event({},userId))).status,403);
+ }
+ assert.equal(sql.prepare('SELECT count(*) AS n FROM messages').get().n,1);
+ assert.equal(sql.prepare('SELECT count(*) AS n FROM message_refs').get().n,1);
+});
+
+test('Másik osztály üzenete nem törölhető az aktuális osztály útvonalán', async () => {
+ const {sql,event}=setup();
+ sql.exec("INSERT INTO classrooms VALUES ('other-room','teacher'); UPDATE messages SET classroom_id='other-room';");
+ assert.equal((await deleteMessage(event({}))).status,404);
+ assert.equal(sql.prepare('SELECT count(*) AS n FROM messages').get().n,1);
+ assert.equal(sql.prepare('SELECT count(*) AS n FROM message_refs').get().n,1);
+});
+
+test('A törléshez bejelentkezés, adatbázis és létező osztály kell', async () => {
+ const {sql,event}=setup();
+ assert.equal((await deleteMessage({...event({}),user:null})).status,401);
+ assert.equal((await deleteMessage({...event({}),db:null})).status,503);
+ assert.equal((await deleteMessage({...event({}),params:{id:'missing',msgId:'message'}})).status,404);
+ assert.equal(sql.prepare('SELECT count(*) AS n FROM messages').get().n,1);
+});
 
 test('A csatolmány címe a tananyag és a kiválasztott elem neve', () => {
  assert.equal(attachmentTitle('Történelem - 7. évfolyam - Ókor - Róma'),'7. évfolyam - Róma');

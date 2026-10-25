@@ -9,6 +9,7 @@ const config = {
 		paths: { relative: false },
 		serviceWorker: { register: false },
 		adapter: adapter({
+			config: 'wrangler.sveltekit.jsonc',
 			routes: {
 				include: ['/*'],
 				exclude: ['<build>', '<files>']

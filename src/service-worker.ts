@@ -359,8 +359,8 @@ self.addEventListener('push', (event) => {
 	const tag = data.tag || 'leardy';
 	const options = {
 		body,
-		icon: '/icons/icon-192.png',
-		badge: '/icons/icon-192.png',
+		icon: '/icons/notification-book.png',
+		badge: '/icons/notification-badge.png',
 		data: { url },
 		tag,
 		renotify: false

@@ -49,6 +49,7 @@ class ThemeStore {
 		const dark = this.isDark;
 		document.documentElement.classList.toggle('dark', dark);
 		document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+		document.documentElement.style.setProperty('--app-background', dark ? '#0c0a09' : '#ffffff');
 		try {
 			localStorage.setItem(KEY, this.choice);
 		} catch {

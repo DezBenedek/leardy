@@ -2,6 +2,29 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 import { getDb, requireUser } from '$lib/server/db';
 import { parseMessageAttachments } from '$lib/message-attachments';
 
+/** Az osztály tanára az üzenetet a csatolmányhivatkozásokkal együtt törölheti. */
+export const DELETE: RequestHandler = async (event) => {
+	const db = getDb(event);
+	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
+	const user = await requireUser(event, db);
+	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
+	const classroomId = event.params.id ?? '';
+	const msgId = event.params.msgId ?? '';
+	const room = await db.prepare('SELECT teacher_id FROM classrooms WHERE id = ?')
+		.bind(classroomId).first<{ teacher_id: string }>();
+	if (!room) return json({ error: 'Nincs ilyen osztály.' }, { status: 404 });
+	if (room.teacher_id !== user.id)
+		return json({ error: 'Csak az osztály tanára törölhet üzenetet.' }, { status: 403 });
+	const message = await db.prepare('SELECT id FROM messages WHERE id = ? AND classroom_id = ?')
+		.bind(msgId, classroomId).first<{ id: string }>();
+	if (!message) return json({ error: 'Nincs ilyen üzenet.' }, { status: 404 });
+	await db.batch([
+		db.prepare('DELETE FROM message_refs WHERE message_id = ?').bind(msgId),
+		db.prepare('DELETE FROM messages WHERE id = ? AND classroom_id = ?').bind(msgId, classroomId)
+	]);
+	return json({ ok: true });
+};
+
 /* Üzenet és csatolmányok szerkesztése: csak a saját tanár. */
 export const PATCH: RequestHandler = async (event) => {
 	const db = getDb(event);

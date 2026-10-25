@@ -13,7 +13,7 @@
 	import { markdownLessonDoc } from '$lib/lesson-markdown';
 	import { getLessonDraft, putLessonDraft, removeLessonDraft, lessonDraftKey, type LessonDraft } from '$lib/lesson-draft';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
-	import { ArrowDown, ArrowLeft, ArrowUp, ListChecks, Pencil, Save, Trash2, FileClock, X } from '@lucide/svelte';
+	import { ArrowDown, ArrowLeft, ArrowUp, ListChecks, Menu, Pencil, Save, Trash2, FileClock, X } from '@lucide/svelte';
 	import AddItemButton from '$lib/ui/AddItemButton.svelte';
 	import ActionMenu from '$lib/ui/ActionMenu.svelte';
 	import Drawer from './Drawer.svelte';
@@ -290,12 +290,14 @@
 			<h1 class="font-display break-words text-xl font-extrabold tracking-tight text-ink-900 dark:text-white"><ScrollableText text={title} lines={2} /></h1>
 			<p class="truncate text-xs text-stone-500 dark:text-stone-400">{lesson.levelTitle} · {lesson.materialTitle}</p>
 		</div>
-		<ActionMenu label="Lecke műveletei" disabled={locked} actions={[
-			{ id: 'save', label: 'Mentés', icon: Save, promote: 'small', disabled: !dirty, onclick: () => { void save(); } },
-			{ id: 'quiz', label: quizLabel, icon: ListChecks, promote: 'small', onclick: () => { void openQuiz(); } },
-			{ id: 'rename', label: 'Átnevezés', icon: Pencil, promote: 'small', iconOnly: true, onclick: openRename },
-			{ id: 'delete', label: 'Törlés', icon: Trash2, promote: 'small', iconOnly: true, tone: 'danger', onclick: openDelete }
-		]} />
+		<div class="flex shrink-0 items-center gap-2">
+			<IconButton ariaLabel="Mentés" size={44} disabled={locked || !dirty} onclick={() => { void save(); }}><Save size={20} /></IconButton>
+			<ActionMenu compact dense triggerIcon={Menu} label="Lecke műveletei" disabled={locked} actions={[
+				{ id: 'quiz', label: quizLabel, icon: ListChecks, onclick: () => { void openQuiz(); } },
+				{ id: 'rename', label: 'Átnevezés', icon: Pencil, onclick: openRename },
+				{ id: 'delete', label: 'Törlés', icon: Trash2, tone: 'danger', onclick: openDelete }
+			]} />
+		</div>
 	</header>
 
 	{#if availableDraft}

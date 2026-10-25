@@ -128,6 +128,10 @@ export function syncNotifPrefs(s: AppSettings = loadSettings()): void {
 			messages: s.pushClassMessage,
 			tasks: s.pushClassTask,
 			grades: s.pushGrades,
+			reminder: s.reminder,
+			reminderTime: s.reminderTime,
+			timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+			dueSoon: s.dueSoon,
 			muted: s.mutedClassrooms
 		})
 	}).catch(() => {});

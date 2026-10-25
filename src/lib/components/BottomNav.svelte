@@ -16,14 +16,14 @@
 </script>
 
 <nav
-	class="fixed inset-x-0 bottom-0 z-40 lg:hidden"
+	class="bottom-nav fixed inset-x-0 bottom-0 z-40 lg:hidden"
 	aria-label="Mobil navigáció"
 	data-sveltekit-preload-data="hover"
 	data-sveltekit-preload-code="viewport"
 >
 	<div
-		class="rounded-t-[26px] border border-b-0 border-stone-200 bg-white/95 px-2 pt-1.5 shadow-[0_-12px_40px_-12px_rgba(40,46,62,0.28)] backdrop-blur-xl dark:border-white/10 dark:bg-stone-950/95"
-		style="padding-bottom: max(0.5rem, env(safe-area-inset-bottom))"
+		class="rounded-t-[26px] border border-b-0 border-stone-200 bg-white px-2 pt-1.5 shadow-[0_-12px_40px_-12px_rgba(40,46,62,0.28)] dark:border-white/10 dark:bg-stone-950"
+		style="padding-bottom: max(0.5rem, var(--app-safe-area-bottom))"
 	>
 		<div class={['grid', items.length <= 3 ? 'grid-cols-3' : items.length === 4 ? 'grid-cols-4' : 'grid-cols-5']}>
 			{#each items as item (item.href)}

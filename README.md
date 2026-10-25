@@ -24,7 +24,7 @@ tanulni: itt vannak a leckék, a kvízek meg a kártyák egy helyen.
 
 ## Hogy futtatom helyben?
 
-Először telepítsd a függőségeket:
+A projekt pnpm-et használ, a verzióját a `package.json` rögzíti. Először telepítsd a függőségeket:
 
 ```bash
 pnpm install

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import '$lib/theme.svelte';
+	import { theme } from '$lib/theme.svelte';
 	import type { Snippet } from 'svelte';
 	import { browser, dev } from '$app/environment';
 	import { page } from '$app/state';
@@ -24,6 +24,8 @@
 	import { toast } from '$lib/toast.svelte';
 	import WhatsNew from '$lib/components/WhatsNew.svelte';
 	import { startNotificationEngine } from '$lib/notifications';
+	import { startPushSync } from '$lib/push-client';
+	import { startAppViewport } from '$lib/app-viewport';
 	import { loadSettings } from '$lib/settings';
 	import { applyDisplaySettings, shouldAnimate } from '$lib/display';
 	import { LATEST_CHANGE, getSeenWhatsNew } from '$lib/changelog';
@@ -41,9 +43,10 @@
 	}
 	onMount(() => {
 		connected = navigator.onLine;
+		const stopViewport = startAppViewport();
 		const stopContent = startContentSync();
 		const stopProgress = startProgressSync();
-		return () => { stopContent(); stopProgress(); };
+		return () => { stopContent(); stopProgress(); stopViewport(); };
 	});
 
 	$effect(() => {
@@ -78,7 +81,9 @@
 
 	// PWA: a web manifest link a head-be, a service worker regisztracio kliensoldalon.
 	// Nelkuluk a bongeszo nem kinalja fel a "Telepites" gombot.
-	let webManifestLink = $derived(pwaInfo ? pwaInfo.webManifest.linkTag : '');
+	let mounted = $state(false);
+	onMount(() => { mounted = true; });
+	let manifestHref = $derived(`/api/manifest?theme=${mounted && theme.isDark ? 'dark' : 'light'}`);
 
 	onMount(() => {
 		let stopped = false;
@@ -146,6 +151,7 @@
 		auth.seed(data.user ?? null, { offline: data.offline, isEditor: data.isEditor });
 	});
 	$effect(() => { if (user?.id) void syncProgress(); });
+	$effect(() => { if (user?.id) return startPushSync(); });
 
 	// Google OAuth hibák visszajelzése a callback átirányítás után (?auth_error=...).
 	// onMount + window.location: nem reaktív, ezért egyszer fut, nincs végtelen ciklus,
@@ -189,7 +195,7 @@
 
 <svelte:head>
 	<title>Leardy: Tanulj okosan</title>
-	{@html webManifestLink}
+	<link rel="manifest" href={manifestHref} />
 </svelte:head>
 
 {#snippet progressNotices()}
@@ -234,7 +240,6 @@
 					class="mx-auto w-full max-w-3xl px-4 pt-5 pb-36 sm:px-6 lg:px-8 lg:pt-8 lg:pb-12"
 				>
 						{@render progressNotices()}
-					{#if offlineLearning}<p role="status" class="mb-3 text-sm text-stone-500">Offline vagy. A korábban betöltött tartalmakat látod.</p>{/if}
 					{@render children()}
 				</main>
 			{/key}

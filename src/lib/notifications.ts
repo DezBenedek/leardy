@@ -1,5 +1,6 @@
 import { browser } from '$app/environment';
 import { loadSettings, syncNotifPrefs } from '$lib/settings';
+import { pushState } from '$lib/push-client';
 import { APP_VERSION } from '$lib/version';
 
 /* Helyi push-szerű értesítések: Notification API + időzített ellenőrzés.
@@ -53,8 +54,8 @@ async function showViaServiceWorker(title: string, body: string, url: string, ta
 		if (typeof anyReg.showNotification !== 'function') return false;
 		await anyReg.showNotification(title, {
 			body,
-			icon: '/icons/icon-192.png',
-			badge: '/icons/icon-192.png',
+			icon: '/icons/notification-book.png',
+			badge: '/icons/notification-badge.png',
 			data: { url },
 			tag,
 			renotify: false
@@ -75,7 +76,7 @@ export async function showLocalNotification(
 	// Kattintásra navigálás: a service worker nélküli esethez is figyelünk.
 	try {
 		if (await showViaServiceWorker(title, body, url, tag)) return true;
-		const n = new Notification(title, { body, icon: '/icons/icon-192.png', tag });
+		const n = new Notification(title, { body, icon: '/icons/notification-book.png', tag });
 		n.onclick = () => {
 			try {
 				window.focus();
@@ -127,6 +128,7 @@ function setSeen(key: string, value: string): void {
 async function checkDailyReminder(): Promise<void> {
 	const s = loadSettings();
 	if (!s.reminder || !canNotify()) return;
+	if (await hasPushSubscription()) return;
 	// Pontos percrehegyezes helyett "lejart, de ma meg nem szolt" logika:
 	// a tick keshet, a lap lehet hatterben, ebredereskor potolni kell.
 	// A HH:MM nullazott alakban szovegesen osszehasonlithato.
@@ -159,14 +161,7 @@ async function fetchJson(url: string, timeoutMs = 10_000): Promise<unknown> {
 }
 
 async function hasPushSubscription(): Promise<boolean> {
-	try {
-		if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
-		const reg = await navigator.serviceWorker.getRegistration();
-		if (!reg) return false;
-		return !!(await reg.pushManager.getSubscription());
-	} catch {
-		return false;
-	}
+	return await pushState() === 'on';
 }
 
 async function checkClassroomUpdates(firstRun: boolean): Promise<void> {
@@ -241,7 +236,7 @@ async function checkClassroomUpdates(firstRun: boolean): Promise<void> {
 				setSeen(key, latest.id);
 			}
 		}
-		if (s.dueSoon && !firstRun) {
+		if (s.dueSoon && !firstRun && !pushOn) {
 			const now = Date.now();
 			const soonTasks = (content.tasks ?? []).filter(
 				(t) => typeof t.due_date === 'number' && t.due_date > now && t.due_date - now < 24 * 3600_000

@@ -2,7 +2,7 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 import { getDb, requireUser } from '$lib/server/db';
 import type { MessageRefType } from '$lib/server/classroom';
 import { parseMessageAttachments } from '$lib/message-attachments';
-import { fireNotify, notifyClassroom } from '$lib/server/push';
+import { fireNotify, processPushQueue, notifyClassroom } from '$lib/server/push';
 
 const REF_TYPES: MessageRefType[] = ['', 'subject', 'lesson', 'quiz', 'deck', 'topic'];
 
@@ -82,7 +82,7 @@ export const POST: RequestHandler = async (event) => {
 				.bind(msgId, r.refType, r.refId, r.refTitle, i)
 		)
 	]);
-	fireNotify(event, notifyClassroom(db, {
+	await notifyClassroom(db, {
 		classroomId: id,
 		excludeUserId: user.id,
 		title: 'Új tantermi üzenet',
@@ -90,6 +90,7 @@ export const POST: RequestHandler = async (event) => {
 		url: `/tanterem/${id}`,
 		tag: `msg:${msgId}`,
 		kind: 'message'
-	}));
+	});
+	fireNotify(event, processPushQueue(db));
 	return json({ ok: true, id: msgId }, { status: 201 });
 };

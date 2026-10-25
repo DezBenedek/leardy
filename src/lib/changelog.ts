@@ -26,6 +26,28 @@ export interface ChangeEntry {
 
 export const CHANGES: ChangeEntry[] = [
 	{
+		version: '1.0.2-beta',
+		title: 'Egyszerűbb felületek, kényelmesebb használat',
+		items: [
+			{
+				title: 'Egyszerűbb beállítások',
+				desc: 'Push aktiválása egy gombbal, aktív állapotnál zöld pipával. Rövidebb, átláthatóbb tanulási beállítások.'
+			},
+			{
+				title: 'Javított mobilos megjelenés',
+				desc: 'Egységes háttér a telefon alsó sávjánál és billentyűzet használatakor. Eltűntek az offline figyelmeztetések.'
+			},
+			{
+				title: 'Üzenettörlés a tanteremben',
+				desc: 'A tanár az üzenet részleteinél törölheti a bejegyzést.'
+			},
+			{
+				title: 'Kényelmesebb szerkesztés',
+				desc: 'Külön mentésikon és kisebb műveleti menü. Üres tantárgynál a választóban csak az új tananyag gombja jelenik meg.'
+			}
+		]
+	},
+	{
 		version: '1.0.1-beta',
 		title: 'Kényelmesebb tanterem és beadandók',
 		items: [

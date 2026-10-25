@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { getDb, requireUser } from '$lib/server/db';
-import { fireNotify, notifyClassroom } from '$lib/server/push';
+import { fireNotify, processPushQueue, notifyClassroom } from '$lib/server/push';
 
 /* Feladat kiosztása: kvíz leckékből. Csak a saját tanár.
    Body: { title?, lesson_ids: string[], question_count, target_pct, shuffle, due_date? }
@@ -80,7 +80,7 @@ export const POST: RequestHandler = async (event) => {
 			JSON.stringify(lessons), questionCount, targetPct, shuffle, dueDate, Date.now()
 		)
 		.run();
-	fireNotify(event, notifyClassroom(db, {
+	await notifyClassroom(db, {
 		classroomId: id,
 		excludeUserId: user.id,
 		title: 'Új tantermi feladat',
@@ -88,6 +88,7 @@ export const POST: RequestHandler = async (event) => {
 		url: `/tanterem/${id}`,
 		tag: `task:${taskId}`,
 		kind: 'task'
-	}));
+	});
+	fireNotify(event, processPushQueue(db));
 	return json({ ok: true, id: taskId }, { status: 201 });
 };

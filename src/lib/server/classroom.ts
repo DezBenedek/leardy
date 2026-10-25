@@ -325,20 +325,38 @@ export async function ensureSecuritySchema(db: D1Database): Promise<void> {
 				messages INTEGER NOT NULL DEFAULT 1,
 				tasks INTEGER NOT NULL DEFAULT 1,
 				grades INTEGER NOT NULL DEFAULT 1,
+				reminder INTEGER NOT NULL DEFAULT 1,
+				reminder_time TEXT NOT NULL DEFAULT '20:00',
+				time_zone TEXT NOT NULL DEFAULT 'Europe/Budapest',
+				due_soon INTEGER NOT NULL DEFAULT 1,
 				muted_json TEXT NOT NULL DEFAULT '[]',
 				updated_at INTEGER NOT NULL
 			)`
 		)
 	]);
-	for (const ddl of [
-		`ALTER TABLE password_reset_tokens ADD COLUMN code TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE password_reset_tokens ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE notification_prefs ADD COLUMN grades INTEGER NOT NULL DEFAULT 1`
-	]) {
+	const tables = await db.batch([
+		db.prepare('PRAGMA table_info(password_reset_tokens)'),
+		db.prepare('PRAGMA table_info(notification_prefs)')
+	]);
+	const resetColumns = new Set((tables[0].results as { name: string }[]).map((column) => column.name));
+	const prefColumns = new Set((tables[1].results as { name: string }[]).map((column) => column.name));
+	const additions: [string, Set<string>, string, string][] = [
+		['password_reset_tokens', resetColumns, 'code', "TEXT NOT NULL DEFAULT ''"],
+		['password_reset_tokens', resetColumns, 'attempts', 'INTEGER NOT NULL DEFAULT 0'],
+		['notification_prefs', prefColumns, 'grades', 'INTEGER NOT NULL DEFAULT 1'],
+		['notification_prefs', prefColumns, 'reminder', 'INTEGER NOT NULL DEFAULT 1'],
+		['notification_prefs', prefColumns, 'reminder_time', "TEXT NOT NULL DEFAULT '20:00'"],
+		['notification_prefs', prefColumns, 'time_zone', "TEXT NOT NULL DEFAULT 'Europe/Budapest'"],
+		['notification_prefs', prefColumns, 'due_soon', 'INTEGER NOT NULL DEFAULT 1']
+	];
+	for (const [table, columns, column, definition] of additions) {
+		if (columns.has(column)) continue;
 		try {
-			await db.prepare(ddl).run();
-		} catch {
-			// oszlop mar letezik
+			await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+		} catch (error) {
+			// Egy párhuzamos kérés már hozzáadhatta az oszlopot.
+			const current = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+			if (!current.results?.some((item) => item.name === column)) throw error;
 		}
 	}
 }

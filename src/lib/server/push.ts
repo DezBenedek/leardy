@@ -1,9 +1,8 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { ensureSecuritySchema } from './classroom';
 
-/* Szerver oldali web push (RFC 8291 aes128gcm + RFC 8292 VAPID), WebCrypto-val.
- * Kulcskezeles: a VAPID P-256 par D1-ben (app_config / vapid_jwk) generalodik
- * elso hasznalatkor, igy nincs szukseg env secret beallitasra. */
+/* Szerveroldali web push (RFC 8291 és RFC 8292), WebCrypto-val.
+ * A VAPID-kulcspár D1-ben marad, párhuzamos induláskor sem írjuk felül. */
 
 export interface PushSubscription {
 	endpoint: string;
@@ -101,25 +100,25 @@ export async function ensureVapidKeys(db: D1Database): Promise<VapidKeys> {
 		.bind()
 		.first<{ value: string }>();
 	if (row?.value) {
-		try {
-			const jwk = JSON.parse(row.value) as JsonWebKey;
-			const pub = await publicKeyFromJwk(jwk);
-			return { publicKey: pub, privateJwk: jwk };
-		} catch {
-			// serult kulcs: ujrageneraljuk
-		}
+		const jwk = JSON.parse(row.value) as JsonWebKey;
+		return { publicKey: await publicKeyFromJwk(jwk), privateJwk: jwk };
 	}
 	const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
 	const jwk = (await crypto.subtle.exportKey('jwk', pair.privateKey)) as JsonWebKey;
-	const pub = await publicKeyFromJwk(jwk);
 	await db
-		.prepare(`INSERT OR REPLACE INTO app_config (key, value, updated_at) VALUES ('vapid_jwk', ?, ?)`)
+		.prepare(`INSERT INTO app_config (key, value, updated_at) VALUES ('vapid_jwk', ?, ?) ON CONFLICT(key) DO NOTHING`)
 		.bind(JSON.stringify(jwk), Date.now())
 		.run();
-	return { publicKey: pub, privateJwk: jwk };
+	const stored = await db.prepare(`SELECT value FROM app_config WHERE key = 'vapid_jwk'`).first<{ value: string }>();
+	if (!stored) throw new Error('Hiányzó VAPID-kulcs.');
+	const winner = JSON.parse(stored.value) as JsonWebKey;
+	return { publicKey: await publicKeyFromJwk(winner), privateJwk: winner };
 }
 
 async function publicKeyFromJwk(jwk: JsonWebKey): Promise<string> {
+	if (jwk.kty !== 'EC' || jwk.crv !== 'P-256' || !jwk.x || !jwk.y || !jwk.d) {
+		throw new Error('Érvénytelen VAPID-kulcs.');
+	}
 	const x = b64urlDecode(jwk.x ?? '');
 	const y = b64urlDecode(jwk.y ?? '');
 	const raw = new Uint8Array(65);
@@ -138,14 +137,16 @@ export async function savePushSubscription(
 	userId: string,
 	sub: PushSubscription
 ): Promise<void> {
-	await ensureSecuritySchema(db);
-	await db
-		.prepare(
-			`INSERT OR REPLACE INTO push_subscriptions (endpoint, user_id, p256dh, auth, created_at)
-			 VALUES (?, ?, ?, ?, ?)`
-		)
-		.bind(sub.endpoint, userId, sub.p256dh, sub.auth, Date.now())
-		.run();
+	await ensurePushDeliverySchema(db);
+	await db.batch([
+		db.prepare(`DELETE FROM push_deliveries WHERE endpoint = ? AND EXISTS
+			(SELECT 1 FROM push_subscriptions WHERE endpoint = ? AND user_id <> ?)`)
+			.bind(sub.endpoint, sub.endpoint, userId),
+		db.prepare(`INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, created_at)
+			VALUES (?, ?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET
+			user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`)
+			.bind(sub.endpoint, userId, sub.p256dh, sub.auth, Date.now())
+	]);
 }
 
 export async function deletePushSubscription(db: D1Database, userId: string, endpoint: string): Promise<void> {
@@ -166,7 +167,7 @@ export async function deletePushEndpoint(db: D1Database, endpoint: string): Prom
 
 async function subscriptionsForUsers(db: D1Database, userIds: string[]): Promise<PushSubscription[]> {
 	if (userIds.length === 0) return [];
-	const uniq = [...new Set(userIds)].slice(0, 500);
+	const uniq = [...new Set(userIds)];
 	const out: PushSubscription[] = [];
 	// D1 valtozoszam korlat miatt darabolva.
 	for (let i = 0; i < uniq.length; i += 50) {
@@ -183,7 +184,7 @@ async function subscriptionsForUsers(db: D1Database, userIds: string[]): Promise
 	return out;
 }
 
-type PushKind = 'message' | 'task' | 'assignment' | 'grade';
+export type PushKind = 'message' | 'task' | 'assignment' | 'grade' | 'reminder' | 'due';
 
 /* Némított osztály és kikapcsolt kapcsoló: ezekre nem küldünk push-t.
  * Nincs sor: minden mehet (régi fiók, még nem szinkronizált beállítás). */
@@ -201,11 +202,11 @@ async function allowedRecipients(
 		const chunk = uniq.slice(i, i + 50);
 		const rows = await db
 			.prepare(
-				`SELECT user_id, messages, tasks, grades, muted_json FROM notification_prefs
+				`SELECT user_id, messages, tasks, grades, reminder, due_soon, muted_json FROM notification_prefs
 				 WHERE user_id IN (${chunk.map(() => '?').join(',')})`
 			)
 			.bind(...chunk)
-			.all<{ user_id: string; messages: number; tasks: number; grades: number; muted_json: string }>();
+			.all<{ user_id: string; messages: number; tasks: number; grades: number; reminder: number; due_soon: number; muted_json: string }>();
 		for (const r of rows.results ?? []) {
 			let muted: string[] = [];
 			try {
@@ -219,6 +220,8 @@ async function allowedRecipients(
 				continue;
 			}
 			if (kind === 'message' && r.messages === 0) blocked.add(r.user_id);
+			if (kind === 'reminder' && r.reminder === 0) blocked.add(r.user_id);
+			if (kind === 'due' && r.due_soon === 0) blocked.add(r.user_id);
 			if ((kind === 'task' || kind === 'assignment') && r.tasks === 0) blocked.add(r.user_id);
 			if (kind === 'grade' && r.grades === 0) blocked.add(r.user_id);
 		}
@@ -346,7 +349,8 @@ export async function sendPushToSubscription(
 				Urgency: 'high',
 				TTL: '86400'
 			},
-			body: body as unknown as BodyInit
+			body: body.slice().buffer as ArrayBuffer,
+			signal: AbortSignal.timeout(10_000)
 		});
 		if (res.status === 404 || res.status === 410) {
 			await deletePushEndpoint(db, sub.endpoint);
@@ -390,9 +394,9 @@ export async function notifyUser(
 		const subs = await subscriptionsForUsers(db, [opts.userId]);
 		if (subs.length === 0) return;
 		const msg: PushPayload = { title: opts.title, body: opts.body, url: opts.url, tag: opts.tag };
-		await Promise.allSettled(subs.slice(0, 20).map((s) => sendPushToSubscription(db, s, msg)));
-	} catch {
-		// ertesites hiba nem ronthatja el a fo muveletet
+		await enqueuePush(db, subs, msg, 'grade', opts.classroomId ?? '');
+	} catch (error) {
+		console.error('Az értékelési értesítés mentése sikertelen.', error);
 	}
 }
 
@@ -417,7 +421,7 @@ export async function notifyClassroom(
 			.first<{ id: string; teacher_id: string }>();
 		if (!room) return;
 		const members = await db
-			.prepare(`SELECT user_id FROM classroom_members WHERE classroom_id = ? LIMIT 500`)
+			.prepare(`SELECT user_id FROM classroom_members WHERE classroom_id = ?`)
 			.bind(opts.classroomId)
 			.all<{ user_id: string }>();
 		const ids = await allowedRecipients(
@@ -431,8 +435,79 @@ export async function notifyClassroom(
 		const subs = await subscriptionsForUsers(db, ids);
 		if (subs.length === 0) return;
 		const msg: PushPayload = { title: opts.title, body: opts.body, url: opts.url, tag: opts.tag };
-		await Promise.allSettled(subs.slice(0, 200).map((s) => sendPushToSubscription(db, s, msg)));
-	} catch {
-		// ertesites hiba nem ronthatja el a fo muveletet
+		await enqueuePush(db, subs, msg, opts.kind, opts.classroomId);
+	} catch (error) {
+		console.error('A tantermi értesítés mentése sikertelen.', error);
 	}
+}
+
+export async function ensurePushDeliverySchema(db: D1Database): Promise<void> {
+	await ensureSecuritySchema(db);
+	await db.batch([
+		db.prepare(`CREATE TABLE IF NOT EXISTS push_deliveries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			endpoint TEXT NOT NULL REFERENCES push_subscriptions(endpoint) ON DELETE CASCADE,
+			event_key TEXT NOT NULL, kind TEXT NOT NULL, classroom_id TEXT NOT NULL DEFAULT '',
+			payload_json TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+			next_attempt_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+			delivered_at INTEGER, lease_token TEXT, lease_until INTEGER NOT NULL DEFAULT 0,
+			UNIQUE(endpoint, event_key)
+		)`),
+		db.prepare(`CREATE INDEX IF NOT EXISTS idx_push_delivery_pending ON push_deliveries(delivered_at, next_attempt_at)`)
+	]);
+}
+
+async function enqueuePush(db: D1Database, subs: PushSubscription[], msg: PushPayload, kind: PushKind, classroomId: string): Promise<void> {
+	await ensurePushDeliverySchema(db);
+	const now = Date.now();
+	for (let i = 0; i < subs.length; i += 50) {
+		await db.batch(subs.slice(i, i + 50).map((sub) => db.prepare(
+			`INSERT OR IGNORE INTO push_deliveries
+			(endpoint, event_key, kind, classroom_id, payload_json, created_at, expires_at, next_attempt_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		).bind(sub.endpoint, msg.tag, kind, classroomId, JSON.stringify(msg), now, now + 86400_000, now)));
+	}
+}
+
+/** A mentett küldéseket azonnal és az ötperces cronból is feldolgozzuk. */
+export async function processPushQueue(db: D1Database, now = Date.now()): Promise<{ sent: number; failed: number }> {
+	await ensurePushDeliverySchema(db);
+	await db.prepare(`DELETE FROM push_deliveries WHERE expires_at < ? AND (delivered_at IS NULL OR delivered_at < ?)`)
+		.bind(now, now - 7 * 86400_000).run();
+	const token = crypto.randomUUID();
+	const claimed = await db.prepare(`UPDATE push_deliveries SET lease_token = ?, lease_until = ?
+		WHERE id IN (SELECT id FROM push_deliveries WHERE delivered_at IS NULL
+			AND next_attempt_at <= ? AND expires_at > ? AND lease_until <= ?
+			ORDER BY next_attempt_at, id LIMIT 100)
+		RETURNING id, endpoint, kind, classroom_id, payload_json, attempts`)
+		.bind(token, now + 5 * 60_000, now, now, now)
+		.all<{ id: number; endpoint: string; kind: PushKind; classroom_id: string; payload_json: string; attempts: number }>();
+	let sent = 0;
+	let failed = 0;
+	const deliveries = claimed.results ?? [];
+	for (let i = 0; i < deliveries.length; i += 5) {
+		await Promise.all(deliveries.slice(i, i + 5).map(async (delivery) => {
+			const sub = await db.prepare(`SELECT endpoint, p256dh, auth, user_id FROM push_subscriptions WHERE endpoint = ?`)
+				.bind(delivery.endpoint).first<PushSubscription & { user_id: string }>();
+			let allowed = !!sub;
+			if (sub && delivery.classroom_id) {
+				const membership = await db.prepare(`SELECT id FROM classrooms WHERE id = ? AND
+					(teacher_id = ? OR EXISTS (SELECT 1 FROM classroom_members WHERE classroom_id = classrooms.id AND user_id = ?))`)
+					.bind(delivery.classroom_id, sub.user_id, sub.user_id).first();
+				allowed = !!membership;
+			}
+			if (sub && allowed) allowed = (await allowedRecipients(db, [sub.user_id], delivery.kind, delivery.classroom_id)).length > 0;
+			const ok = allowed && sub ? await sendPushToSubscription(db, sub, JSON.parse(delivery.payload_json)) : false;
+			if (ok || !allowed) {
+				await db.prepare(`UPDATE push_deliveries SET delivered_at = ?, lease_token = NULL, lease_until = 0 WHERE id = ? AND lease_token = ?`)
+					.bind(Date.now(), delivery.id, token).run();
+				if (ok) sent++;
+			} else {
+				failed++;
+				await db.prepare(`UPDATE push_deliveries SET attempts = attempts + 1, next_attempt_at = ?, lease_token = NULL, lease_until = 0 WHERE id = ? AND lease_token = ?`)
+					.bind(Date.now() + Math.min(3600_000, 300_000 * 2 ** Math.min(delivery.attempts, 4)), delivery.id, token).run();
+			}
+		}));
+	}
+	return { sent, failed };
 }

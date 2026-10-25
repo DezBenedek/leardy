@@ -16,7 +16,7 @@ export interface User {
 
 export type AuthResult = { ok: true } | { ok: false; error: string };
 
-const DB_DOWN = 'Az adatbázis most nem elérhető. Indítsd újra a dev szervert (`npm run dev`).';
+const DB_DOWN = 'Az adatbázis most nem elérhető. Indítsd újra a fejlesztői szervert (`pnpm dev`).';
 
 interface ApiUser {
 	id: string;

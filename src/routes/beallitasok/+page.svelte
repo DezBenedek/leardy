@@ -3,8 +3,7 @@
 	import {
 		Bell,
 		BookOpen,
-		BellOff,
-		BellRing,
+		Check,
 		ChevronRight,
 		Compass,
 		Database,
@@ -15,7 +14,6 @@
 		Moon,
 		Palette,
 		Pencil,
-		Send,
 		Smartphone,
 		Sparkles,
 		Sun,
@@ -31,14 +29,8 @@
 	import { auth } from '$lib/auth.svelte';
 	import { loadSettings, saveSettings } from '$lib/settings';
 	import { applyDisplaySettings } from '$lib/display';
-	import {
-		canNotify,
-		getNotifPermission,
-		requestNotifPermission,
-		type NotifPermission
-	} from '$lib/notifications';
 	import { toast } from '$lib/toast.svelte';
-	import { pushState, subscribePush, unsubscribePush, type PushState } from '$lib/push-client';
+	import { pushState, subscribePush, type PushState } from '$lib/push-client';
 	import { LATEST_CHANGE } from '$lib/changelog';
 	import { APP_VERSION, appBuildLabel } from '$lib/version';
 	import { theme, type ThemeChoice } from '$lib/theme.svelte';
@@ -50,7 +42,7 @@
 	type Sheet = null | 'account' | 'notif' | 'theme' | 'learning' | 'storage' | 'about';
 	type AccountEdit = null | 'name';
 
-	// Szerveradat a forras az elso paintkor, igy nincs profil-villanas.
+	// Az első megjelenítéskor a szerver adatai érvényesek, így nem villan fel hibás profil.
 	let user = $derived(auth.ready ? auth.user : (data.user ?? null));
 	let initial = $derived(user?.name.trim().charAt(0).toUpperCase() ?? '');
 	let sheet = $state<Sheet>(null);
@@ -83,7 +75,7 @@
 		const res = await auth.updateName(nameDraft);
 		busyName = false;
 		if (res.ok) {
-			toast.success('Név frissítve', 'Sikeresen módosítottad a neved.');
+			toast.success('Név frissítve');
 			accountEdit = null;
 		} else {
 			toast.error('Nem sikerült menteni', res.error);
@@ -104,7 +96,6 @@
 	};
 
 	let settings = $state(loadSettings());
-	let notifPerm = $state<NotifPermission>('default');
 	let pushSt = $state<PushState>('off');
 	let pushBusy = $state(false);
 	let deleteAccountOpen = $state(false);
@@ -197,16 +188,8 @@
 		}
 	}
 
-	function refreshNotifPerm() {
-		try {
-			notifPerm = getNotifPermission();
-		} catch {
-			notifPerm = 'unsupported';
-		}
-	}
 
-	let notifBusy = $state(false);
-	let testBusy = $state(false);
+
 	let classroomNames = $state<Record<string, string>>({});
 	let mutedLoading = $state(false);
 
@@ -237,90 +220,32 @@
 		}
 	}
 
-	async function enableNotif() {
-		if (notifBusy) return;
-		notifBusy = true;
-		try {
-			notifPerm = await requestNotifPermission();
-			if (notifPerm === 'granted') {
-				toast.success('Értesítések engedélyezve', 'Most kapcsold be a push-t is, hogy zárt appnál is szóljon.');
-				pushState()
-					.then((s) => {
-						pushSt = s;
-						pushKnown = true;
-					})
-					.catch(() => {});
-			} else if (notifPerm === 'denied') {
-				toast.error('Le van tiltva', 'A böngésző beállításaiban kapcsold vissza az értesítéseket.');
-			}
-		} finally {
-			notifBusy = false;
-		}
+	async function refreshPush() {
+		pushSt = await pushState();
+		pushKnown = true;
 	}
 
 	$effect(() => {
-		if (sheet === 'notif') {
-			refreshNotifPerm();
-			pushState()
-				.then((s) => {
-					pushSt = s;
-					pushKnown = true;
-				})
-				.catch(() => {
-					pushSt = 'off';
-					pushKnown = true;
-				});
-			loadMutedNames().catch(() => {});
-		}
+		if (sheet !== 'notif') return;
+		void refreshPush();
+		void loadMutedNames();
+		const visible = () => { if (!document.hidden) void refreshPush(); };
+		document.addEventListener('visibilitychange', visible);
+		return () => document.removeEventListener('visibilitychange', visible);
 	});
 
-	async function togglePush() {
+	async function enablePush() {
 		if (pushBusy) return;
 		pushBusy = true;
 		try {
-			if (pushSt === 'on') {
-				const res = await unsubscribePush();
-				if (res.ok) {
-					pushSt = 'off';
-					toast.success('Push kikapcsolva ezen az eszközön');
-				} else {
-					toast.error('Nem sikerült', res.error);
-				}
-			} else {
-				const res = await subscribePush();
-				if (res.ok) {
-					pushSt = 'on';
-					pushKnown = true;
-					refreshNotifPerm();
-					toast.success('Push bekapcsolva', 'Üzenet, feladat és jegy zárt appnál is megérkezik.');
-				} else {
-					if (pushSt !== 'denied') pushSt = await pushState().catch(() => pushSt);
-					pushKnown = true;
-					toast.error('Nem sikerült', res.error);
-				}
-			}
+			const result = await subscribePush();
+			await refreshPush();
+			if (result.ok) toast.success('Push üzenetek aktiválva');
+			else toast.error('Nem sikerült kapcsolódni', result.error);
 		} finally {
 			pushBusy = false;
 		}
 	}
-
-	async function sendTestPush() {
-		if (testBusy) return;
-		testBusy = true;
-		try {
-			const res = await fetch('/api/push/test', { method: 'POST', credentials: 'same-origin' });
-			const j = (await res.json().catch(() => ({}))) as { error?: string };
-			if (res.ok) {
-				toast.success('Teszt elküldve', 'Zárd be az appot: pár másodpercen belül meg kell érkeznie.');
-			} else {
-				toast.error('Nem sikerült', j.error ?? 'Próbáld újra!');
-			}
-		} finally {
-			testBusy = false;
-		}
-	}
-
-
 
 	async function exportAccountData() {
 		if (exportBusy) return;
@@ -366,8 +291,8 @@
 	}
 
 	$effect(() => {
-		// Kijelzo azonnal, tarolas debounce-szal: csuszkahuzas kozben
-		// nem irunk szinkron localStorage-t minden kepkockanal.
+		// A megjelenés azonnal frissül, a mentés késleltetett.
+		// Így a csúszka húzása közben nem írunk minden képkockánál a helyi tárba.
 		const snapshot = $state.snapshot(settings);
 		applyDisplaySettings(snapshot);
 		const t = setTimeout(() => saveSettings(snapshot), 250);
@@ -378,35 +303,9 @@
 		if (sheet === 'storage') refreshStorageInfo();
 	});
 
-	let notifOn = $derived(
-		[
-			settings.reminder,
-			settings.pushClassMessage,
-			settings.pushClassTask,
-			settings.pushGrades,
-			settings.pushFeatures,
-			settings.dueSoon
-		].filter(Boolean).length
-	);
 	let pushKnown = $state(false);
-	let notifSummary = $derived(
-		!canNotifySafe()
-			? 'Először engedélyezd a böngészőben'
-			: !pushKnown
-				? `${notifOn}/6 bekapcsolva`
-				: pushSt === 'on'
-					? `${notifOn}/6 bekapcsolva, push él`
-					: notifOn === 0
-						? 'Minden jelzés ki'
-						: `${notifOn}/6 bekapcsolva, push ki`
-	);
-	function canNotifySafe(): boolean {
-		try {
-			return canNotify();
-		} catch {
-			return false;
-		}
-	}
+	let notifSummary = $derived(pushKnown && pushSt === 'on' ? 'Push üzenetek aktívak' : 'Push üzenetek és emlékeztetők');
+
 	let themeLabel = $derived(
 		theme.choice === 'light' ? 'Világos' : theme.choice === 'dark' ? 'Sötét' : 'Rendszer'
 	);
@@ -598,7 +497,7 @@
 					</button>
 				{:else}
 					<p class="text-sm leading-relaxed text-stone-500 dark:text-stone-400">
-						A tanterem és a haladásod mentése fiókhoz kötött.
+						A mentéshez jelentkezz be.
 					</p>
 					<div class="mt-4">
 						<GoogleLoginButton />
@@ -607,97 +506,18 @@
 			</div>
 		{:else if sheet === 'notif'}
 			<div class="mt-1">
-				<div class="rounded-2xl border border-stone-200 bg-stone-50 p-4 dark:border-white/10 dark:bg-white/5">
-					{#if notifPerm !== 'granted'}
-						<div class="flex items-start gap-3">
-							<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-								<Bell size={20} />
-							</span>
-							<div class="min-w-0 flex-1">
-								<p class="text-[15px] font-bold text-ink-900 dark:text-white">
-									{#if notifPerm === 'denied'}
-										Az értesítések le vannak tiltva
-									{:else if notifPerm === 'unsupported'}
-										Nem támogatott ezen az eszközön
-									{:else}
-										Értesítések engedélyezése
-									{/if}
-								</p>
-								{#if notifPerm !== 'denied' && notifPerm !== 'unsupported'}
-									<button
-										type="button"
-										onclick={enableNotif}
-										disabled={notifBusy}
-										class="mt-2.5 rounded-full bg-brand-500 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
-									>
-										{notifBusy ? '…' : 'Értesítések engedélyezése'}
-									</button>
-								{/if}
-							</div>
-						</div>
-					{:else if pushSt === 'on'}
-						<div class="flex items-start gap-3">
-							<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-								<BellRing size={20} />
-							</span>
-							<div class="min-w-0 flex-1">
-								<p class="text-[15px] font-bold text-ink-900 dark:text-white">Push bekapcsolva</p>
-								<div class="mt-2.5 flex flex-wrap gap-2">
-									<button
-										type="button"
-										onclick={sendTestPush}
-										disabled={testBusy}
-										class="inline-flex items-center gap-1.5 rounded-full bg-brand-500 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
-									>
-										<Send size={14} />
-										{testBusy ? 'Küldés…' : 'Teszt küldése'}
-									</button>
-									<button
-										type="button"
-										onclick={togglePush}
-										disabled={pushBusy}
-										class="rounded-full border border-stone-200 bg-white px-4 py-2 text-[13px] font-bold text-ink-600 transition hover:bg-stone-100 active:scale-95 disabled:opacity-60 dark:border-white/15 dark:bg-transparent dark:text-stone-300 dark:hover:bg-white/10"
-									>
-										{pushBusy ? '…' : 'Push kikapcsolása'}
-									</button>
-								</div>
-							</div>
-						</div>
-					{:else if pushSt === 'denied'}
-						<div class="flex items-start gap-3">
-							<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300">
-								<BellOff size={20} />
-							</span>
-							<div class="min-w-0 flex-1">
-								<p class="text-[15px] font-bold text-ink-900 dark:text-white">Le van tiltva a böngészőben</p>
-							</div>
-						</div>
-					{:else if pushSt === 'unsupported'}
-						<div class="flex items-start gap-3">
-							<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-stone-200 text-stone-500 dark:bg-white/10 dark:text-stone-400">
-								<Smartphone size={20} />
-							</span>
-							<div class="min-w-0 flex-1">
-								<p class="text-[15px] font-bold text-ink-900 dark:text-white">Nem támogatott ezen az eszközön</p>
-							</div>
-						</div>
+				<div class="flex min-h-14 items-center gap-3 py-2" aria-live="polite">
+					<Bell size={21} class="shrink-0 text-stone-400" aria-hidden="true" />
+					<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Push üzenetek</p>
+					{#if pushKnown && pushSt === 'on'}
+						<span role="img" aria-label="Push üzenetek aktívak" class="grid size-10 shrink-0 place-items-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+							<Check size={23} strokeWidth={3} aria-hidden="true" />
+						</span>
 					{:else}
-						<div class="flex items-start gap-3">
-							<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-stone-200 text-stone-500 dark:bg-white/10 dark:text-stone-400">
-								<Bell size={20} />
-							</span>
-							<div class="min-w-0 flex-1">
-								<p class="text-[15px] font-bold text-ink-900 dark:text-white">Push kikapcsolva</p>
-								<button
-									type="button"
-									onclick={togglePush}
-									disabled={pushBusy}
-									class="mt-2.5 rounded-full bg-brand-500 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
-								>
-									{pushBusy ? '…' : 'Push bekapcsolása'}
-								</button>
-							</div>
-						</div>
+						<button type="button" onclick={enablePush} disabled={!pushKnown || pushBusy}
+							class="min-h-11 shrink-0 rounded-full bg-brand-500 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-brand-600 disabled:opacity-60">
+							{pushBusy ? 'Aktiválás…' : !pushKnown ? 'Ellenőrzés…' : 'Aktiválás'}
+						</button>
 					{/if}
 				</div>
 
@@ -719,17 +539,20 @@
 
 				<p class="mt-5 text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">Emlékeztetők</p>
 				<ul class="divide-y divide-stone-100 dark:divide-white/5">
-					<li class="flex items-center gap-2.5 py-3">
-						<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Napi emlékeztető</p>
-						<input
-							type="time"
-							value={settings.reminderTime}
-							onchange={onReminderTime}
-							disabled={!settings.reminder}
-							aria-label="Napi időpont"
-							class="w-[118px] shrink-0 rounded-xl border border-stone-200 bg-white px-3 py-2 text-center text-[15px] font-semibold text-ink-900 tabular-nums outline-none transition [color-scheme:light] focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-white dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-						/>
-						<Toggle bind:checked={settings.reminder} label="Napi emlékeztető" />
+					<li class="py-3">
+						<div class="flex items-center gap-3">
+							<div class="min-w-0 flex-1">
+								<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Napi emlékeztető</p>
+							</div>
+							<Toggle bind:checked={settings.reminder} label="Napi emlékeztető" />
+						</div>
+						{#if settings.reminder}
+							<label class="mt-3 flex items-center justify-between gap-3 rounded-xl bg-stone-50 px-3 py-2 dark:bg-white/5">
+								<span class="text-[13px] font-medium text-stone-500 dark:text-stone-400">Időpont</span>
+								<input type="time" value={settings.reminderTime} onchange={onReminderTime} aria-label="Napi időpont"
+									class="min-h-11 w-[118px] rounded-lg border border-stone-200 bg-white px-3 py-2 text-center text-[15px] font-semibold text-ink-900 tabular-nums outline-none focus:border-brand-500 dark:border-white/15 dark:bg-white/5 dark:text-white" />
+							</label>
+						{/if}
 					</li>
 					<li class="flex items-center gap-3 py-3">
 						<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Határidőfigyelő</p>
@@ -816,18 +639,16 @@
 			<div class="mt-3 divide-y divide-stone-100 dark:divide-white/5">
 				<div class="flex items-center gap-3 py-3">
 					<div class="min-w-0 flex-1">
-						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Minden bekezdés kinyitása</p>
-						<p class="mt-1 text-[13px] text-stone-500 dark:text-stone-400">Kikapcsolva az első bekezdés nyílik ki, és a lecke megjegyzi a választásaidat.</p>
+						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Bekezdések nyitva</p>
 					</div>
-					<Toggle bind:checked={settings.openAllLessonSections} label="Minden bekezdés kinyitása" />
+					<Toggle bind:checked={settings.openAllLessonSections} label="Bekezdések nyitva" />
 				</div>
 				{#if user?.role === 'teacher' || user?.is_admin}
 					<div class="flex items-center gap-3 py-3">
 						<div class="min-w-0 flex-1">
-							<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Szerkesztőmezők teljes magasságban</p>
-							<p class="mt-1 text-[13px] text-stone-500 dark:text-stone-400">A bekezdések teljes tartalma látszik. A mezők külön is összecsukhatók.</p>
+							<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Teljes szöveg a szerkesztőben</p>
 						</div>
-						<Toggle bind:checked={settings.expandEditorTextareas} label="Szerkesztőmezők teljes magasságban" />
+						<Toggle bind:checked={settings.expandEditorTextareas} label="Teljes szöveg a szerkesztőben" />
 					</div>
 				{/if}
 			</div>
@@ -855,7 +676,7 @@
 						</li>
 					</ul>
 					<p class="mt-2 text-[12px] leading-relaxed text-stone-400 dark:text-stone-500">
-						A beállításaid és a témád megmaradnak ürítéskor is.
+						A beállításaid megmaradnak.
 					</p>
 				</div>
 				<div class="mt-2.5 grid gap-2">
@@ -978,7 +799,7 @@
 <ConfirmDialog
 	open={deleteAccountOpen}
 	title="Fiók törlése"
-	description="A haladásod, kártyáid, beküldéseid és tagságaid végleg törlődnek. Teli saját osztály esetén előbb azt töröld. Ez nem vonható vissza."
+	description="Minden adatod végleg törlődik. A saját osztályaidat előbb töröld."
 	confirmLabel="Törlöm a fiókom"
 	busy={deleteAccountBusy}
 	onClose={() => {

@@ -20,7 +20,7 @@ export const PUT: RequestHandler = async (event) => {
 	await ensureSecuritySchema(db);
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
-	let body: { messages?: unknown; tasks?: unknown; grades?: unknown; muted?: unknown };
+	let body: { messages?: unknown; tasks?: unknown; grades?: unknown; muted?: unknown; reminder?: unknown; reminderTime?: unknown; timeZone?: unknown; dueSoon?: unknown };
 	try {
 		body = await event.request.json();
 	} catch {
@@ -30,18 +30,30 @@ export const PUT: RequestHandler = async (event) => {
 	const tasks = body.tasks === false ? 0 : 1;
 	const grades = body.grades === false ? 0 : 1;
 	const muted = JSON.stringify(clampMuted(body.muted));
+	const reminderTime = typeof body.reminderTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(body.reminderTime) ? body.reminderTime : '20:00';
+	let timeZone = 'Europe/Budapest';
+	try {
+		if (typeof body.timeZone === 'string' && body.timeZone.length <= 100) {
+			new Intl.DateTimeFormat('hu-HU', { timeZone: body.timeZone }).format();
+			timeZone = body.timeZone;
+		}
+	} catch { /* Ismeretlen időzónánál a budapesti időt használjuk. */ }
 	await db
 		.prepare(
-			`INSERT INTO notification_prefs (user_id, messages, tasks, grades, muted_json, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?)
+			`INSERT INTO notification_prefs (user_id, messages, tasks, grades, muted_json, updated_at, reminder, reminder_time, time_zone, due_soon)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(user_id) DO UPDATE SET
 				messages = excluded.messages,
 				tasks = excluded.tasks,
 				grades = excluded.grades,
 				muted_json = excluded.muted_json,
+				reminder = excluded.reminder,
+				reminder_time = excluded.reminder_time,
+				time_zone = excluded.time_zone,
+				due_soon = excluded.due_soon,
 				updated_at = excluded.updated_at`
 		)
-		.bind(user.id, messages, tasks, grades, muted, Date.now())
+		.bind(user.id, messages, tasks, grades, muted, Date.now(), body.reminder === false ? 0 : 1, reminderTime, timeZone, body.dueSoon === false ? 0 : 1)
 		.run();
 	return json({ ok: true });
 };

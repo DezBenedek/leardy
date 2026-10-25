@@ -32,6 +32,8 @@
 }
 
 html {
+	--app-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+	background: var(--app-background, var(--color-paper));
 	/* Oldalváltáskor a SvelteKit azonnal a tetejére ugrik.
 	   A smooth itt animálná a lap tetejére görgetést, ezért lassúnak érződne. */
 	scroll-behavior: auto;
@@ -70,16 +72,34 @@ body::-webkit-scrollbar {
 }
 
 body {
+	min-height: 100dvh;
 	font-family: var(--font-sans);
-	background: var(--color-paper);
+	background: var(--app-background, var(--color-paper));
 	color: var(--color-ink-900);
 	-webkit-font-smoothing: antialiased;
 	text-rendering: optimizeLegibility;
 }
 
 .dark body {
-	background: #0c0a09;
+	background: var(--app-background, #0c0a09);
 	color: #fafaf9;
+}
+
+html[data-keyboard-open='true'] {
+	--app-safe-area-bottom: 0px;
+}
+
+html[data-keyboard-open='true'] .bottom-nav {
+	display: none;
+}
+
+/* A mobilos fókusz ne nagyítsa fel az oldalt, és ne tolja el a paneleket. */
+@media (hover: none) and (pointer: coarse) {
+	input:not([type='range']):not([type='checkbox']):not([type='radio']),
+	textarea,
+	[contenteditable='true'] {
+		font-size: max(16px, 1em);
+	}
 }
 
 ::selection {

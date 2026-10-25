@@ -159,7 +159,7 @@
 				{#if TriggerIcon}<TriggerIcon size={18} aria-hidden="true" />{/if}
 				<span>{triggerLabel}</span>
 			{:else if compact}
-				<Ellipsis size={20} aria-hidden="true" />
+				{#if TriggerIcon}<TriggerIcon size={20} aria-hidden="true" />{:else}<Ellipsis size={20} aria-hidden="true" />{/if}
 			{:else}
 				<span class="hamburger" aria-hidden="true"><span></span><span></span><span></span></span>
 				<span>Műveletek</span>

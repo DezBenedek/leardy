@@ -304,6 +304,29 @@ import {
 	// ---------- Bejegyzés szerkesztése (tanár) ----------
 
 	let editingMsg = $state(false);
+	let deleteMessageOpen = $state(false);
+	let deletingMessage = $state(false);
+	async function deleteMessage() {
+		if (!detailMsg || !data.own || deletingMessage) return;
+		const id = detailMsg.id;
+		deletingMessage = true;
+		try {
+			const response = await mutationFetch(`/api/classrooms/${room.id}/messages/${id}`, { method: 'DELETE' });
+			if (!response.ok) {
+				const result = await response.json().catch(() => ({}));
+				throw new Error(result.error ?? 'Nem sikerült törölni az üzenetet.');
+			}
+			messages = messages.filter((message) => message.id !== id);
+			deleteMessageOpen = false;
+			closeDetail();
+			toast.success('Üzenet törölve');
+		} catch (error) {
+			deleteMessageOpen = false;
+			toast.error('Sikertelen törlés', error instanceof Error ? error.message : 'Próbáld újra!');
+		} finally {
+			deletingMessage = false;
+		}
+	}
 	let editingTask = $state(false);
 	let editError = $state<string | null>(null);
 	let savingEdit = $state(false);
@@ -1640,9 +1663,13 @@ import {
 	label="Bejegyzés részletei"
 	title={editingMsg || editingTask || editingAssignment ? 'Szerkesztés' : (detailMsg ? detailMsg.title : (detailTask ? (detailTask.title || 'Kvízfeladat') : (detailAssignment ? (detailAssignment.title || 'Beadandó') : 'Részletek')))}
 	onClose={closeDetail}
+	canClose={() => !deleteMessageOpen && !deletingMessage}
 	onEdit={data.own && !editingMsg && !editingTask && !editingAssignment ? openEdit : undefined}
 >
 	{#snippet actions()}
+		{#if detailMsg && data.own && !editingMsg}
+			<IconButton ariaLabel="Üzenet törlése" size={36} tone="danger" disabled={deletingMessage} onclick={() => { deleteMessageOpen = true; }}><Trash2 size={18} /></IconButton>
+		{/if}
 		{#if editingMsg || editingTask || editingAssignment}
 			<Button type="submit" form={editingMsg ? 'edit-message' : editingTask ? 'edit-task' : 'edit-assignment'} size="sm" busy={savingEdit} disabled={editingMsg && editMsgTitle.trim().length < 3}><Save size={17} /> Mentés</Button>
 		{/if}
@@ -2772,6 +2799,16 @@ import {
 		{/if}
 	{/if}
 </Drawer>
+
+<ConfirmDialog
+	open={deleteMessageOpen}
+	title="Üzenet törlése"
+	description="Az üzenet végleg törlődik."
+	confirmLabel="Törlés"
+	busy={deletingMessage}
+	onClose={() => { deleteMessageOpen = false; }}
+	onConfirm={() => { void deleteMessage(); }}
+/>
 
 <ConfirmDialog
 	open={confirmLeave}

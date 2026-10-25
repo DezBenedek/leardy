@@ -2,6 +2,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vite';
+import { pwaManifest } from './src/lib/pwa-manifest';
 
 export default defineConfig({
 	server: {
@@ -25,37 +26,7 @@ export default defineConfig({
 				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2}', 'client/icons/*.png', 'prerendered/pages/tanulas.html'],
 				// Személyes adat nélküli Tanulás-alkalmazásváz az offline induláshoz.
 			},
-			manifest: {
-				name: 'Leardy: Tanulj okosan',
-				short_name: 'Leardy',
-				description: 'Modern tanuló app leckékkel, szókártyákkal és tanteremmel. Bárhol, bármikor.',
-				start_url: '/',
-				scope: '/',
-				display: 'standalone',
-				orientation: 'portrait',
-				background_color: '#ffffff',
-				theme_color: '#4255ff',
-				lang: 'hu',
-				categories: ['education'],
-				icons: [
-					{
-						src: 'icons/icon-192.png',
-						sizes: '192x192',
-						type: 'image/png'
-					},
-					{
-						src: 'icons/icon-512.png',
-						sizes: '512x512',
-						type: 'image/png'
-					},
-					{
-						src: 'icons/maskable-512.png',
-						sizes: '512x512',
-						type: 'image/png',
-						purpose: 'maskable'
-					}
-				]
-			},
+			manifest: pwaManifest(false),
 			devOptions: {
 				enabled: false
 			}

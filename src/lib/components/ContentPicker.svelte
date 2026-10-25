@@ -771,15 +771,17 @@
 					<button type="button" onclick={() => { if (subject) void ensureTree(subject.id); }} class="mt-2 rounded-xl px-3 py-2 font-semibold text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-white/5">Újrapróbálás</button>
 				</li>
 			{:else if visibleLevels.length === 0}
-				<li>
-					<p class="p-2 text-center text-sm text-stone-500 dark:text-stone-400">
-						{query.trim()
-							? 'Nincs ilyen találat.'
-							: onlyWithQuiz
-								? `Nincs kvízes ${levelLabel.toLowerCase()}.`
-								: `Nincs megjeleníthető ${levelLabel.toLowerCase()}.`}
-					</p>
-				</li>
+				{#if query.trim() || !onCreateLevel}
+					<li>
+						<p class="p-2 text-center text-sm text-stone-500 dark:text-stone-400">
+							{query.trim()
+								? 'Nincs ilyen találat.'
+								: onlyWithQuiz
+									? `Nincs kvízes ${levelLabel.toLowerCase()}.`
+									: `Nincs megjeleníthető ${levelLabel.toLowerCase()}.`}
+						</p>
+					</li>
+				{/if}
 			{:else}
 				{#each visibleLevels as l (l.id)}
 					{@const current = select === 'level' && l.id === selectedLevelId}
