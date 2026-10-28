@@ -287,6 +287,8 @@
 		if (/^([01]?\d|2[0-3]):([0-5]\d)$/.test(v)) {
 			const [h, m] = v.split(':');
 			settings.reminderTime = `${h.padStart(2, '0')}:${m}`;
+			// A bezárás előtt is induljon el a szerveres időpont mentése.
+			saveSettings($state.snapshot(settings));
 		}
 	}
 

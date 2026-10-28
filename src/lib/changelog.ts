@@ -26,6 +26,24 @@ export interface ChangeEntry {
 
 export const CHANGES: ChangeEntry[] = [
 	{
+		version: '1.0.3-beta',
+		title: 'Finomabb panelek és menük',
+		items: [
+			{
+				title: 'Folyamatos lehúzás',
+				desc: 'A lista tetején a panel követi az ujjadat. Rövid húzásra visszasimul, hosszabb lehúzásra bezárul.'
+			},
+			{
+				title: 'Törlés szerkesztés közben',
+				desc: 'A tanári üzenettörlés az üzenet szerkesztésébe került.'
+			},
+			{
+				title: 'Jobban nyíló menük',
+				desc: 'A leckemenü visszakapta a korábbi méretét. Az animáció a menü nyitási irányát követi.'
+			}
+		]
+	},
+	{
 		version: '1.0.2-beta',
 		title: 'Egyszerűbb felületek, kényelmesebb használat',
 		items: [

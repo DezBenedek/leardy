@@ -5,6 +5,7 @@
 	import { isTopOverlay, lockBody, motionOK } from '$lib/overlay';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
 	import { fitOverlayViewport } from '$lib/overlay-viewport';
+	import { attachDismissGesture } from '$lib/dismiss-gesture';
 
 	interface Props {
 		open: boolean;
@@ -32,24 +33,14 @@
 	let { open, label, title, header, actions, onBack, onEdit, editLabel = 'Szerkesztés', onClose, canClose, children, wide = false, animateHeight = false }: Props = $props();
 
 	let panel: HTMLElement | null = $state(null);
-	let scroller: HTMLElement | null = $state(null);
 	let handle: HTMLElement | null = $state(null);
 	let panelHeight = $state<number | undefined>(undefined);
 	let render = $state(false);
 	let shown = $state(false);
-	// Gyors nyit-csuk sorozatnal az elavult rAF es idozito nem irhatja
-	// felul az uj allapotot: minden atmenet sajat sorszamot kap.
+	// Az elavult időzítők nem írhatják felül az új nyitási állapotot.
 	let generation = 0;
 	let dragging = $state(false);
 	let dragY = $state(0);
-	let startY = 0;
-	// Tartalomból indított határozott lehúzás érzékelése.
-	let swipeId: number | null = $state(null);
-	let swipeY = 0;
-	let swipeT = 0;
-	let swipeScroll = 0;
-
-	const CLOSE_AT = 110;
 	// Nyitáskor dől el: az app Mozgás-csökkentője és az OS kérése is számít.
 	// (A modulszintű matchMedia csak az OS-t nézte, a beállítást nem.)
 	let animOn = $state(true);
@@ -122,60 +113,12 @@
 		if (e.key === 'Escape') beginClose();
 	}
 
-	function handleDown(e: PointerEvent) {
-		if (e.pointerType === 'mouse' && e.button !== 0) return;
-		dragging = true;
-		startY = e.clientY;
-		try {
-			(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-		} catch {
-			// capture nélkül is működik
-		}
-	}
-
-	function handleMove(e: PointerEvent) {
-		if (!dragging) return;
-		const dy = e.clientY - startY;
-		if (dy <= 0) {
-			dragY = 0;
-			return;
-		}
-		dragY = dy;
-	}
-
-	function handleUp() {
-		if (!dragging) return;
-		dragging = false;
-		if (dragY > CLOSE_AT) beginClose();
-		else dragY = 0;
-	}
-
-	function contentTouchStart(e: TouchEvent) {
-		if (swipeId !== null) return;
-		const target = e.target as HTMLElement | null;
-		// Beviteli mezőből induló mozdulatot nem értelmezünk zárásként.
-		if (target?.closest?.('input, textarea, select, [contenteditable="true"], [data-scrollable-text]')) return;
-		const t = e.changedTouches[0];
-		swipeId = t.identifier;
-		swipeY = t.clientY;
-		swipeT = performance.now();
-		swipeScroll = scroller?.scrollTop ?? 0;
-	}
-
-	function contentTouchEnd(e: TouchEvent) {
-		if (swipeId === null) return;
-		let t: Touch | null = null;
-		for (let i = 0; i < e.changedTouches.length; i++) {
-			const c = e.changedTouches.item(i);
-			if (c && c.identifier === swipeId) t = c;
-		}
-		swipeId = null;
-		if (!t || !scroller) return;
-		const dy = t.clientY - swipeY;
-		const dt = performance.now() - swipeT;
-		// Csak akkor csukunk, ha a tartalom végig a tetején állt, és a mozdulat
-		// határozott lefelé rántás volt: a sima görgetést nem bántjuk.
-		if (swipeScroll <= 0 && scroller.scrollTop <= 0 && dy >= CLOSE_AT && dt <= 600) beginClose();
+	function dragPanel(node: HTMLElement) {
+		return attachDismissGesture(node, {
+			canDismiss: () => shown && (!canClose || canClose()) && isTopOverlay(node),
+			onDrag: (distance, active) => { dragY = distance; dragging = active; },
+			onDismiss: beginClose
+		});
 	}
 </script>
 
@@ -188,6 +131,7 @@
 			tabindex="-1"
 			aria-label="Bezárás"
 			onclick={beginClose}
+			style:opacity={dragging ? 1 - Math.min(dragY / Math.max(panel?.offsetHeight ?? 1, 1), 0.85) : undefined}
 			class={[
 				'absolute inset-0 bg-ink-900/45 transition-opacity dark:bg-black/60',
 				animOn ? 'duration-200' : 'duration-0',
@@ -197,6 +141,7 @@
 		<div class="pointer-events-none absolute inset-0 flex items-end justify-center sm:items-center sm:p-4">
 			<div
 				bind:this={panel}
+				{@attach dragPanel}
 				tabindex="-1"
 				role="dialog"
 				aria-modal="true"
@@ -229,20 +174,14 @@
 					bind:this={handle}
 					class="shrink-0 cursor-grab touch-none pt-3 pb-1 select-none active:cursor-grabbing sm:hidden"
 					role="presentation"
-					onpointerdown={handleDown}
-					onpointermove={handleMove}
-					onpointerup={handleUp}
-					onpointercancel={handleUp}
+					data-overlay-handle
 				>
 					<div class="mx-auto h-1.5 w-11 rounded-full bg-stone-200 dark:bg-white/15"></div>
 				</div>
 				<div
-					bind:this={scroller}
 					data-overlay-scroller
 					role="presentation"
-					ontouchstart={contentTouchStart}
-					ontouchend={contentTouchEnd}
-					class="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-gutter:stable] [overflow-anchor:none]"
+					class="min-h-0 overflow-x-hidden overflow-y-auto overscroll-x-contain overscroll-y-none [scrollbar-gutter:stable] [overflow-anchor:none]"
 				>
 					<div {@attach trackContentHeight} class="px-5 pt-2 pb-5 sm:px-6 sm:pb-6">
 						{#if title || header}

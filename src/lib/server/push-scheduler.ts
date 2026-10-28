@@ -13,20 +13,23 @@ export function reminderClock(now: number, timeZone: string): { day: string; tim
 
 export async function runPushSchedule(db: D1Database, now = Date.now()) {
 	await ensurePushDeliverySchema(db);
-	const zones = await db.prepare(`SELECT DISTINCT p.time_zone FROM notification_prefs p
-		WHERE p.reminder = 1 AND EXISTS (SELECT 1 FROM push_subscriptions s WHERE s.user_id = p.user_id)`)
+	const zones = await db.prepare(`SELECT DISTINCT COALESCE(p.time_zone, 'Europe/Budapest') AS time_zone
+		FROM push_subscriptions s LEFT JOIN notification_prefs p ON p.user_id = s.user_id
+		WHERE COALESCE(p.reminder, 1) = 1`)
 		.all<{ time_zone: string }>();
 	for (const { time_zone: timeZone } of zones.results ?? []) {
 		const { day, time } = reminderClock(now, timeZone);
-		// Naponként egy emlékeztető eszközönként, ismételt cron esetén is.
+		// Időpontonként egy emlékeztető: az átállított időpont aznap is működik.
 		await db.prepare(`INSERT OR IGNORE INTO push_deliveries
 			(endpoint, event_key, kind, payload_json, created_at, expires_at, next_attempt_at)
-			SELECT s.endpoint, ?, 'reminder', ?, ?, ?, ? FROM push_subscriptions s
-			JOIN notification_prefs p ON p.user_id = s.user_id
-			WHERE p.reminder = 1 AND p.time_zone = ? AND p.reminder_time <= ?`)
-			.bind(`reminder:${day}`, JSON.stringify({ title: 'Ideje gyakorolni',
-				body: 'Ne szakadjon meg a sorozatod, nézz rá a mai leckéidre.', url: '/', tag: `reminder:${day}` }),
-				now, now + 3600_000, now, timeZone, time).run();
+			SELECT s.endpoint, ? || COALESCE(p.reminder_time, '20:00'), 'reminder',
+				json_object('title', 'Ideje gyakorolni',
+					'body', 'Ne szakadjon meg a sorozatod, nézz rá a mai leckéidre.',
+					'url', '/', 'tag', ? || COALESCE(p.reminder_time, '20:00')), ?, ?, ?
+			FROM push_subscriptions s LEFT JOIN notification_prefs p ON p.user_id = s.user_id
+			WHERE COALESCE(p.reminder, 1) = 1 AND COALESCE(p.time_zone, 'Europe/Budapest') = ?
+				AND COALESCE(p.reminder_time, '20:00') <= ?`)
+			.bind(`reminder:${day}@`, `reminder:${day}@`, now, now + 3600_000, now, timeZone, time).run();
 	}
 	// Csak a még be nem adott feladatokra jelzünk, a némítást is megtartva.
 	for (const kind of ['task', 'assignment'] as const) {

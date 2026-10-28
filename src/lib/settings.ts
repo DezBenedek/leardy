@@ -118,11 +118,13 @@ export function saveSettings(s: AppSettings): void {
 }
 
 /** A zárt app push a szerveren szűr: némítás és kapcsolók felküldése. */
-export function syncNotifPrefs(s: AppSettings = loadSettings()): void {
-	if (!browser) return;
-	void fetch('/api/push/prefs', {
+export async function syncNotifPrefs(s: AppSettings = loadSettings()): Promise<boolean> {
+	if (!browser) return false;
+	return fetch('/api/push/prefs', {
 		method: 'PUT',
 		credentials: 'same-origin',
+		keepalive: true,
+		signal: AbortSignal.timeout(10_000),
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({
 			messages: s.pushClassMessage,
@@ -134,7 +136,7 @@ export function syncNotifPrefs(s: AppSettings = loadSettings()): void {
 			dueSoon: s.dueSoon,
 			muted: s.mutedClassrooms
 		})
-	}).catch(() => {});
+	}).then((response) => response.ok).catch(() => false);
 }
 
 /** Némított-e az adott osztály (nem jön onnan tantermi értesítés). */

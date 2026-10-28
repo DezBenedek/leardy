@@ -33,14 +33,13 @@ async function readyRegistration(): Promise<ServiceWorkerRegistration | null> {
 let syncing: Promise<PushState> | null = null;
 
 /** Az „aktív” állapothoz a szerveren is sikeresen mentett feliratkozás kell. */
-async function syncSubscription(create: boolean): Promise<PushState> {
+async function syncSubscription(): Promise<PushState> {
 	if (!pushSupported()) return 'unsupported';
 	if (Notification.permission === 'denied') return 'denied';
 	if (Notification.permission !== 'granted') return 'off';
 	const reg = await readyRegistration();
 	if (!reg) return 'off';
 	let sub = await reg.pushManager.getSubscription();
-	if (!sub && !create) return 'off';
 	const response = await fetch('/api/push/vapid', { signal: AbortSignal.timeout(10_000), cache: 'no-store' });
 	if (!response.ok) throw new Error('A push szolgáltatás most nem elérhető.');
 	const { publicKey } = await response.json() as { publicKey?: string };
@@ -61,13 +60,13 @@ async function syncSubscription(create: boolean): Promise<PushState> {
 		body: JSON.stringify({ endpoint: sub.endpoint, p256dh: encodeKey(p256dh), auth: encodeKey(auth) })
 	});
 	if (!saved.ok) throw new Error('Az értesítési kapcsolat mentése nem sikerült.');
-	syncNotifPrefs();
+	if (!await syncNotifPrefs()) throw new Error('Az értesítési beállítások mentése nem sikerült.');
 	return 'on';
 }
 
 export async function pushState(): Promise<PushState> {
 	if (syncing) return syncing;
-	syncing = syncSubscription(false).catch(() => 'error' as const).finally(() => { syncing = null; });
+	syncing = syncSubscription().catch(() => 'error' as const).finally(() => { syncing = null; });
 	return syncing;
 }
 
@@ -78,7 +77,7 @@ export async function subscribePush(): Promise<PushResult> {
 		if (Notification.permission === 'default') await Notification.requestPermission();
 		if (Notification.permission !== 'granted') return { ok: false, error: 'Engedélyezd az értesítéseket a telefon vagy a böngésző beállításaiban.' };
 		if (syncing) await syncing;
-		const state = await syncSubscription(true);
+		const state = await syncSubscription();
 		return state === 'on' ? { ok: true } : { ok: false, error: dev
 			? 'Fejlesztői módban nincs push szolgáltatás. Az éles vagy előnézeti appban próbáld ki.'
 			: 'Az alkalmazás még indul. Próbáld újra néhány másodperc múlva.' };

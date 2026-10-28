@@ -77,18 +77,25 @@
 		}
 	}
 	function position() {
-		if (!floating || !shell || !root) return;
+		if (!shell || !root) return;
 		const trigger = root.querySelector('[aria-expanded]')!.getBoundingClientRect();
-		if (open && (trigger.bottom < 0 || trigger.top > window.innerHeight)) { close(); return; }
+		const viewport = window.visualViewport;
+		const viewportTop = viewport?.offsetTop ?? 0;
+		const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+		if (open && (trigger.bottom < viewportTop || trigger.top > viewportBottom)) { close(); return; }
 		const height = shell.offsetHeight;
-		upward = window.innerHeight - trigger.bottom - 18 < height && trigger.top > window.innerHeight - trigger.bottom;
-		top = Math.max(8, upward ? trigger.top - height - 8 : Math.min(trigger.bottom + 8, window.innerHeight - height - 8));
+		const above = trigger.top - viewportTop;
+		const below = viewportBottom - trigger.bottom;
+		upward = below - 18 < height && above > below;
+		if (!floating) return;
+		top = Math.max(viewportTop + 8, upward ? trigger.top - height - 8 : Math.min(trigger.bottom + 8, viewportBottom - height - 8));
 		const start = align === 'start' || (align === 'auto' && trigger.left + trigger.width / 2 < window.innerWidth / 2);
 		const desiredLeft = start ? trigger.left : trigger.right - shell.offsetWidth;
 		left = Math.max(8, Math.min(desiredLeft, window.innerWidth - shell.offsetWidth - 8));
 	}
 	async function toggle(event: MouseEvent) {
 		if (open) { close(); return; }
+		position();
 		open = true;
 		await tick();
 		position();
@@ -96,11 +103,11 @@
 	}
 	function floatMenu(node: HTMLElement) {
 		shell = node;
-		if (!floating) return;
-		document.body.appendChild(node);
+		if (floating) document.body.appendChild(node);
 		// A fókusz és a mező magasságának animációja is görgethet. Ilyenkor a menü kövesse a gombot.
 		const followScroll = (event: Event) => { if (open && !node.contains(event.target as Node)) position(); };
 		const captureKey = (event: KeyboardEvent) => {
+			if (!floating) return;
 			keydown(event);
 			if (open && event.key === 'Tab') {
 				close(true);
@@ -119,11 +126,15 @@
 		window.addEventListener('keydown', captureKey, true);
 		window.addEventListener('scroll', followScroll, true);
 		window.addEventListener('resize', position);
+		window.visualViewport?.addEventListener('resize', position);
+		window.visualViewport?.addEventListener('scroll', position);
 		return () => {
 			window.removeEventListener('keydown', captureKey, true);
 			window.removeEventListener('scroll', followScroll, true);
 			window.removeEventListener('resize', position);
-			node.remove();
+			window.visualViewport?.removeEventListener('resize', position);
+			window.visualViewport?.removeEventListener('scroll', position);
+			if (floating) node.remove();
 		};
 	}
 </script>
@@ -169,7 +180,7 @@
 			data-upward={upward} style:top={floating ? `${top}px` : undefined} style:left={floating ? `${left}px` : undefined}>
 			<div {id} class="dropdown" inert={!open} aria-hidden={!open}>
 				{#each actions as action, index (action.id)}
-					<div class="dropdown-action" data-size={action.promote} style:--order={index}>
+					<div class="dropdown-action" data-size={action.promote} style:--order={upward ? actions.length - index - 1 : index}>
 						{@render actionButton(action, menuIconsOnly)}
 					</div>
 				{/each}
@@ -208,7 +219,8 @@
 	:global(.dark) .dropdown-shell { border-color: rgb(255 255 255 / .1); background: var(--color-stone-900); box-shadow: 0 16px 40px rgb(0 0 0 / .4); }
 	.dropdown { display: grid; gap: 8px; }
 	.dropdown-shell.floating { position: fixed; right: auto; z-index: 80; max-height: calc(100dvh - 16px); overflow-y: auto; }
-	.dropdown-shell[data-upward='true'] { transform: translateY(6px); clip-path: inset(100% 0 0 0); }
+	.dropdown-shell[data-upward='true'] { --action-entry-y: 6px; transform: translateY(6px); clip-path: inset(100% 0 0 0); }
+	.dropdown-shell[data-upward='true']:not(.floating) { top: auto; bottom: calc(100% + 10px); }
 	.dropdown .action-button { width: 100%; min-height: 50px; justify-content: flex-start; gap: 12px; padding: 12px 16px; font-size: 15px; }
 	.icons-only .dropdown-shell, .dropdown-shell.icons-only { width: max-content; }
 	.icons-only .dropdown { grid-auto-flow: column; }
@@ -221,7 +233,7 @@
 	.dense.icons-only .dropdown .action-button { width: 38px; height: 38px; padding: 0; justify-content: center; }
 	.dense.icon-grid .dropdown { grid-auto-flow: row; grid-template-columns: repeat(var(--menu-cols), 38px); }
 	.dense .dropdown-action { transition-delay: 0ms !important; }
-	.dropdown-action { opacity: 0; transform: translateY(-6px); transition: opacity 180ms, transform 220ms cubic-bezier(.22,1,.36,1); transition-delay: 0ms; }
+	.dropdown-action { opacity: 0; transform: translateY(var(--action-entry-y, -6px)); transition: opacity 180ms, transform 220ms cubic-bezier(.22,1,.36,1); transition-delay: 0ms; }
 	[data-open='true'] .dropdown-shell, .dropdown-shell[data-open='true'] { visibility: visible; opacity: 1; transform: translateY(0); clip-path: inset(-48px); pointer-events: auto; }
 	[data-open='true'] .dropdown-action { opacity: 1; transform: translateY(0) scale(1); transition-delay: calc(var(--order) * 45ms); }
 	.promoted { display: none; }

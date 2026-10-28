@@ -138,3 +138,24 @@ test('A manifest mindkét témában az alkalmazás hátterével egyező színt a
   assert.ok(manifest.icons.every(icon => icon.src.startsWith('/icons/')));
  }
 });
+
+test('Az emlékeztető új időpontja ugyanazon a napon is jelez, ismételt cron nem dupláz', async () => {
+ const h = await setup();
+ try {
+  h.sql.exec(`INSERT INTO notification_prefs (user_id, updated_at) VALUES ('student', 0);`);
+  assert.equal((await runPushSchedule(h.db, now)).sent, 1);
+  h.sql.exec(`UPDATE notification_prefs SET reminder_time = '20:07'`);
+  assert.equal((await runPushSchedule(h.db, now + 60_000)).sent, 0);
+  assert.equal((await runPushSchedule(h.db, now + 120_000)).sent, 1);
+  assert.equal((await runPushSchedule(h.db, now + 180_000)).sent, 0);
+  assert.equal(h.captured.length, 2);
+ } finally { h.cleanup(); }
+});
+
+test('A napi emlékeztető külön beállítássor nélkül is elindul zárt appnál', async () => {
+ const h = await setup();
+ try {
+  assert.deepEqual(await runPushSchedule(h.db, now), { sent: 1, failed: 0 });
+  assert.equal((await runPushSchedule(h.db, now + 60_000)).sent, 0);
+ } finally { h.cleanup(); }
+});

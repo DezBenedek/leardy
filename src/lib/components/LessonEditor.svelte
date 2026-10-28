@@ -292,7 +292,7 @@
 		</div>
 		<div class="flex shrink-0 items-center gap-2">
 			<IconButton ariaLabel="Mentés" size={44} disabled={locked || !dirty} onclick={() => { void save(); }}><Save size={20} /></IconButton>
-			<ActionMenu compact dense triggerIcon={Menu} label="Lecke műveletei" disabled={locked} actions={[
+			<ActionMenu compact triggerIcon={Menu} label="Lecke műveletei" disabled={locked} actions={[
 				{ id: 'quiz', label: quizLabel, icon: ListChecks, onclick: () => { void openQuiz(); } },
 				{ id: 'rename', label: 'Átnevezés', icon: Pencil, onclick: openRename },
 				{ id: 'delete', label: 'Törlés', icon: Trash2, tone: 'danger', onclick: openDelete }

@@ -8,7 +8,7 @@ const source = ts.transpileModule(await readFile(new URL('../src/lib/push-client
  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
 }).outputText.replace(/^import .*\n/gm, '').replaceAll('export ', '');
 
-function harness({ permission = 'granted', existing = true, rotated = false, serverError = false } = {}) {
+function harness({ permission = 'granted', existing = true, rotated = false, serverError = false, prefsSaved = true } = {}) {
  const key = new Uint8Array(65).fill(7).buffer;
  const events = [];
  let unsubscribed = 0, subscribed = 0;
@@ -21,7 +21,7 @@ function harness({ permission = 'granted', existing = true, rotated = false, ser
  } }) } };
  const client = vm.runInNewContext(source + '\n({ pushState, subscribePush })', {
   browser: true, dev: false, navigator, window: { PushManager: {}, Notification }, Notification,
-  syncNotifPrefs: () => events.push('prefs'), setTimeout, clearTimeout, AbortSignal, Uint8Array, atob, btoa,
+  syncNotifPrefs: async () => { events.push('prefs'); return prefsSaved; }, setTimeout, clearTimeout, AbortSignal, Uint8Array, atob, btoa,
   fetch: async (url, init) => { events.push(url); if (url.endsWith('/vapid')) return Response.json({ publicKey: Buffer.from(key).toString('base64url') });
    return Response.json({}, { status: serverError ? 503 : 200 }); }
  });
@@ -61,4 +61,18 @@ test('Párhuzamos állapotellenőrzés csak egyszer menti a feliratkozást', asy
  const result = await Promise.all([h.pushState(), h.pushState()]);
  assert.deepEqual(result, ['on', 'on']);
  assert.equal(h.events.filter(event => event === '/api/push/subscriptions').length, 1);
+});
+
+test('Engedélyezett értesítésnél a hiányzó eszközfeliratkozás automatikusan helyreáll', async () => {
+ const h = harness({ existing: false });
+ assert.equal(await h.pushState(), 'on');
+ assert.equal(h.subscribed, 1);
+ assert.ok(h.events.includes('/api/push/subscriptions'));
+ assert.ok(!h.events.includes('permission'));
+});
+
+test('Sikertelen beállításmentésnél az állapot nem mutat kész háttérértesítést', async () => {
+ const h = harness({ prefsSaved: false });
+ assert.equal(await h.pushState(), 'error');
+ assert.equal(h.unsubscribed, 0);
 });

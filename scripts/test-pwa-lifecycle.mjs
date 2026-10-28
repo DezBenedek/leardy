@@ -14,6 +14,7 @@ const worker = transpile((await readFile(new URL('../src/service-worker.ts', imp
 
 function harness(network = async () => new Response('network')) {
 	const handlers = new Map();
+	const notifications = [];
 	const storage = new Map();
 	const caches = {
 		async open(name) {
@@ -34,6 +35,7 @@ function harness(network = async () => new Response('network')) {
 	};
 	const self = {
 		__WB_MANIFEST: [], location: { origin }, navigator: { onLine: true },
+		registration: { async showNotification(title, options) { notifications.push({ title, ...options }); } },
 		addEventListener(type, handler) { handlers.set(type, handler); },
 		clients: { async claim() {}, async matchAll() { return []; } }
 	};
@@ -43,6 +45,12 @@ function harness(network = async () => new Response('network')) {
 	});
 	return {
 		caches,
+		notifications,
+		async push(payload) {
+			let pending;
+			handlers.get('push')({ data: { json: () => payload }, waitUntil(promise) { pending = promise; } });
+			await pending;
+		},
 		async activate() {
 			let pending;
 			handlers.get('activate')({ waitUntil(promise) { pending = promise; } });
@@ -60,6 +68,15 @@ function harness(network = async () => new Response('network')) {
 		}
 	};
 }
+
+test('A push nyitott alkalmazás és kliensoldali lekérdezés nélkül is rendszerértesítést jelenít meg', async () => {
+	const h = harness(async () => { throw new Error('A push megjelenítése nem függhet hálózati lekérdezéstől.'); });
+	await h.push({ title: 'Ideje gyakorolni', body: 'Vár a mai leckéd.', url: '/', tag: 'reminder:2026-10-25@20:07' });
+	assert.equal(h.notifications.length, 1);
+	assert.equal(h.notifications[0].title, 'Ideje gyakorolni');
+	assert.equal(h.notifications[0].tag, 'reminder:2026-10-25@20:07');
+	assert.equal(h.notifications[0].data.url, '/');
+});
 
 test('Frissítés után a nyitott PWA előző kódrészlete még offline is elérhető', async () => {
 	const h = harness(async () => { throw new TypeError('Nincs hálózat.'); });

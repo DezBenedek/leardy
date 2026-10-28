@@ -469,7 +469,7 @@ async function enqueuePush(db: D1Database, subs: PushSubscription[], msg: PushPa
 	}
 }
 
-/** A mentett küldéseket azonnal és az ötperces cronból is feldolgozzuk. */
+/** A mentett küldéseket azonnal és a percenkénti cronból is feldolgozzuk. */
 export async function processPushQueue(db: D1Database, now = Date.now()): Promise<{ sent: number; failed: number }> {
 	await ensurePushDeliverySchema(db);
 	await db.prepare(`DELETE FROM push_deliveries WHERE expires_at < ? AND (delivered_at IS NULL OR delivered_at < ?)`)

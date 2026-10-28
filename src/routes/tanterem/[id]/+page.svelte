@@ -1667,9 +1667,6 @@ import {
 	onEdit={data.own && !editingMsg && !editingTask && !editingAssignment ? openEdit : undefined}
 >
 	{#snippet actions()}
-		{#if detailMsg && data.own && !editingMsg}
-			<IconButton ariaLabel="Üzenet törlése" size={36} tone="danger" disabled={deletingMessage} onclick={() => { deleteMessageOpen = true; }}><Trash2 size={18} /></IconButton>
-		{/if}
 		{#if editingMsg || editingTask || editingAssignment}
 			<Button type="submit" form={editingMsg ? 'edit-message' : editingTask ? 'edit-task' : 'edit-assignment'} size="sm" busy={savingEdit} disabled={editingMsg && editMsgTitle.trim().length < 3}><Save size={17} /> Mentés</Button>
 		{/if}
@@ -1987,6 +1984,9 @@ import {
 				<div class="grid gap-2.5">
 					<Button variant="outline" block disabled={savingEdit} onclick={() => (editingMsg = false)}>
 						Mégse
+					</Button>
+					<Button variant="danger" block disabled={savingEdit || deletingMessage} onclick={() => { deleteMessageOpen = true; }}>
+						<Trash2 size={17} /> Üzenet törlése
 					</Button>
 				</div>
 			</form>
