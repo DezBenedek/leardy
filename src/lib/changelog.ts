@@ -26,6 +26,28 @@ export interface ChangeEntry {
 
 export const CHANGES: ChangeEntry[] = [
 	{
+		version: '1.0.4-beta',
+		title: 'Kényelmesebb szerkesztők és stabilabb felugrók',
+		items: [
+			{
+				title: 'Rendezettebb táblázatok',
+				desc: 'Beszúrás méretválasztóval, műveletek átlátható menüben. Az ikon csak táblázatban látszik, a szövegstílus és telefonon a beszúrás is csak ikon.'
+			},
+			{
+				title: 'Egyszerűbb tananyag-beállítások',
+				desc: 'A név mellett mentés ikon van, a publikálás kapcsoló azonnal ment. Szerkesztőt név alapján is kereshetsz.'
+			},
+			{
+				title: 'Stabil újdonság-ablak',
+				desc: 'Fix magasság, tartalomváltáskor sem ugrál. Egérrel is oldalra húzható a lapozás.'
+			},
+			{
+				title: 'Apró simítások',
+				desc: 'A bekezdés-gomb a témakör-gomb stílusát kapta, a szavak listáján javult a hover.'
+			}
+		]
+	},
+	{
 		version: '1.0.3-beta',
 		title: 'Finomabb panelek és menük',
 		items: [

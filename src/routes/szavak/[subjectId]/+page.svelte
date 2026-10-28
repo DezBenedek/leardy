@@ -175,7 +175,7 @@
 	{@render saveStatus()}
 
 	<section aria-label="Csomagok" class="mt-4 pb-6">
-		<div class="rounded-[20px] border border-stone-200 bg-white dark:border-white/10 dark:bg-stone-900">
+		<div class="rounded-[20px] border border-stone-200 bg-white overflow-hidden dark:border-white/10 dark:bg-stone-900">
 			<button
 				type="button"
 				aria-expanded={listOpen}

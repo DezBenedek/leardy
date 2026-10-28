@@ -43,7 +43,7 @@
 		<SwipePager count={CHANGES.length} index={idx} onIndex={go}>
 			{#snippet page(i)}
 				{@const e = CHANGES[i] ?? LATEST_CHANGE}
-				<div role="region" aria-label={`Újdonságok - ${e.version}`}>
+				<div role="region" aria-label={`Újdonságok - ${e.version}`} class="h-[380px] overflow-y-auto overscroll-contain sm:h-[400px]">
 					<div class="flex items-center gap-3 rounded-2xl bg-brand-50 p-4 dark:bg-brand-500/15">
 						<span class="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500 text-white">
 							<Sparkles size={22} />

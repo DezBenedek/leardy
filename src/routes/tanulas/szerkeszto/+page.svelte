@@ -3,7 +3,7 @@
 	import { lessonPath, lessonEditorPath } from '$lib/lesson-paths';
 	import { afterNavigate, beforeNavigate, goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { ArrowDown, ArrowLeft, ArrowUp, BookOpenText, ChevronDown, ChevronRight, LoaderCircle, Pencil, Plus, Settings, Trash2, UserRound } from '@lucide/svelte';
+	import { ArrowDown, ArrowLeft, ArrowUp, BookOpenText, ChevronDown, ChevronRight, Pencil, Plus, Save, Settings, Trash2, UserRound } from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -109,7 +109,7 @@
 			editorCandidates = cached.users;
 			return;
 		}
-		editorCandidates = editorCandidates.filter((candidate) => candidate.email.toLowerCase().includes(needle));
+		editorCandidates = editorCandidates.filter((candidate) => candidate.email.toLowerCase().includes(needle) || candidate.name.toLowerCase().includes(needle));
 		const controller = new AbortController();
 		editorSearchController = controller;
 		searchingEditors = true;
@@ -232,19 +232,43 @@
 		settingsOpen = true;
 	}
 
-	async function saveSettings(event: SubmitEvent) {
-		event.preventDefault();
-		if (!level || busy) return;
+	async function saveLevelName() {
+		if (!level || busy || publishSyncing) return;
+		if (!levelName.trim()) {
+			formError = 'Adj meg egy nevet.';
+			return;
+		}
 		busy = true;
 		formError = '';
 		try {
-			await editCurriculum({ action: 'updateLevel', levelId: level.id, title: levelName, published });
+			await editCurriculum({ action: 'updateLevel', levelId: level.id, title: levelName.trim(), published });
+			levelName = levelName.trim();
 			await invalidateAll();
-			settingsOpen = false;
-			toast.success('A tananyag beállításai mentve');
+			toast.success('A tananyag neve mentve');
 		} catch (err) { formError = err instanceof Error ? err.message : 'Nem sikerült menteni.'; }
 		finally { busy = false; }
 	}
+
+	let publishSyncing = $state(false);
+
+	$effect(() => {
+		if (!settingsOpen || busy || publishSyncing) return;
+		const current = level;
+		if (!current || published === current.published) return;
+		const next = published;
+		publishSyncing = true;
+		formError = '';
+		editCurriculum({ action: 'updateLevel', levelId: current.id, title: current.title, published: next })
+			.then(() => invalidateAll())
+			.then(() => toast.success(next ? 'A tananyag publikus' : 'A tananyag nem publikus'))
+			.catch((err) => {
+				published = current.published;
+				const message = err instanceof Error ? err.message : 'Nem sikerült menteni.';
+				formError = message;
+				toast.error(message);
+			})
+			.finally(() => { publishSyncing = false; });
+	});
 
 	async function updateEditor(action: 'addEditor' | 'removeEditor', address: string) {
 		if (!level || busy) return;
@@ -440,20 +464,18 @@
 	onConfirm={() => { void deleteTopic(); }}
 />
 
-<Drawer open={settingsOpen} label="A tananyag beállításai" onClose={() => { if (!busy) settingsOpen = false; }}>
-	{#snippet header()}
-		<label for="level-name" class="min-w-0 flex-1 {sectionClass}">Tananyag neve</label>
-		<button type="submit" form="level-settings" disabled={busy} aria-busy={busy} class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand-500 px-3.5 py-2 text-sm font-bold text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60 motion-reduce:transition-none">
-			{#if busy}<LoaderCircle size={15} class="animate-spin motion-reduce:animate-none" />{/if} Mentés
-		</button>
-	{/snippet}
-	<form id="level-settings" onsubmit={saveSettings}>
-		<input id="level-name" aria-label="Tananyag neve" class={fieldClass} bind:value={levelName} required maxlength={160} disabled={busy} />
-		<div class="mt-4 flex items-center gap-3 py-3">
-			<div class="min-w-0 flex-1"><p class={sectionClass}>Publikálva</p><p class="mt-1 text-xs text-stone-500 dark:text-stone-400">A tanulók is láthatják a tananyagot.</p></div>
-			<Switch id="level-published" bind:checked={published} label="Publikálva" disabled={busy} />
-		</div>
-	</form>
+<Drawer open={settingsOpen} label="A tananyag beállításai" title="A tananyag beállításai" onClose={() => { if (!busy && !publishSyncing) settingsOpen = false; }}>
+	<div class="mt-4">
+		<label for="level-name" class={sectionClass}>Tananyag neve</label>
+		<form class="flex items-center gap-2" onsubmit={(event) => { event.preventDefault(); void saveLevelName(); }}>
+			<input id="level-name" aria-label="Tananyag neve" class={fieldClass} bind:value={levelName} required maxlength={160} disabled={busy || publishSyncing} />
+			<IconButton ariaLabel="Tananyag nevének mentése" size={48} disabled={busy || publishSyncing || !levelName.trim() || levelName === level?.title} onclick={() => { void saveLevelName(); }}><Save size={18} /></IconButton>
+		</form>
+	</div>
+	<div class="mt-4 flex items-center gap-3 py-3">
+		<div class="min-w-0 flex-1"><p class={sectionClass}>Publikálva</p><p class="mt-1 text-xs text-stone-500 dark:text-stone-400">A kapcsoló azonnal ment. A tanulók is láthatják a tananyagot.</p></div>
+		<Switch id="level-published" bind:checked={published} label="Publikálva" disabled={busy || publishSyncing} />
+	</div>
 	<div class="mt-4 border-t border-stone-100 pt-4 dark:border-white/5">
 		<div class="flex items-center justify-between gap-3">
 			<h3 class={sectionClass}>Szerkesztők</h3>
@@ -481,8 +503,8 @@
 />
 
 <Drawer open={addEditorOpen} label="Szerkesztő hozzáadása" title="Szerkesztő hozzáadása" onBack={() => { if (!busy) closeAddEditor(); }} onClose={() => { if (!busy) closeAddEditor(); }}>
-	<label class="mt-4 block {sectionClass}" for="editor-email">E-mail-cím</label>
-	<input id="editor-email" type="text" inputmode="email" autocomplete="off" class={fieldClass} value={email} oninput={(event) => searchEditors(event.currentTarget.value)} maxlength={254} disabled={busy} placeholder="Kezdd el beírni az e-mail-címet…" />
+	<label class="mt-4 block {sectionClass}" for="editor-email">Név vagy e-mail-cím</label>
+	<input id="editor-email" type="text" inputmode="email" autocomplete="off" class={fieldClass} value={email} oninput={(event) => searchEditors(event.currentTarget.value)} maxlength={254} disabled={busy} placeholder="Kezdd el beírni a nevet vagy az e-mail-címet…" />
 	<div class="mt-3" aria-live="polite" aria-busy={searchingEditors || busy}>
 		{#if searchingEditors}
 			<p role="status" class="animate-pulse py-3 text-sm text-stone-500 motion-reduce:animate-none dark:text-stone-400">Keresés…</p>
@@ -490,9 +512,9 @@
 		{#if editorError}
 			<p role="alert" class="py-3 text-sm text-red-600 dark:text-red-400">{editorError}</p>
 		{:else if email.trim().length < 2}
-			<p class="py-3 text-sm text-stone-500 dark:text-stone-400">Írj be legalább 2 karaktert az e-mail-címből.</p>
+			<p class="py-3 text-sm text-stone-500 dark:text-stone-400">Írj be legalább 2 karaktert a névből vagy az e-mail-címből.</p>
 		{:else if editorCandidates.length === 0}
-			{#if !searchingEditors}<p class="py-3 text-sm text-stone-500 dark:text-stone-400">Nincs hozzáadható felhasználó ezzel az e-mail-címmel.</p>{/if}
+			{#if !searchingEditors}<p class="py-3 text-sm text-stone-500 dark:text-stone-400">Nincs hozzáadható felhasználó ezzel a névvel vagy e-mail-címmel.</p>{/if}
 		{:else}
 			<ul class="-mx-1 space-y-0.5">
 				{#each editorCandidates as candidate (candidate.id)}

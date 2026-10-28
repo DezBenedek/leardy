@@ -40,6 +40,10 @@
 	let startX = 0;
 	let startY = 0;
 	let startT = 0;
+	let mouseActive = $state(false);
+	let mouseStartX = 0;
+	let mouseStartT = 0;
+	let dragging = $derived(touchActive || mouseActive);
 	let timer: number | null = null;
 
 	let slots = $derived(w > 0 ? [internal - 1, internal, internal + 1] : [internal]);
@@ -193,7 +197,58 @@
 	function onTouchCancel(e: TouchEvent) {
 		endTouch(e, true);
 	}
+
+	function onMouseDown(e: MouseEvent) {
+		if (busy || touchActive || mouseActive) return;
+		const target = e.target as HTMLElement | null;
+		if (target?.closest?.('input, textarea, select, button, a, [contenteditable="true"]')) return;
+		if (reduceMotion() || w <= 0) return;
+		mouseActive = true;
+		mouseStartX = e.clientX;
+		mouseStartT = performance.now();
+		offset = 0;
+		anim = false;
+		e.preventDefault();
+	}
+
+	function onMouseMove(e: MouseEvent) {
+		if (!mouseActive || busy) return;
+		if (e.buttons === 0) {
+			mouseActive = false;
+			snapBack();
+			return;
+		}
+		let x = e.clientX - mouseStartX;
+		if ((internal <= 0 && x > 0) || (internal >= count - 1 && x < 0)) x *= 0.3;
+		offset = Math.max(-w, Math.min(w, x));
+	}
+
+	function endMouse(commitDrag: boolean, clientX: number) {
+		if (!mouseActive) return;
+		mouseActive = false;
+		if (busy) {
+			offset = 0;
+			return;
+		}
+		const dx = clientX - mouseStartX;
+		const dt = performance.now() - mouseStartT;
+		const flick = Math.abs(dx) >= 32 && dt <= 250;
+		const dir = dx < 0 ? 1 : -1;
+		const target = internal + dir;
+		if (commitDrag && (Math.abs(dx) >= limit || flick) && target >= 0 && target < count) {
+			if (reduceMotion() || w <= 0) commit(target);
+			else animateTo(-dir * w, () => commit(target));
+			return;
+		}
+		snapBack();
+	}
+
+	function onMouseUp(e: MouseEvent) {
+		endMouse(true, e.clientX);
+	}
 </script>
+
+<svelte:window onmousemove={onMouseMove} onmouseup={onMouseUp} />
 
 <div
 	bind:clientWidth={w}
@@ -202,7 +257,10 @@
 	ontouchmove={onTouchMove}
 	ontouchend={onTouchEnd}
 	ontouchcancel={onTouchCancel}
-	class="touch-pan-y overflow-hidden"
+	onmousedown={onMouseDown}
+	onmousemove={onMouseMove}
+	onmouseup={onMouseUp}
+	class={['touch-pan-y overflow-hidden', dragging ? 'cursor-grabbing select-none' : 'cursor-grab']}
 >
 	<div
 		class="flex items-start"

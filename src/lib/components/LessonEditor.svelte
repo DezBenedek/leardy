@@ -13,15 +13,14 @@
 	import { markdownLessonDoc } from '$lib/lesson-markdown';
 	import { getLessonDraft, putLessonDraft, removeLessonDraft, lessonDraftKey, type LessonDraft } from '$lib/lesson-draft';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
-	import { ArrowDown, ArrowLeft, ArrowUp, ListChecks, Menu, Pencil, Save, Trash2, FileClock, X } from '@lucide/svelte';
-	import AddItemButton from '$lib/ui/AddItemButton.svelte';
+	import { ArrowDown, ArrowLeft, ArrowUp, ListChecks, Menu, Pencil, Plus, Save, Trash2, FileClock, X } from '@lucide/svelte';
+	import Button from '$lib/ui/Button.svelte';
 	import ActionMenu from '$lib/ui/ActionMenu.svelte';
 	import Drawer from './Drawer.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import { editCurriculum } from '$lib/curriculum-edit-api';
 	import { parseEditableSections, type EditorLesson, type EditorQuiz } from '$lib/curriculum-editor';
 	import { toast } from '$lib/toast.svelte';
-	import Button from '$lib/ui/Button.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 
 	let { lesson, initialQuizzes = [] }: { lesson: EditorLesson; initialQuizzes?: EditorQuiz[] } = $props();
@@ -123,7 +122,7 @@
 		if (restoreFocus) void tick().then(() => {
 			const target = nextSlug
 				? document.getElementById(`${editorId}-card-${nextSlug}`)?.querySelector<HTMLButtonElement>('[aria-expanded]')
-				: document.getElementById(`${editorId}-add`);
+				: document.getElementById(`${editorId}-add`)?.querySelector<HTMLButtonElement>('button');
 			target?.focus({ preventScroll: true });
 		});
 	}
@@ -340,12 +339,7 @@
 		{/each}
 		{/key}
 	</div>
-	<AddItemButton
-		id={`${editorId}-add`}
-		label="Bekezdés hozzáadása"
-		disabled={locked || !!availableDraft}
-		onclick={() => { void addSection(); }}
-	/>
+	<div id={`${editorId}-add`} class="flex justify-center"><Button variant="ghost" disabled={locked || !!availableDraft} onclick={() => { void addSection(); }}><Plus size={18} /> Bekezdés hozzáadása</Button></div>
 	{#if formError && !renameOpen && !deleteOpen}<p role="alert" class="mt-4 text-sm text-red-600 dark:text-red-400">{formError}</p>{/if}
 </div>
 

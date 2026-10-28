@@ -241,12 +241,12 @@ export async function searchEditorCandidates(db: D1Database, user: PublicUser, l
 	const level = await requireLevelEditor(db, user, levelId);
 	const needle = query.trim().toLowerCase();
 	if (!needle) return [];
-	if (needle.length > 254) error(400, 'Az e-mail-cím legfeljebb 254 karakter lehet.');
+	if (needle.length > 254) error(400, 'A keresés legfeljebb 254 karakter lehet.');
 	const rows = await db.prepare(`SELECT u.id, u.name, u.email FROM users u
-		WHERE instr(lower(u.email), ?) > 0 AND u.id <> COALESCE(?, '')
+		WHERE (instr(lower(u.email), ?) > 0 OR instr(lower(u.name), ?) > 0) AND u.id <> COALESCE(?, '')
 		AND NOT EXISTS (SELECT 1 FROM level_editors e WHERE e.level_id = ? AND e.email = lower(u.email))
-		ORDER BY CASE WHEN lower(u.email) = ? THEN 0 ELSE 1 END, lower(u.email), u.id LIMIT ?`)
-		.bind(needle, level.owner_id, levelId, needle, limit).all<EditorCandidate>();
+		ORDER BY CASE WHEN lower(u.email) = ? THEN 0 WHEN lower(u.name) = ? THEN 1 ELSE 2 END, lower(u.email), u.id LIMIT ?`)
+		.bind(needle, needle, level.owner_id, levelId, needle, needle, limit).all<EditorCandidate>();
 	return rows.results;
 }
 
