@@ -105,9 +105,10 @@
 	let storageBusy = $state(false);
 	let wordLangs = $state<{ subjectId: string; subjectTitle: string }[]>([]);
 	let wordLangsLoading = $state(false);
+	let wordLangsLoaded = $state(false);
 
 	async function loadWordLangs() {
-		if (wordLangsLoading || wordLangs.length > 0) return;
+		if (wordLangsLoading || wordLangsLoaded) return;
 		wordLangsLoading = true;
 		try {
 			const res = await fetch("/api/sm2-due", { credentials: "same-origin" });
@@ -122,6 +123,7 @@
 			// néma hiba: csak a főkapcsoló látszik
 		} finally {
 			wordLangsLoading = false;
+			wordLangsLoaded = true;
 		}
 	}
 
@@ -677,32 +679,32 @@
 					</div>
 					<Toggle bind:checked={settings.homeWords} label="Szógyakorlás a főoldalon" />
 				</div>
-				{#if settings.homeWords}
-					<div class="py-3">
-						<div class="ml-1 border-l-2 border-brand-500/60 pl-3 dark:border-brand-400/60">
-							<p class="text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">A szógyakorlás nyelvei</p>
-							<p class="mt-1 text-[13px] font-medium text-stone-500 dark:text-stone-400">Ezek a fenti szógyakorlás beállításhoz tartoznak. Csak a bekapcsolt nyelvek jelennek meg a főoldalon.</p>
-						{#if wordLangsLoading}
-							<p class="mt-2 text-[13px] font-medium text-stone-500 dark:text-stone-400">Betöltés…</p>
-						{:else if wordLangs.length === 0}
-							<p class="mt-2 text-[13px] font-medium text-stone-500 dark:text-stone-400">Még nincs nyelv a könyvtáradban.</p>
-						{:else}
-							<ul class="mt-1 divide-y divide-stone-100 dark:divide-white/5">
-								{#each wordLangs as lang (lang.subjectId)}
-									<li class="flex items-center gap-3 py-2.5">
-										<p class="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink-900 dark:text-white">{lang.subjectTitle}</p>
-										<Toggle
-											checked={!settings.hiddenWordSubjects.includes(lang.subjectId)}
-											onchange={(v) => toggleWordSubject(lang.subjectId, v)}
-											label={lang.subjectTitle}
-										/>
-									</li>
-								{/each}
-							</ul>
+				<div
+					class="grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none"
+					style="grid-template-rows: {settings.homeWords && wordLangs.length > 0 ? '1fr' : '0fr'}"
+				>
+					<div class="min-h-0 overflow-hidden">
+						{#if wordLangs.length > 0}
+							<div class="py-3">
+								<div class="ml-1 border-l-2 border-brand-500/60 pl-3 dark:border-brand-400/60">
+									<p class="text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">A szógyakorlás nyelvei</p>
+									<ul class="mt-1 divide-y divide-stone-100 dark:divide-white/5">
+										{#each wordLangs as lang (lang.subjectId)}
+											<li class="flex items-center gap-3 py-2.5">
+												<p class="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink-900 dark:text-white">{lang.subjectTitle}</p>
+												<Toggle
+													checked={!settings.hiddenWordSubjects.includes(lang.subjectId)}
+													onchange={(v) => toggleWordSubject(lang.subjectId, v)}
+													label={lang.subjectTitle}
+												/>
+											</li>
+										{/each}
+									</ul>
+								</div>
+							</div>
 						{/if}
-						</div>
 					</div>
-				{/if}
+				</div>
 				<div class="flex items-center gap-3 py-3">
 					<div class="min-w-0 flex-1">
 						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Bekezdések nyitva</p>
