@@ -4,6 +4,7 @@
 	import Button from '$lib/ui/Button.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import { lockBody, motionOK } from '$lib/overlay';
+	import { tick } from 'svelte';
 
 	/* Engedélykérő ablak: ha a böngésző/PWA nem adja oda a mikrofont vagy a
 	   kamerát (letiltott engedély telefonon), lépésről lépésre mutatja a bekapcsolást.
@@ -35,6 +36,16 @@
 			const gen = ++generation;
 			animOn = motionOK();
 			render = true;
+			if (!animOn) {
+				// Nyugodt módban nincs átmenet: azonnal a végállapot,
+				// különben két képkockányi rejtett állapot villanna fel.
+				shown = true;
+				void tick().then(() => {
+					if (gen !== generation) return;
+					panel?.focus({ preventScroll: true });
+				});
+				return;
+			}
 			const raf1 = requestAnimationFrame(() =>
 				requestAnimationFrame(() => {
 					if (gen !== generation) return;

@@ -6,7 +6,7 @@
 	import { lessonPath } from '$lib/lesson-paths';
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 import {
 	ArrowLeft,
@@ -35,7 +35,7 @@ import {
 	Settings,
 	Shuffle,
 	Target,
-	Timer,
+	Radio,
 	Trash2,
 	TrendingUp,
 	Undo2,
@@ -128,6 +128,72 @@ import {
 	let tasks = $state<FeedTask[]>([]);
 	let assignments = $state<FeedAssignment[]>([]);
 	let members = $state<Member[]>([]);
+	/** Élő dolgozatok a fal tetejére: tanárnak az összes eddigi, diáknak csak az élő. */
+	interface LiveRow {
+		id: string;
+		title: string;
+		status: string;
+		created_at: number;
+		total: number;
+		done: number;
+		source?: string;
+		pacing?: string;
+		orderMode?: string;
+		playMode?: string;
+	}
+	let liveSessions = $state<LiveRow[]>([]);
+	let activeLive = $derived(liveSessions.filter((s) => s.status === 'live' || s.status === 'lobby'));
+	let draftLive = $derived(liveSessions.filter((s) => s.status === 'draft'));
+	let pastLive = $derived(liveSessions.filter((s) => s.status === 'done'));
+	let publishingId = $state<string | null>(null);
+	let deletingDraftId = $state<string | null>(null);
+	let deletingDraft = $state(false);
+
+	function draftSummary(s: LiveRow): string {
+		const parts: string[] = [];
+		if (s.total > 0) parts.push(`${s.total} kérdés`);
+		parts.push(s.source === 'deck' ? 'Kártyák' : 'Lecke kvízek');
+		parts.push(s.pacing === 'synced' ? 'Együtt' : 'Saját tempó');
+		if (s.orderMode === 'shuffled') parts.push('Kevert');
+		if (s.playMode === 'stage') parts.push('Tantermi');
+		return parts.join(' · ');
+	}
+
+	async function publishDraft(id: string) {
+		if (publishingId) return;
+		publishingId = id;
+		try {
+			const res = await mutationFetch(`/api/live/${encodeURIComponent(id)}/publish`, { method: 'POST' });
+			const j = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				toast.error('Nem sikerült meghirdetni', j.error ?? 'Próbáld újra!');
+				return;
+			}
+			toast.success('Élő dolgozat meghirdetve');
+			await loadLive();
+		} finally {
+			publishingId = null;
+		}
+	}
+
+	async function deleteDraft() {
+		const id = deletingDraftId;
+		if (!id || deletingDraft) return;
+		deletingDraft = true;
+		try {
+			const res = await mutationFetch(`/api/live/${encodeURIComponent(id)}`, { method: 'DELETE' });
+			const j = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				toast.error('Nem sikerült törölni', j.error ?? 'Próbáld újra!');
+				return;
+			}
+			deletingDraftId = null;
+			toast.success('Piszkozat törölve');
+			await loadLive();
+		} finally {
+			deletingDraft = false;
+		}
+	}
 	let displayName = $state('');
 	let displaySubject = $state('');
 	let displayCode = $state('');
@@ -510,6 +576,22 @@ import {
 		}
 	}
 
+	async function loadLive() {
+		try {
+			const res = await privateFetch(`/api/classrooms/${room.id}/live`);
+			const j = await res.json().catch(() => ({}));
+			if (res.ok && Array.isArray(j.sessions)) liveSessions = j.sessions;
+		} catch {
+			// csendben: a fal a dolgozatsáv nélkül is teljes
+		}
+	}
+
+	onMount(() => {
+		void loadLive();
+		const timer = setInterval(() => void loadLive(), 20_000);
+		return () => clearInterval(timer);
+	});
+
 	$effect(() => {
 		if (seededData !== data) {
 			messages = [...data.messages];
@@ -522,6 +604,7 @@ import {
 			seeded = true;
 			seededData = data;
 			void loadMineMap();
+			void loadLive();
 		}
 	});
 
@@ -1534,6 +1617,107 @@ import {
 	</div>
 {/if}
 
+{#if activeLive.length > 0}
+	<div class="mt-4 grid min-w-0 gap-2.5 [&>*]:min-w-0" aria-label="Épp zajló élő dolgozat">
+		{#each activeLive as s (s.id)}
+			<Card tone="brand" pad="lg">
+				<div class="anim-rise flex items-center gap-3" style="--d:0ms">
+					<span class="relative grid size-11 shrink-0 place-items-center rounded-full bg-white/15" aria-hidden="true">
+						<span class="absolute inset-0 animate-ping rounded-full bg-white/20"></span>
+						<Radio size={22} class="relative text-white" />
+					</span>
+					<div class="min-w-0 flex-1">
+						<p class="flex items-center gap-1.5 text-[11px] font-extrabold tracking-[0.14em] text-white/70 uppercase">
+							<span class="size-1.5 animate-pulse rounded-full bg-white" aria-hidden="true"></span>
+							{s.status === 'live' ? 'Élő dolgozat zajlik' : 'Élő dolgozat indul'}
+						</p>
+						<p class="font-display truncate text-[18px] font-extrabold tracking-tight text-white">
+							{s.title}
+						</p>
+						<p class="truncate text-[13px] font-semibold text-white/80">
+							{fmtTime(s.created_at)}{#if s.total > 0} · {s.total} kérdés{/if}
+						</p>
+					</div>
+					<a
+						href={resolve('/elo/[id]', { id: s.id })}
+						class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full bg-white px-5 py-3 text-[15px] font-bold text-brand-600 shadow-lg transition hover:bg-brand-50 active:scale-[0.99] motion-reduce:transition-none"
+					>
+						{data.own ? 'Megnyitás' : 'Csatlakozás'}
+					</a>
+				</div>
+			</Card>
+		{/each}
+	</div>
+{/if}
+{#if data.own && draftLive.length > 0}
+	<div class="mt-4">
+		<Card>
+			<div class="anim-rise" style="--d:60ms">
+				<h3 class="text-[15px] font-extrabold text-ink-900 dark:text-white">Piszkozatok</h3>
+				<ul class="mt-2 grid gap-2">
+					{#each draftLive as s (s.id)}
+						<li class="rounded-2xl border border-dashed border-stone-300 p-3 dark:border-white/15">
+							<div class="flex min-w-0 items-center gap-3">
+								<span class="min-w-0 flex-1">
+									<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
+										{s.title}
+									</span>
+									<span class="block truncate text-[12px] font-semibold text-stone-500 dark:text-stone-400">
+										{draftSummary(s)}
+									</span>
+								</span>
+								<button
+									type="button"
+									aria-label="Piszkozat törlése"
+									disabled={deletingDraft}
+									onclick={() => (deletingDraftId = s.id)}
+									class="grid size-9 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-black/5 hover:text-red-600 active:scale-95 disabled:opacity-50 dark:hover:bg-white/10 dark:hover:text-red-300"
+								>
+									<Trash2 size={17} aria-hidden="true" />
+								</button>
+							</div>
+							<div class="mt-2">
+								<Button size="md" block disabled={publishingId !== null} onclick={() => publishDraft(s.id)}>
+									{publishingId === s.id ? 'Meghirdetés…' : 'Meghirdetés'}
+								</Button>
+							</div>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		</Card>
+	</div>
+{/if}
+{#if data.own && pastLive.length > 0}
+	<div class="mt-4">
+		<Card>
+			<div class="anim-rise" style="--d:60ms">
+				<h3 class="text-[15px] font-extrabold text-ink-900 dark:text-white">Korábbi élő dolgozatok</h3>
+				<ul class="mt-2 grid gap-1">
+					{#each pastLive as s (s.id)}
+						<li>
+							<a
+								href={resolve('/elo/[id]', { id: s.id })}
+								class="flex items-center gap-3 rounded-2xl px-2 py-2 text-left transition hover:bg-stone-100 active:scale-[0.99] motion-reduce:transition-none dark:hover:bg-white/5"
+							>
+								<span class="min-w-0 flex-1">
+									<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
+										{s.title}
+									</span>
+									<span class="block truncate text-[12px] font-semibold text-stone-500 dark:text-stone-400">
+										{fmtTime(s.created_at)} · {s.done} beküldte
+									</span>
+								</span>
+								<ChevronRight size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
+							</a>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		</Card>
+	</div>
+{/if}
+
 <div data-tutorial="room-feed" class="mt-4 grid min-w-0 gap-2.5 [&>*]:min-w-0">
 	{#if feed.length === 0}
 		<EmptyState
@@ -2415,18 +2599,18 @@ import {
 				<span class="block truncate text-[13px] text-ink-400 dark:text-stone-500">Szöveg, kép, hang és fájl határidővel</span>
 			</span>
 		</button>
-		<div
-			aria-disabled="true"
-			class="flex w-full items-center gap-3.5 rounded-2xl border border-stone-200 p-4 opacity-50 dark:border-white/10"
+		<a
+			href={resolve('/tanterem/[id]/elo/uj', { id: room.id })}
+			class="flex w-full items-center gap-3.5 rounded-2xl border border-stone-200 p-4 text-left transition hover:bg-stone-50 active:scale-[0.99] dark:border-white/10 dark:hover:bg-white/5"
 		>
 			<span class="grid size-11 shrink-0 place-items-center rounded-xl bg-stone-100 text-ink-600 dark:bg-white/10 dark:text-white">
-				<Timer size={22} />
+				<Radio size={22} />
 			</span>
 			<span class="min-w-0 flex-1">
 				<span class="block text-[15px] font-bold text-ink-900 dark:text-white">Dolgozat (élő)</span>
-				<span class="block truncate text-[13px] text-ink-400 dark:text-stone-500">Hamarosan</span>
+				<span class="block truncate text-[13px] text-ink-400 dark:text-stone-500">Valós idejű kvíz a táblán, Durable Objecttel</span>
 			</span>
-		</div>
+		</a>
 	</div>
 </Drawer>
 
@@ -2833,6 +3017,18 @@ import {
 		if (!deleting) deleteOpen = false;
 	}}
 	onConfirm={deleteClass}
+/>
+
+<ConfirmDialog
+	open={deletingDraftId !== null}
+	title="Piszkozat törlése"
+	description="A piszkozat végleg törlődik."
+	confirmLabel="Törlés"
+	busy={deletingDraft}
+	onClose={() => {
+		if (!deletingDraft) deletingDraftId = null;
+	}}
+	onConfirm={deleteDraft}
 />
 
 <input

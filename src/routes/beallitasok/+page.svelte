@@ -103,6 +103,34 @@
 	let exportBusy = $state(false);
 	let storageInfo = $state({ lib: 0, scope: 0, seen: 0, total: 0 });
 	let storageBusy = $state(false);
+	let wordLangs = $state<{ subjectId: string; subjectTitle: string }[]>([]);
+	let wordLangsLoading = $state(false);
+
+	async function loadWordLangs() {
+		if (wordLangsLoading || wordLangs.length > 0) return;
+		wordLangsLoading = true;
+		try {
+			const res = await fetch("/api/sm2-due", { credentials: "same-origin" });
+			if (res.ok) {
+				const j = await res.json();
+				wordLangs = (j.languages ?? []).map((l: { subjectId: string; subjectTitle: string }) => ({
+					subjectId: l.subjectId,
+					subjectTitle: l.subjectTitle
+				}));
+			}
+		} catch {
+			// néma hiba: csak a főkapcsoló látszik
+		} finally {
+			wordLangsLoading = false;
+		}
+	}
+
+	function toggleWordSubject(subjectId: string, visible: boolean) {
+		const hidden = new Set(settings.hiddenWordSubjects);
+		if (visible) hidden.delete(subjectId);
+		else hidden.add(subjectId);
+		settings.hiddenWordSubjects = [...hidden];
+	}
 
 	function byteSize(v: string | null): number {
 		if (!v) return 0;
@@ -305,6 +333,10 @@
 		if (sheet === 'storage') refreshStorageInfo();
 	});
 
+	$effect(() => {
+		if (sheet === 'learning') void loadWordLangs();
+	});
+
 	let pushKnown = $state(false);
 	let notifSummary = $derived(pushKnown && pushSt === 'on' ? 'Push üzenetek aktívak' : 'Push üzenetek és emlékeztetők');
 
@@ -395,7 +427,7 @@
 		<span class={tile}><BookOpen size={22} /></span>
 		<span class="min-w-0 flex-1">
 			<span class="block text-[15px] font-bold text-ink-900 dark:text-white">Tanulás</span>
-			<span class="block text-[13px] text-stone-500 dark:text-stone-400">Bekezdések és szerkesztő</span>
+			<span class="block text-[13px] text-stone-500 dark:text-stone-400">{settings.homeWords ? 'Szógyakorlás bekapcsolva' : 'Szógyakorlás kikapcsolva'}</span>
 		</span>
 		<ChevronRight size={18} class="shrink-0 text-stone-400" />
 	</button>
@@ -639,6 +671,38 @@
 			</ul>
 		{:else if sheet === 'learning'}
 			<div class="mt-3 divide-y divide-stone-100 dark:divide-white/5">
+				<div class="flex items-center gap-3 py-3">
+					<div class="min-w-0 flex-1">
+						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Szógyakorlás a főoldalon</p>
+					</div>
+					<Toggle bind:checked={settings.homeWords} label="Szógyakorlás a főoldalon" />
+				</div>
+				{#if settings.homeWords}
+					<div class="py-3">
+						<div class="ml-1 border-l-2 border-brand-500/60 pl-3 dark:border-brand-400/60">
+							<p class="text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">A szógyakorlás nyelvei</p>
+							<p class="mt-1 text-[13px] font-medium text-stone-500 dark:text-stone-400">Ezek a fenti szógyakorlás beállításhoz tartoznak. Csak a bekapcsolt nyelvek jelennek meg a főoldalon.</p>
+						{#if wordLangsLoading}
+							<p class="mt-2 text-[13px] font-medium text-stone-500 dark:text-stone-400">Betöltés…</p>
+						{:else if wordLangs.length === 0}
+							<p class="mt-2 text-[13px] font-medium text-stone-500 dark:text-stone-400">Még nincs nyelv a könyvtáradban.</p>
+						{:else}
+							<ul class="mt-1 divide-y divide-stone-100 dark:divide-white/5">
+								{#each wordLangs as lang (lang.subjectId)}
+									<li class="flex items-center gap-3 py-2.5">
+										<p class="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink-900 dark:text-white">{lang.subjectTitle}</p>
+										<Toggle
+											checked={!settings.hiddenWordSubjects.includes(lang.subjectId)}
+											onchange={(v) => toggleWordSubject(lang.subjectId, v)}
+											label={lang.subjectTitle}
+										/>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+						</div>
+					</div>
+				{/if}
 				<div class="flex items-center gap-3 py-3">
 					<div class="min-w-0 flex-1">
 						<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Bekezdések nyitva</p>

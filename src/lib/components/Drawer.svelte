@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { ArrowLeft, Pencil, X } from '@lucide/svelte';
+	import { tick } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import { isTopOverlay, lockBody, motionOK } from '$lib/overlay';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
@@ -48,7 +49,9 @@
 	const anim = $derived(animOn ? 'duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]' : 'duration-0');
 
 	function trackContentHeight(node: HTMLElement) {
-		if (!animateHeight) return;
+		// Nyugodt módban a magasság automatikus: nincs rögzítés,
+		// így az előző nyitás mérete sem villanhat fel újra.
+		if (!animateHeight || !motionOK()) return;
 		const grip = handle;
 		const update = () => {
 			panelHeight = Math.ceil(node.offsetHeight + (grip?.offsetHeight ?? 0));
@@ -65,7 +68,20 @@
 		if (open) {
 			const gen = ++generation;
 			animOn = motionOK();
+			// Az előző nyitás rögzített magassága nem öröklődhet át:
+			// az első képkocka mindig az új tartalom saját méretével fest.
+			panelHeight = undefined;
 			render = true;
+			if (!animOn) {
+				// Nyugodt módban nincs átmenet: azonnal a végállapot,
+				// különben két képkockányi rejtett állapot villanna fel.
+				shown = true;
+				void tick().then(() => {
+					if (gen !== generation) return;
+					panel?.focus({ preventScroll: true });
+				});
+				return;
+			}
 			const raf = requestAnimationFrame(() =>
 				requestAnimationFrame(() => {
 					if (gen !== generation) return;
@@ -155,7 +171,7 @@
 						? 'translate-y-0 opacity-100 sm:scale-100'
 						: 'translate-y-full opacity-100 sm:translate-y-10 sm:scale-[0.98] sm:opacity-0'
 				]}
-				style:height={animateHeight && panelHeight !== undefined ? `${panelHeight}px` : undefined}
+				style:height={animateHeight && animOn && panelHeight !== undefined ? `${panelHeight}px` : undefined}
 				style={dragging && dragY > 0
 					? `transform: translateY(${dragY}px); transition: none;`
 					: undefined}

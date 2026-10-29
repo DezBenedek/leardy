@@ -2,6 +2,7 @@
 	import { browser } from '$app/environment';
 	import Button from '$lib/ui/Button.svelte';
 	import { lockBody, motionOK } from '$lib/overlay';
+	import { tick as svelteTick } from 'svelte';
 
 	/* Globalis megerosito dialogus nyomva-tartos gombbal.
 	   Hasznalat: osztaly kilepes, osztaly torles (nevbeirassal).
@@ -73,6 +74,16 @@
 			const gen = ++generation;
 			animOn = motionOK();
 			render = true;
+			if (!animOn) {
+				// Nyugodt módban nincs átmenet: azonnal a végállapot,
+				// különben két képkockányi rejtett állapot villanna fel.
+				shown = true;
+				void svelteTick().then(() => {
+					if (gen !== generation) return;
+					panel?.focus({ preventScroll: true });
+				});
+				return;
+			}
 			const raf1 = requestAnimationFrame(() =>
 				requestAnimationFrame(() => {
 					if (gen !== generation) return;

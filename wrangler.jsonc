@@ -34,6 +34,10 @@
 			"bucket_name": "leardy-uploads"
 		}
 	],
+	"durable_objects": {
+		"bindings": [{ "name": "LIVE", "class_name": "LiveRoom" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["LiveRoom"] }],
 	"observability": {
 		"enabled": true
 	},

@@ -5,9 +5,16 @@
 		checked?: boolean;
 		label: string;
 		disabled?: boolean;
+		onchange?: (value: boolean) => void;
 	}
 
-	let { checked = $bindable(false), label, disabled = false }: Props = $props();
+	let { checked = $bindable(false), label, disabled = false, onchange }: Props = $props();
+
+	function toggle() {
+		if (disabled) return;
+		checked = !checked;
+		onchange?.(checked);
+	}
 </script>
 
 <button
@@ -16,7 +23,7 @@
 	aria-checked={checked}
 	aria-label={label}
 	{disabled}
-	onclick={() => (checked = !checked)}
+	onclick={toggle}
 	class={[
 		'relative h-8 w-[52px] shrink-0 rounded-full border-2 transition-colors duration-200 disabled:opacity-50',
 		checked

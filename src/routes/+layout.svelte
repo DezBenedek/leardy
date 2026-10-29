@@ -35,6 +35,8 @@
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 	let connected = $state(true);
 	let learningPage = $derived(isLearningPath(page.url.pathname));
+	/** Élő dolgozat közben (tábla és diák) nincs alkalmazásmenü. */
+	let liveRoom = $derived(page.url.pathname.startsWith('/elo/'));
 	let offlineLearning = $derived(!connected || data.offline);
 	function reconnect() {
 		connected = true;
@@ -232,12 +234,12 @@
 	<AuthDrawer />
 {:else}
 	<div class="mx-auto flex min-h-dvh w-full max-w-6xl">
-		<Sidebar user={user} />
+		{#if !liveRoom}<Sidebar user={user} />{/if}
 		<div class="min-w-0 flex-1 overflow-x-clip">
 			{#key page.url.pathname}
 				<main
 					in:fade={fadeParams()}
-					class="mx-auto w-full max-w-3xl px-4 pt-5 pb-36 sm:px-6 lg:px-8 lg:pt-8 lg:pb-12"
+					class={['mx-auto w-full max-w-3xl px-4 pt-5 sm:px-6 lg:px-8 lg:pt-8', liveRoom ? 'pb-12' : 'pb-36 lg:pb-12']}
 				>
 						{@render progressNotices()}
 					{@render children()}
@@ -248,7 +250,7 @@
 	</div>
 
 	<AuthDrawer />
-	<BottomNav />
+	{#if !liveRoom}<BottomNav />{/if}
 	<WhatsNew open={whatsNewOpen} onClose={() => (whatsNewOpen = false)} />
 {/if}
 <Tutorial {tutorial} />

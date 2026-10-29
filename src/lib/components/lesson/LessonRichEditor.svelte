@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { Editor } from '@tiptap/core';
 	import type { Selection } from '@tiptap/pm/state';
 	import { CellSelection } from '@tiptap/pm/tables';
@@ -85,9 +85,21 @@
 		});
 		snapshot = { editor };
 		documentHeight = element.getBoundingClientRect().height;
-		return () => { editor?.destroy(); };
+		const toolbarObserver = new ResizeObserver(() => fitToolbar());
+		if (toolbarNode) toolbarObserver.observe(toolbarNode);
+		void tick().then(() => fitToolbar());
+		return () => { toolbarObserver.disconnect(); editor?.destroy(); };
 	});
 	$effect(() => { const editable = !disabled; untrack(() => editor?.setEditable(editable, false)); });
+	// A sáv tartalma (például a táblázat-ikon megjelenése) és a szélessége
+	// is változhat: mérés után dől el, mi fér ki közvetlenül.
+	$effect(() => {
+		void snapshot;
+		void visibleTools;
+		void expanded;
+		const frame = requestAnimationFrame(() => fitToolbar());
+		return () => cancelAnimationFrame(frame);
+	});
 	function measureDocument(node: HTMLDivElement) {
 		const observer = new ResizeObserver(() => { documentHeight = node.getBoundingClientRect().height; });
 		observer.observe(node);
@@ -171,6 +183,54 @@
 	}
 	function active(name: string) { return snapshot?.editor.isActive(name) ?? false; }
 	function run(action: (e: Editor) => void) { if (editor && !disabled && !uploading) action(editor); }
+
+	/* Reszponzív eszköztár: a formázógombok a sáv szélességétől függően
+	   jelennek meg közvetlenül, a többi a "..." menübe kerül. Így gépen
+	   több gomb fér ki, telefonon (például a táblázat-ikon megjelenésekor)
+	   pedig automatikusan a menübe húzódnak. */
+	interface FormatTool {
+		id: string;
+		label: string;
+		icon: typeof Bold;
+		active: () => boolean;
+		run: () => void;
+		disabled?: () => boolean;
+	}
+
+	const formatTools: FormatTool[] = [
+		{ id: 'bold', label: 'Félkövér', icon: Bold, active: () => active('bold'), run: () => run((e) => e.chain().focus().toggleBold().run()) },
+		{ id: 'italic', label: 'Dőlt', icon: Italic, active: () => active('italic'), run: () => run((e) => e.chain().focus().toggleItalic().run()) },
+		{ id: 'bullet', label: 'Felsorolás', icon: List, active: () => active('bulletList'), run: () => run((e) => e.chain().focus().toggleBulletList().run()) },
+		{ id: 'underline', label: 'Aláhúzás', icon: Underline, active: () => active('underline'), run: () => run((e) => e.chain().focus().toggleUnderline().run()) },
+		{ id: 'strike', label: 'Áthúzás', icon: Strikethrough, active: () => active('strike'), run: () => run((e) => e.chain().focus().toggleStrike().run()) },
+		{ id: 'highlight', label: 'Kiemelés', icon: Highlighter, active: () => active('highlight'), run: () => run((e) => e.chain().focus().toggleHighlight().run()) },
+		{ id: 'ordered', label: 'Számozott lista', icon: ListOrdered, active: () => active('orderedList'), run: () => run((e) => e.chain().focus().toggleOrderedList().run()) },
+		{ id: 'quote', label: 'Idézet', icon: Quote, active: () => active('blockquote'), run: () => run((e) => e.chain().focus().toggleBlockquote().run()) },
+		{ id: 'code', label: 'Szövegközi kód', icon: Code, active: () => active('code'), run: () => run((e) => e.chain().focus().toggleCode().run()) },
+		{ id: 'sub', label: 'Alsó index', icon: Subscript, active: () => active('subscript'), run: () => run((e) => e.chain().focus().toggleSubscript().run()) },
+		{ id: 'sup', label: 'Felső index', icon: Superscript, active: () => active('superscript'), run: () => run((e) => e.chain().focus().toggleSuperscript().run()) },
+		{ id: 'clear', label: 'Formázás törlése', icon: Eraser, active: () => false, run: () => run((e) => e.chain().focus().unsetAllMarks().clearNodes().run()) },
+		{ id: 'unwrap', label: 'Doboz megszüntetése', icon: Ungroup, active: () => false, disabled: () => !active('callout') && !active('solution'), run: () => run((e) => e.chain().focus().lift(e.isActive('callout') ? 'callout' : 'solution').run()) }
+	];
+
+	let visibleTools = $state(3);
+	let inlineTools = $derived(formatTools.slice(0, visibleTools));
+	let restTools = $derived(formatTools.slice(visibleTools));
+	let moreActions = $derived(restTools.map((tool) => ({
+		id: tool.id, label: tool.label, icon: tool.icon, active: tool.active(),
+		disabled: tool.disabled?.() ?? false, onclick: () => tool.run()
+	})));
+
+	function fitToolbar() {
+		const bar = toolbarNode;
+		if (!bar || bar.clientWidth <= 0) return;
+		let fixed = 0;
+		for (const child of bar.children) {
+			if (child.hasAttribute('data-fixed')) fixed += (child as HTMLElement).offsetWidth + 2;
+		}
+		const n = Math.max(0, Math.min(formatTools.length, Math.floor((bar.clientWidth - fixed) / 36)));
+		if (n !== visibleTools) visibleTools = n;
+	}
 	function open(kind: typeof modal, pos: number | null = null) {
 		if (!editor || disabled || uploading || !kind) return;
 		selection = { from: editor.state.selection.from, to: editor.state.selection.to };
@@ -236,35 +296,25 @@
 <div class="rich-editor" {@attach animateExpansion} class:expanded aria-busy={uploading}>
 	<div class="toolbar-reveal" inert={!expanded} aria-hidden={!expanded} style:grid-template-rows={expanded ? '1fr' : '0fr'}><div class="toolbar-clip">
 	<div bind:this={toolbarNode} onpointerdown={keepToolbarFocus} class="editor-toolbar" role="toolbar" tabindex="-1" aria-label="Szövegformázás">
-		<ActionMenu preserveFocus compact dense floating align="start" label="Szövegstílus" triggerIcon={Type} disabled={disabled} actions={[
+	<div data-fixed><ActionMenu preserveFocus compact dense floating align="start" label="Szövegstílus" triggerIcon={Type} disabled={disabled} actions={[
 			{ id: 'p', label: 'Normál szöveg', icon: Type, active: active('paragraph'), onclick: () => run((e) => e.chain().focus().setParagraph().run()) },
 			{ id: 'h3', label: 'Alcím', icon: Type, active: snapshot?.editor.isActive('heading', { level: 3 }) ?? false, onclick: () => run((e) => e.chain().focus().toggleHeading({ level: 3 }).run()) },
 			{ id: 'h4', label: 'Kisebb alcím', icon: Type, active: snapshot?.editor.isActive('heading', { level: 4 }) ?? false, onclick: () => run((e) => e.chain().focus().toggleHeading({ level: 4 }).run()) }
-		]} />
-		{#each [{ label: 'Félkövér', icon: Bold, mark: 'bold', command: (e: Editor) => e.chain().focus().toggleBold().run() }, { label: 'Dőlt', icon: Italic, mark: 'italic', command: (e: Editor) => e.chain().focus().toggleItalic().run() }] as tool (tool.mark)}
-			<button type="button" class="tool" aria-label={tool.label} title={tool.label} aria-pressed={active(tool.mark)} disabled={disabled} onclick={() => run(tool.command)}><tool.icon size={18} /></button>
+		]} /></div>
+		{#each inlineTools as tool (tool.id)}
+			<button type="button" class="tool" aria-label={tool.label} title={tool.label} aria-pressed={tool.active()} disabled={disabled || (tool.disabled?.() ?? false)} onclick={() => tool.run()}><tool.icon size={18} /></button>
 		{/each}
-		<button type="button" class="tool" aria-label="Felsorolás" title="Felsorolás" aria-pressed={active('bulletList')} disabled={disabled} onclick={() => run((e) => e.chain().focus().toggleBulletList().run())}><List size={18} /></button>
-		<button type="button" class="tool" aria-label="Link" title="Link" aria-pressed={active('link')} disabled={disabled} onclick={() => open('link')}><Link size={18} /></button>
-		<ActionMenu preserveFocus closeOnSelect={false} dense menuIconsOnly menuColumns={5} floating align="start" compact label="További formázások" disabled={disabled} actions={[
-			{ id: 'underline', label: 'Aláhúzás', icon: Underline, active: active('underline'), onclick: () => run((e) => e.chain().focus().toggleUnderline().run()) },
-			{ id: 'strike', label: 'Áthúzás', icon: Strikethrough, active: active('strike'), onclick: () => run((e) => e.chain().focus().toggleStrike().run()) },
-			{ id: 'highlight', label: 'Kiemelés', icon: Highlighter, active: active('highlight'), onclick: () => run((e) => e.chain().focus().toggleHighlight().run()) },
-			{ id: 'sub', label: 'Alsó index', icon: Subscript, active: active('subscript'), onclick: () => run((e) => e.chain().focus().toggleSubscript().run()) },
-			{ id: 'sup', label: 'Felső index', icon: Superscript, active: active('superscript'), onclick: () => run((e) => e.chain().focus().toggleSuperscript().run()) },
-			{ id: 'ordered', label: 'Számozott lista', icon: ListOrdered, active: active('orderedList'), onclick: () => run((e) => e.chain().focus().toggleOrderedList().run()) },
-			{ id: 'quote', label: 'Idézet', icon: Quote, active: active('blockquote'), onclick: () => run((e) => e.chain().focus().toggleBlockquote().run()) },
-			{ id: 'code', label: 'Szövegközi kód', icon: Code, active: active('code'), onclick: () => run((e) => e.chain().focus().toggleCode().run()) },
-			{ id: 'clear', label: 'Formázás törlése', icon: Eraser, onclick: () => run((e) => e.chain().focus().unsetAllMarks().clearNodes().run()) },
-			{ id: 'unwrap', label: 'Doboz megszüntetése', icon: Ungroup, disabled: !active('callout') && !active('solution'), onclick: () => run((e) => e.chain().focus().lift(e.isActive('callout') ? 'callout' : 'solution').run()) }
-		]} />
+		<button data-fixed type="button" class="tool" aria-label="Link" title="Link" aria-pressed={active('link')} disabled={disabled} onclick={() => open('link')}><Link size={18} /></button>
+		{#if restTools.length > 0}
+			<div data-fixed><ActionMenu preserveFocus closeOnSelect={false} dense menuIconsOnly menuColumns={5} floating align="start" compact label="További formázások" disabled={disabled} actions={moreActions} /></div>
+		{/if}
 		{#if active('table')}
-			<button bind:this={tableTrigger} type="button" class="tool table-trigger" aria-label="Táblázat műveletei" title="Táblázat műveletei" aria-haspopup="dialog" aria-expanded={tablePopover !== null && expanded} aria-controls={tablePopover && expanded ? `${id}-table-menu` : undefined} disabled={disabled} onclick={(event) => { if (tablePopover) tablePopover = null; else openTable(true, event.detail === 0); }}><Table size={18} aria-hidden="true" /></button>
+			<button data-fixed bind:this={tableTrigger} type="button" class="tool table-trigger" aria-label="Táblázat műveletei" title="Táblázat műveletei" aria-haspopup="dialog" aria-expanded={tablePopover !== null && expanded} aria-controls={tablePopover && expanded ? `${id}-table-menu` : undefined} disabled={disabled} onclick={(event) => { if (tablePopover) tablePopover = null; else openTable(true, event.detail === 0); }}><Table size={18} aria-hidden="true" /></button>
 		{/if}
 		<div class="toolbar-spacer"></div>
-		<button type="button" class="tool" aria-label="Visszavonás" title="Visszavonás" disabled={disabled || !snapshot?.editor.can().undo()} onclick={() => run((e) => e.chain().focus().undo().run())}><Undo2 size={18} /></button>
-		<button type="button" class="tool" aria-label="Újraalkalmazás" title="Újraalkalmazás" disabled={disabled || !snapshot?.editor.can().redo()} onclick={() => run((e) => e.chain().focus().redo().run())}><Redo2 size={18} /></button>
-		<div class="insert-menu"><ActionMenu preserveFocus dense floating align="end" label="Beszúrás" triggerLabel="Beszúrás" triggerIcon={Plus} disabled={disabled} actions={[
+		<button data-fixed type="button" class="tool" aria-label="Visszavonás" title="Visszavonás" disabled={disabled || !snapshot?.editor.can().undo()} onclick={() => run((e) => e.chain().focus().undo().run())}><Undo2 size={18} /></button>
+		<button data-fixed type="button" class="tool" aria-label="Újraalkalmazás" title="Újraalkalmazás" disabled={disabled || !snapshot?.editor.can().redo()} onclick={() => run((e) => e.chain().focus().redo().run())}><Redo2 size={18} /></button>
+		<div data-fixed class="insert-menu"><ActionMenu preserveFocus dense floating align="end" label="Beszúrás" triggerLabel="Beszúrás" triggerIcon={Plus} disabled={disabled} actions={[
 			{ id: 'image', label: 'Kép', icon: Image, onclick: () => open('image') },
 			{ id: 'math', label: 'Matematikai képlet', icon: Sigma, onclick: () => open('math') },
 			{ id: 'table', label: 'Táblázat', icon: Table, onclick: () => openTableInsert() },

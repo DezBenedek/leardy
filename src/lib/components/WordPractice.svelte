@@ -24,6 +24,8 @@
 		packOrder?: string[];
 		/** Oldalba ágyazva: nincs teljes magasság és alsó térköz, a lap görget. */
 		embedded?: boolean;
+		/** Egyedi csomagból indítva: azonnal az összes kártya jön, nem csak az esedékes. */
+		includeAll?: boolean;
 	}
 
 	let {
@@ -35,7 +37,8 @@
 		recentPackIds = [],
 		cardToPack = {},
 		packOrder = [],
-		embedded = false
+		embedded = false,
+		includeAll = false
 	}: Props = $props();
 
 	const SWIPE_AT = 110;
@@ -82,7 +85,7 @@
 			: mode === 'extra' && remaining.length > 0 ? remaining : questions;
 		sessionProgress = { ...progress, ...sessionProgress };
 		const options = { today, recentPackIds, cardToPack, packOrder };
-		const q = mode === 'missed'
+		const q = mode === 'missed' || includeAll
 			? buildWordQueue(pool, sessionProgress, { ...options, includeFuture: true })
 			: buildDailyWordQueue(pool, sessionProgress, options);
 		reviewRound = q.length > 0 && q.every((e) => e.meta.isFuture);
@@ -296,7 +299,7 @@
 				Kör teljesítve
 			</h2>
 			<p class="mt-2 text-sm font-medium text-stone-500 dark:text-stone-400">
-				{reviewed} szót gyakoroltál, {known} sikerült.{#if missed > 0} {missed} még gyakorlást igényel.{/if}
+				{reviewed} szót gyakoroltál, {known} helyes.{#if missed > 0} {missed} szó még gyakorlást igényel.{/if}
 			</p>
 			<p class="mt-1 text-sm text-stone-500 dark:text-stone-400">
 				Bármikor indíthatsz új gyakorlókört.

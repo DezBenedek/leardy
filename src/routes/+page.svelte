@@ -5,11 +5,13 @@
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { Query } from '$lib/query.svelte';
+	import { loadSettings } from '$lib/settings';
 	import { learningDay, relativeDeadline } from '$lib/learning-activity';
 	import type { HomeStats, Suggestion } from '$lib/curriculum';
 	import TaskDetailDrawer, { type TaskDetail } from '$lib/components/TaskDetailDrawer.svelte';
 	import AssignmentDetailDrawer, { type AssignmentDetail } from '$lib/components/AssignmentDetailDrawer.svelte';
 	import Card from '$lib/ui/Card.svelte';
+	import LiveBanner from '$lib/components/LiveBanner.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import Skeleton from '$lib/ui/Skeleton.svelte';
 	import type { PageData } from './$types';
@@ -34,7 +36,13 @@
 
 	let wordsQ = new Query<{ languages: LangDue[] }>({ revalidate: 'stale' });
 	let tasksQ = new Query<{ tasks: DueItem[]; grading: GradingItem[] }>({ revalidate: 'stale' });
-	let words = $derived([...(wordsQ.data?.languages ?? [])].sort((a, b) => b.due - a.due || b.fresh - a.fresh));
+	let appSettings = $state(loadSettings());
+	let wordsAll = $derived([...(wordsQ.data?.languages ?? [])].sort((a, b) => b.due - a.due || b.fresh - a.fresh));
+	let words = $derived(
+		appSettings.homeWords
+			? wordsAll.filter((w) => !appSettings.hiddenWordSubjects.includes(w.subjectId))
+			: []
+	);
 	let grading = $derived(tasksQ.data?.grading ?? []);
 	let pendingCount = $derived(grading.reduce((count, item) => count + item.pendingCount, 0));
 	let dueTasks = $derived([...(tasksQ.data?.tasks ?? [])].sort((a, b) => a.dueDate - b.dueDate));
@@ -98,6 +106,7 @@
 		}
 	}
 	function resumeHome() {
+		appSettings = loadSettings();
 		refreshDay();
 		homeQ.refresh();
 		wordsQ.refresh();
@@ -168,6 +177,10 @@
 		<Settings size={20} />
 	</IconButton>
 </header>
+
+<div class="mt-3">
+	<LiveBanner />
+</div>
 
 <div class="overview" data-tutorial="home-overview">
 	<section class="next-step" aria-label="Következő teendő">
@@ -244,7 +257,7 @@
 	</section>
 {/if}
 
-{#if wordsLoading || wordsQ.error || words.length > 0}
+{#if appSettings.homeWords && (wordsLoading || wordsQ.error || words.length > 0)}
 	<section class="home-section" aria-labelledby="words-title">
 		<div class="section-heading"><h2 id="words-title">Szavak gyakorlása</h2><Languages size={18} class="section-symbol" aria-hidden="true" /></div>
 		<div class="item-list">

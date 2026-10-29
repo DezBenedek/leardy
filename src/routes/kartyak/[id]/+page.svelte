@@ -6,7 +6,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
-	import { ArrowLeft, ArrowLeftRight, BookOpen, Layers, Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import { ArrowLeft, ArrowLeftRight, BookOpen, Check, Layers, Pencil, Plus, Trash2 } from '@lucide/svelte';
 	import FlipCards from '$lib/components/FlipCards.svelte';
 	import QuizModal from '$lib/components/QuizModal.svelte';
 	import WordPractice from '$lib/components/WordPractice.svelte';
@@ -111,6 +111,14 @@
 
 	let practiceOpen = $state(false);
 	let cardsSwapped = $state(false);
+	/** Könyvtári törlés megerősítése: első koppintásra pipa jelenik meg. */
+	let armRemove = $state(false);
+	let armTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => {
+		void id;
+		armRemove = false;
+		return () => clearTimeout(armTimer);
+	});
 	/** Megfordított kártya-előlap megjegyzése csomagonként. */
 	const SWAP_KEY = 'leardy-cards-swapped';
 
@@ -233,6 +241,14 @@
 	}
 
 	async function removeFromLibrary() {
+		// Kétlépcsős törlés: először élesít, másodszor töröl. A pipa a megerősítés.
+		if (!armRemove) {
+			armRemove = true;
+			clearTimeout(armTimer);
+			armTimer = setTimeout(() => (armRemove = false), 5000);
+			return;
+		}
+		clearTimeout(armTimer);
 		try {
 			const res = await mutationFetch('/api/library', {
 				method: 'DELETE',
@@ -244,6 +260,7 @@
 			void goto(resolve('/kartyak'));
 		} catch (e) {
 			toast.error('Nem sikerült eltávolítani', e instanceof Error ? e.message : 'Hiba történt.');
+			armRemove = false;
 		}
 	}
 
@@ -336,13 +353,18 @@
 			</IconButton>
 		{:else if inLibrary}
 			<IconButton
-				tutorialId="package-save" ariaLabel="Eltávolítás a könyvtárból"
-				title="Eltávolítás a könyvtárból"
+				tutorialId="package-save"
+				ariaLabel={armRemove ? 'Megerősítés: eltávolítás a könyvtárból' : 'Eltávolítás a könyvtárból'}
+				title={armRemove ? 'Koppints újra a megerősítéshez' : 'Eltávolítás a könyvtárból'}
 				size={44}
-				tone="danger"
+				tone={armRemove ? undefined : 'danger'}
 				onclick={removeFromLibrary}
 			>
-				<Trash2 size={20} />
+				{#if armRemove}
+					<Check size={20} strokeWidth={3} />
+				{:else}
+					<Trash2 size={20} />
+				{/if}
 			</IconButton>
 		{:else}
 			<IconButton
@@ -499,6 +521,7 @@
 						questions={pkg.questions}
 						progress={progress}
 						swapped={cardsSwapped}
+						includeAll
 						onMark={(idQ, known) => reviews.mark(idQ, known, progress[idQ])}
 						onDone={(score, totalQ) => void finishPractice(score, totalQ)}
 					/>

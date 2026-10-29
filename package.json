@@ -1,13 +1,14 @@
 {
 	"name": "leardy",
-  "version": "1.0.4-beta",
+	"version": "1.1.0-beta",
 	"private": true,
 	"packageManager": "pnpm@11.9.0",
 	"scripts": {
 		"deploy": "pnpm run build && wrangler deploy",
 		"db:migrate": "wrangler d1 migrations apply leardy-fop-db --remote",
 		"predev": "wrangler d1 migrations apply leardy-fop-db --local || true",
-		"dev": "vite dev",
+		"dev": "node scripts/dev.mjs",
+		"dev:ui": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { X } from '@lucide/svelte';
+	import { tick } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import { isTopOverlay, lockBody, motionOK } from '$lib/overlay';
 	import { fitOverlayViewport } from '$lib/overlay-viewport';
@@ -39,6 +40,16 @@
 			animOn = motionOK();
 			if (browser && document.activeElement instanceof HTMLElement) returnTo = document.activeElement;
 			render = true;
+			if (!animOn) {
+				// Nyugodt módban nincs átmenet: azonnal a végállapot,
+				// különben két képkockányi rejtett állapot villanna fel.
+				shown = true;
+				void tick().then(() => {
+					if (gen !== generation) return;
+					panel?.focus({ preventScroll: true });
+				});
+				return;
+			}
 			const raf = requestAnimationFrame(() =>
 				requestAnimationFrame(() => {
 					if (gen !== generation) return;

@@ -2,7 +2,7 @@
 /// <reference types="vite-plugin-pwa/info" />
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
-import type { D1Database, ExecutionContext, R2Bucket } from '@cloudflare/workers-types';
+import type { D1Database, ExecutionContext, R2Bucket, DurableObjectNamespace } from '@cloudflare/workers-types';
 
 declare global {
 	namespace App {
@@ -17,6 +17,7 @@ declare global {
 			ctx: ExecutionContext;
 			env: {
 				DB: D1Database;
+				LIVE: DurableObjectNamespace;
 				UPLOADS?: R2Bucket;
 				AWS_REGION?: string;
 				AWS_ACCESS_KEY_ID?: string;

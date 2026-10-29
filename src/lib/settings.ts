@@ -33,6 +33,10 @@ export interface AppSettings {
 	openAllLessonSections: boolean;
 	/** A szerkesztő tartalommezői teljes magasságban indulnak. */
 	expandEditorTextareas: boolean;
+	/** Szógyakorlás szakasz a főoldalon. */
+	homeWords: boolean;
+	/** Kikapcsolt nyelvek a főoldali szógyakorlásnál (tantárgy azonosítók). */
+	hiddenWordSubjects: string[];
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -51,7 +55,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
 	reduceMotion: false,
 	compactList: false,
 	openAllLessonSections: false,
-	expandEditorTextareas: false
+	expandEditorTextareas: false,
+	homeWords: true,
+	hiddenWordSubjects: []
 };
 
 function clampCount(n: unknown): number {
@@ -78,6 +84,12 @@ function clampFontFamily(v: unknown): FontFamilyChoice {
 	return v === 'modern' || v === 'book' || v === 'excalifont' ? v : 'system';
 }
 
+function clampIdList(v: unknown): string[] {
+	if (!Array.isArray(v)) return [];
+	const ids = v.filter((x) => typeof x === 'string' && (x as string).trim() !== '') as string[];
+	return [...new Set(ids)].slice(0, 50);
+}
+
 export function loadSettings(): AppSettings {
 	if (!browser) return { ...DEFAULT_SETTINGS };
 	try {
@@ -100,7 +112,9 @@ export function loadSettings(): AppSettings {
 			reduceMotion: parsed.reduceMotion ?? DEFAULT_SETTINGS.reduceMotion,
 			compactList: parsed.compactList ?? DEFAULT_SETTINGS.compactList,
 			openAllLessonSections: parsed.openAllLessonSections === true,
-			expandEditorTextareas: parsed.expandEditorTextareas === true
+			expandEditorTextareas: parsed.expandEditorTextareas === true,
+			homeWords: parsed.homeWords ?? DEFAULT_SETTINGS.homeWords,
+			hiddenWordSubjects: clampIdList(parsed.hiddenWordSubjects)
 		};
 	} catch {
 		return { ...DEFAULT_SETTINGS };

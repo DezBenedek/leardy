@@ -26,6 +26,28 @@ export interface ChangeEntry {
 
 export const CHANGES: ChangeEntry[] = [
 	{
+		version: '1.1.0-beta',
+		title: 'Élő dolgozat a tanteremben',
+		items: [
+			{
+				title: 'Valós idejű dolgozat',
+				desc: 'A tanár leckékből vagy kártyacsomagokból hirdethet dolgozatot, a diákok élőben csatlakoznak. Együtt haladás, tantermi mód táblával és azonnali szavazateloszlás.'
+			},
+			{
+				title: 'Piszkozatok és értesítés',
+				desc: 'A dolgozat piszkozatként is menthető, meghirdetéskor az osztály push értesítést kap. A falon az aktív, a piszkozat és a korábbi dolgozatok is látszanak.'
+			},
+			{
+				title: 'Szógyakorlás kapcsoló',
+				desc: 'A főoldali szavak szakasz a Tanulás beállításoknál ki és be kapcsolható, nyelvenként is szűrhető.'
+			},
+			{
+				title: 'Apró simítások',
+				desc: 'Kétlépcsős törlés a könyvtári csomagnál, nyugodt módban villanásmentes felugrók, a szerkesztő eszköztára a sáv szélességéhez igazodik.'
+			}
+		]
+	},
+	{
 		version: '1.0.4-beta',
 		title: 'Kényelmesebb szerkesztők és stabilabb felugrók',
 		items: [
