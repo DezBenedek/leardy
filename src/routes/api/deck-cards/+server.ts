@@ -52,7 +52,7 @@ export const POST: RequestHandler = async (event) => {
 			if (cleaned.length === 0) return json({ error: 'Nincs felvehető kártya.' }, { status: 400 });
 			const bad = cleaned.findIndex((c) => c === null);
 			if (bad >= 0)
-				return json({ error: `A ${bad + 1}. kártya valamelyik oldala üres.` }, { status: 400 });
+				return json({ error: `A ${bad + 1}. kártyánál a kifejezés vagy a definíció hiányzik.` }, { status: 400 });
 			const count = await db
 				.prepare(`SELECT COUNT(*) AS n FROM deck_cards WHERE deck_id = ?`)
 				.bind(deckId)
@@ -79,7 +79,7 @@ export const POST: RequestHandler = async (event) => {
 			return json({ ok: true, ids, skipped: cleaned.length - take.length });
 		}
 		const single = cleanCardInput(body);
-		if (!single) return json({ error: 'Töltsd ki a kártya mindkét oldalát!' }, { status: 400 });
+		if (!single) return json({ error: 'Töltsd ki a kifejezést és a definíciót!' }, { status: 400 });
 		const count = await db
 			.prepare(`SELECT COUNT(*) AS n FROM deck_cards WHERE deck_id = ?`)
 			.bind(deckId)
@@ -137,7 +137,7 @@ export const PUT: RequestHandler = async (event) => {
 			const id = list[i].id?.trim() ?? '';
 			if (!id) return json({ error: `A ${i + 1}. kártya azonosítója hiányzik.` }, { status: 400 });
 			const c = cleanCardInput(list[i]);
-			if (!c) return json({ error: `A ${i + 1}. kártya valamelyik oldala üres.` }, { status: 400 });
+			if (!c) return json({ error: `A ${i + 1}. kártyánál a kifejezés vagy a definíció hiányzik.` }, { status: 400 });
 			cleaned.push({ id, ...c });
 		}
 		const rows = await db

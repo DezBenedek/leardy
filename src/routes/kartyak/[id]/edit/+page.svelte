@@ -22,6 +22,7 @@
 	import { deckCardKindLabel } from '$lib/curriculum';
 	import { cardKindForSubject } from '$lib/sm2';
 	import { parsePastedPairs } from '$lib/deck-paste';
+	import { pruneEmptyRows } from '$lib/deck-rows';
 	import { auth } from '$lib/auth.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { invalidate } from '$lib/query.svelte';
@@ -134,9 +135,9 @@
 	let lessonOptions = $derived(materials.find((m) => m.id === materialId)?.lessons ?? []);
 	let materialTitle = $derived(materials.find((m) => m.id === materialId)?.title ?? '');
 	let lessonTitle = $derived(lessonOptions.find((l) => l.id === lessonId)?.title ?? '');
-	let frontLabel = 'Előlap';
-	let backLabel = 'Hátlap';
-	/** Automatikus típus: a tantárgy dönti el, nem kézi választás. */
+	let frontLabel = 'Kifejezés';
+	let backLabel = 'Definíció';
+	/** Automatikus típus a tantárgy alapján: nyelvnél Szókártya, máshol Tanulókártya. */
 	let autoKindLabel = $derived(deckCardKindLabel(cardKind));
 
 	function norm(s: string): string {
@@ -409,10 +410,64 @@
 		ensureTrailingEmpty();
 	}
 
+	/** Új üres sor beszúrása az adott sor után, fókusszal a kifejezés mezőn. */
+	function insertRowAfter(card: CardRow) {
+		const idx = cards.findIndex((c) => c.key === card.key);
+		if (idx < 0) return;
+		const next = [...cards];
+		next.splice(idx + 1, 0, { key: nextKey++, id: null, front: '', back: '', sectionSlug: '', orig: null });
+		cards = next;
+		requestAnimationFrame(() => {
+			try {
+				const rows = document.querySelectorAll('#card-rows > li');
+				rows[idx + 1]?.querySelector<HTMLInputElement>('input[data-field="front"]')?.focus();
+			} catch {
+				// fókusz nélkül is működik
+			}
+		});
+	}
+
+	/** A sor elhagyásakor a teljesen kiürült sorok kikerülnek,
+	    a végén pontosan egy üres sor marad. Amelyik sor éppen fókuszt kap
+	    (például Enterrel beszúrt új sor), az megmarad. */
+	function onRowFocusOut(e: FocusEvent) {
+		const li = e.currentTarget as HTMLElement;
+		if (li.contains(e.relatedTarget as Node | null)) return;
+		const target = e.relatedTarget as HTMLElement | null;
+		const targetKey = target?.closest?.('li[data-key]')?.getAttribute('data-key');
+		const exemptKey = targetKey === null || targetKey === undefined ? null : Number(targetKey);
+		const { kept, removedIds: gone, changed } = pruneEmptyRows(
+			cards,
+			Number.isFinite(exemptKey) ? exemptKey : null
+		);
+		if (!changed) return;
+		if (gone.length > 0) removedIds = [...removedIds, ...gone];
+		cards = kept;
+		ensureTrailingEmpty();
+	}
+
 	/** Üres mezőben nyomott Backspace: fókusz az előző mező végére.
-	   Üres hátlapból az azonos sor előlapjára, onnan (ha az is üres)
-	   az előző sor hátlapjára. Üres előlapból az előző sor hátlapjára. */
-	function onCardKeydown(e: KeyboardEvent, field: 'front' | 'back') {
+	   Üres definícióból az azonos sor kifejezésére, onnan (ha az is üres)
+	   az előző sor definíciójára. Üres kifejezésből az előző sor definíciójára.
+	   Definícióban nyomott Enter új sort szúr be a sor után. */
+	function onCardKeydown(e: KeyboardEvent, card: CardRow, field: 'front' | 'back') {
+		if (e.isComposing) return;
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			const input = e.currentTarget as HTMLInputElement;
+			if (field === 'back') {
+				// Üres sorban nincs mit folytatni.
+				if (norm(card.front) === '' && norm(card.back) === '') return;
+				// Csak a definíció végéről szúr be új sort.
+				if ((input.selectionStart ?? 0) !== input.value.length) return;
+				if ((input.selectionEnd ?? 0) !== input.value.length) return;
+				insertRowAfter(card);
+			} else {
+				const backInput = input.closest('li')?.querySelector<HTMLInputElement>('input[data-field="back"]');
+				backInput?.focus();
+			}
+			return;
+		}
 		if (e.key !== 'Backspace') return;
 		const input = e.currentTarget as HTMLInputElement;
 		if (input.value !== '') return;
@@ -670,9 +725,21 @@
 	</div>
 
 	<div class="mt-2 overflow-hidden rounded-[20px] border border-stone-200 bg-white dark:border-white/10 dark:bg-stone-900">
+		<div class="flex items-center gap-1.5 border-b border-stone-100 bg-stone-50 px-2 py-2 dark:border-white/5 dark:bg-white/5" aria-hidden="true">
+			<span class="grid size-6 shrink-0"></span>
+			<p class="min-w-0 flex-1 text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">
+				{frontLabel}
+			</p>
+			<p class="min-w-0 flex-1 text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">
+				{backLabel}
+			</p>
+			{#if cards.length > 1}
+				<span class="grid size-8 shrink-0"></span>
+			{/if}
+		</div>
 		<ul id="card-rows" class="divide-y divide-stone-100 dark:divide-white/5">
 			{#each cards as card, i (card.key)}
-				<li class="flex items-center gap-1.5 px-2 py-1.5">
+				<li class="flex items-center gap-1.5 px-2 py-1.5" data-key={card.key} onfocusout={onRowFocusOut}>
 					<span
 						class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-50 text-[12px] font-extrabold text-brand-600 tabular-nums dark:bg-brand-500/20 dark:text-white"
 						aria-hidden="true"
@@ -684,7 +751,7 @@
 						data-field="front"
 						oninput={onRowInput}
 						onpaste={(e) => onPasteCard(e, card)}
-						onkeydown={(e) => onCardKeydown(e, 'front')}
+						onkeydown={(e) => onCardKeydown(e, card, 'front')}
 						placeholder={frontLabel}
 						aria-label="{i + 1}. kártya {frontLabel.toLowerCase()} oldala"
 						class={cardInputCls}
@@ -694,7 +761,7 @@
 						data-field="back"
 						oninput={onRowInput}
 						onpaste={(e) => onPasteCard(e, card)}
-						onkeydown={(e) => onCardKeydown(e, 'back')}
+						onkeydown={(e) => onCardKeydown(e, card, 'back')}
 						placeholder={backLabel}
 						aria-label="{i + 1}. kártya {backLabel.toLowerCase()} oldala"
 						class={cardInputCls}
@@ -702,6 +769,7 @@
 					{#if cards.length > 1}
 						<button
 							type="button"
+							tabindex="-1"
 							onclick={() => removeRow(card)}
 							aria-label="{i + 1}. kártya törlése"
 							class="grid size-8 shrink-0 place-items-center rounded-full text-stone-300 transition hover:bg-red-50 hover:text-red-600 active:scale-95 dark:text-stone-600 dark:hover:bg-red-500/10 dark:hover:text-red-300"
@@ -910,6 +978,7 @@
 		{/each}
 	</ul>
 </Sheet>
+
 
 <ContentPicker
 	open={lessonPickerOpen}

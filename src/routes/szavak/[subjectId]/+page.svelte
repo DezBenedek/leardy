@@ -61,7 +61,8 @@
 
 	beforeNavigate(() => { void reviews.flush(); });
 
-	let swapped = $state(false);
+	// Szógyakorlás: alapból a definíció van elől, a kifejezés hátul.
+	let swapped = $state(true);
 	let listOpen = $state(false);
 
 	let questions = $derived([...new Map(packages.flatMap((p) => p.questions).map((q) => [q.id, q])).values()]);
@@ -122,8 +123,8 @@
 		</p>
 	</div>
 	<IconButton
-		ariaLabel="Előlap és hátlap cseréje"
-		title="Előlap és hátlap cseréje"
+		ariaLabel="Kifejezés és definíció cseréje"
+		title="Kifejezés és definíció cseréje"
 		size={44}
 		onclick={() => (swapped = !swapped)}
 	>

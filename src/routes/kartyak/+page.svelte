@@ -29,7 +29,6 @@
 	}
 	import type { LevelNode, Package, Subject } from '$lib/curriculum';
 	import { deckCardKindLabel } from '$lib/curriculum';
-	import { cardKindForSubject } from '$lib/sm2';
 	import { loadDeckOpened, normHu } from '$lib/deck-history';
 	import { Query, getOrFetch } from '$lib/query.svelte';
 	import { loadScope, saveScope } from '$lib/scope';
@@ -225,14 +224,6 @@
 	let dBusy = $state(false);
 	let lastDeckSubject = $state('');
 	/** Automatikus típus a választott tantárgy alapján: nyelvnél Szókártya, máshol Tanulókártya. */
-	let dAutoKind = $derived(
-		cardKindForSubject(
-			subjects.find((s) => s.id === dSubject)?.title ?? '',
-			subjects.find((s) => s.id === dSubject)?.icon ?? 'book',
-			dSubject || null
-		)
-	);
-	let dAutoKindLabel = $derived(dAutoKind === 'study' ? 'Tanulókártya' : 'Szókártya');
 
 	const subjectIcons: Record<string, typeof Landmark> = {
 		landmark: Landmark,
@@ -796,6 +787,7 @@
 		</Button>
 	</div>
 </Sheet>
+
 
 <Sheet open={picker === 'subject'} label="Tantárgy választása" title="Tantárgy" onClose={() => (picker = null)}>
 	<ul class="-mx-1 mt-2 space-y-0.5">

@@ -122,15 +122,16 @@
 	/** Megfordított kártya-előlap megjegyzése csomagonként. */
 	const SWAP_KEY = 'leardy-cards-swapped';
 
-	function loadSwapped(key: string): boolean {
+	function loadSwapped(key: string, fallback = false): boolean {
 		try {
-			if (typeof localStorage === 'undefined' || !key) return false;
+			if (typeof localStorage === 'undefined' || !key) return fallback;
 			const raw = localStorage.getItem(SWAP_KEY);
-			if (!raw) return false;
+			if (!raw) return fallback;
 			const map = JSON.parse(raw) as Record<string, boolean>;
+			if (!(key in map)) return fallback;
 			return map[key] === true;
 		} catch {
-			return false;
+			return fallback;
 		}
 	}
 
@@ -265,8 +266,8 @@
 	}
 
 	function openPractice() {
-		// Kártya és SM-2 módban a megjegyzett csereállapottal indul.
-		cardsSwapped = loadSwapped(id);
+		// Szókártyánál alapból a definíció van elől; ha van mentett választás, az nyer.
+		cardsSwapped = loadSwapped(id, !studyOnly);
 		session += 1;
 		practiceOpen = true;
 	}
@@ -406,6 +407,7 @@
 					{sm2.due} esedékes
 				</p>
 			{/if}
+
 			<div data-tutorial="package-practice" class="mt-3">
 				<Button block size="lg" onclick={openPractice}>
 					<Layers size={18} /> {studyOnly ? 'Kártyák gyakorlása' : 'Szavak gyakorlása'}
@@ -500,8 +502,8 @@
 		<button
 				type="button"
 				onclick={toggleSwap}
-				aria-label="Előlap és hátlap cseréje"
-				title="Előlap és hátlap cseréje"
+				aria-label={studyOnly ? 'Előlap és hátlap cseréje' : 'Kifejezés és definíció cseréje'}
+				title={studyOnly ? 'Előlap és hátlap cseréje' : 'Kifejezés és definíció cseréje'}
 				aria-pressed={cardsSwapped}
 				class={[
 					'grid size-9 shrink-0 place-items-center rounded-full transition active:scale-95',

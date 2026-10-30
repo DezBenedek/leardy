@@ -31,13 +31,13 @@ export const PATCH: RequestHandler = async (event) => {
 		const args: string[] = [];
 		if (body.front !== undefined) {
 			const front = body.front.trim();
-			if (!front) return json({ error: 'Töltsd ki a kártya előlapját!' }, { status: 400 });
+			if (!front) return json({ error: 'Töltsd ki a kártya kifejezését!' }, { status: 400 });
 			sets.push('front = ?');
 			args.push(front);
 		}
 		if (body.back !== undefined) {
 			const back = body.back.trim();
-			if (!back) return json({ error: 'Töltsd ki a kártya hátlapját!' }, { status: 400 });
+			if (!back) return json({ error: 'Töltsd ki a kártya definícióját!' }, { status: 400 });
 			sets.push('back = ?');
 			args.push(back);
 		}

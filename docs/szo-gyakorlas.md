@@ -119,7 +119,7 @@ A `WordPractice.svelte` állapotai:
 
 - `queue`: az aktuális sor
 - `idx`: hol tartasz a sorban
-- `revealed`: fel van-e fedve a hátlap
+- `revealed`: fel van-e fedve a definíció
 - `outcomes`: kártya azonosítóhoz rendelt siker vagy hiba az adott körben
 - `sessionProgress`: a kör közben frissülő SM-2 állapotok
 - `repeats`: kártyánkénti visszapörgetés számláló
@@ -158,10 +158,18 @@ A két belépési pont szándékosan tér el:
   Itt csak az esedékes és új szavak jönnek, csomagonkénti nyugodt sorrendben.
   Ha nincs esedékes, rövid átismétlő kör indul a legbizonytalanabb szavakból.
 
-A felcserélt előlap és hátlap csomagonként megjegyzésre kerül,
-így a következő gyakorlás ugyanazzal a beállítással indul.
+Szókártyánál alapból a definíció van elől, a kifejezés hátul.
+A cserét csomagonként megjegyzi a rendszer, így a következő gyakorlás
+ugyanazzal a beállítással indul, amíg át nem állítod.
 
-## 6. Főoldali szakasz és beállítások
+## 6. Típus és SM-2
+
+A csomag típusa automatikus: nyelvi tantárgynál Szókártya, máshol
+Tanulókártya. Csak a szókártya kap SM-2 ütemezést, ezt a felület
+nem jelöli külön.
+A szerkesztőben mindkét típusnál Kifejezés és Definíció a két mező neve.
+
+## 7. Főoldali szakasz és beállítások
 
 A főoldal az `/api/sm2-due` összesítésből mutatja nyelvenként:
 
@@ -177,7 +185,7 @@ A Beállítások Tanulás paneljén:
 Kikapcsolt szakasz esetén a főoldal sem betöltési, sem hibaállapotot
 nem mutat a szavaknál, és a napi kiemelt kártya sem ajánl szógyakorlást.
 
-## 7. Összesítések és szövegek
+## 8. Összesítések és szövegek
 
 A `summarizeSM2()` egy csomaghoz megadja:
 
@@ -191,7 +199,7 @@ A `summarizeSM2()` egy csomaghoz megadja:
 A `nextReviewText()` és a `formatDueDay()` ebből képez emberi szöveget,
 például `ma esedékes`, `holnap esedékes` vagy `3 nap múlva esedékes`.
 
-## 8. Tudatos egyszerűsítések
+## 9. Tudatos egyszerűsítések
 
 - Nincs véletlen keverés a napi sorban. A stabil sorrend nyugodtabb,
   és ismétléskor ugyanazt adja.

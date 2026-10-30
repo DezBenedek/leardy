@@ -5,7 +5,7 @@
      magyar<TAB>angol   (tabbal elválasztva)
      magyar|angol       (függőleges vonallal)
    Elválasztó hiányában az egysoros szöveg sima érték, többsoros
-   elválasztó nélküli szöveg soronként előlap (üres hátlappal). */
+   elválasztó nélküli szöveg soronként kifejezés (üres definícióval). */
 
 export interface ParsedPair {
 	front: string;

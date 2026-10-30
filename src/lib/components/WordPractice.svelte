@@ -274,8 +274,8 @@
 
 	let qSize = $derived(current ? fitSize(current.q.question_text, 20) : 20);
 	let aSize = $derived(current ? fitSize(current.q.correct_answer, 21) : 21);
-	let frontLabel = $derived(swapped ? 'Válasz' : 'Kérdés');
-	let backLabel = $derived(swapped ? 'Kérdés' : 'Válasz');
+	let frontLabel = $derived(swapped ? 'Definíció' : 'Kifejezés');
+	let backLabel = $derived(swapped ? 'Kifejezés' : 'Definíció');
 	let frontText = $derived(current ? (swapped ? current.q.correct_answer : current.q.question_text) : '');
 	let backText = $derived(current ? (swapped ? current.q.question_text : current.q.correct_answer) : '');
 	let frontSize = $derived(swapped ? aSize : qSize);
