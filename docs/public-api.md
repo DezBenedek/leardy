@@ -10,9 +10,9 @@ Kulcs létrehozása: Beállítások, Fejlesztői beállítások (csak tanári fi
 Használat háromféleképpen:
 
 ```bash
-curl -H "Authorization: Bearer ld_..." https://leardy.app/api/v1/me
-curl -H "X-Api-Key: ld_..." https://leardy.app/api/v1/subjects
-curl "https://leardy.app/api/v1/subjects?api_key=ld_..."
+curl -H "Authorization: Bearer ld_..." https://leardy.dezso.hu/api/v1/me
+curl -H "X-Api-Key: ld_..." https://leardy.dezso.hu/api/v1/subjects
+curl "https://leardy.dezso.hu/api/v1/subjects?api_key=ld_..."
 ```
 
 Hiba kulcs nélkül: `401 { "error": "..." }`.
@@ -62,7 +62,7 @@ A hivatalos tananyag írása ugyanazt a jogosultságot kéri, mint a webes szerk
 Példa kérdésfelvételre:
 
 ```bash
-curl -X POST https://leardy.app/api/v1/quiz-questions \
+curl -X POST https://leardy.dezso.hu/api/v1/quiz-questions \
   -H "Authorization: Bearer ld_..." -H "Content-Type: application/json" \
   -d '{"quizId":"quiz-...","questionText":"Mi Anglia fővárosa?","type":"choice","options":["London","Párizs","Berlin"],"correctAnswer":"London"}'
 ```
@@ -94,7 +94,7 @@ A kulcs tulajdonosának saját csomagjai. Típus automatikus: nyelvi tantárgyn�
 Példa csomagfeltöltésre:
 
 ```bash
-curl -X POST https://leardy.app/api/v1/decks \
+curl -X POST https://leardy.dezso.hu/api/v1/decks \
   -H "Authorization: Bearer ld_..." -H "Content-Type: application/json" \
   -d '{"title":"Angol szavak 1","subjectId":"english","cards":[{"front":"apple","back":"alma"}]}'
 ```
@@ -115,8 +115,8 @@ Mindig a kulcs tulajdonosának haladása.
 Példa gyakorlásra:
 
 ```bash
-curl "https://leardy.app/api/v1/progress/cards/due?deck=deck-... " -H "Authorization: Bearer ld_..."
-curl -X POST https://leardy.app/api/v1/progress/cards/review \
+curl "https://leardy.dezso.hu/api/v1/progress/cards/due?deck=deck-... " -H "Authorization: Bearer ld_..."
+curl -X POST https://leardy.dezso.hu/api/v1/progress/cards/review \
   -H "Authorization: Bearer ld_..." -H "Content-Type: application/json" \
   -d '{"results":[{"key":"dc-...","known":true}]}'
 ```

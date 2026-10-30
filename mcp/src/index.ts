@@ -5,11 +5,11 @@ import * as z from 'zod/v4';
 /* Leardy MCP szerver a publikus API v1-re.
    Minden eszköz a kulcs tulajdonosának nevében jár el.
    Konfiguráció környezeti változókkal:
-   LEARDY_BASE_URL (alap: https://leardy.app),
+   LEARDY_BASE_URL (alap: https://leardy.dezso.hu),
    LEARDY_API_KEY (kötelező, ld_... tanári kulcs). */
 
 function baseUrl(): string {
-	return (process.env.LEARDY_BASE_URL ?? 'https://leardy.app').replace(/\/+$/, '');
+	return (process.env.LEARDY_BASE_URL ?? 'https://leardy.dezso.hu').replace(/\/+$/, '');
 }
 
 function apiKey(): string {

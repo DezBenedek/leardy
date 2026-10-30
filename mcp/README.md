@@ -25,7 +25,7 @@ cp .env.example .env
 `.env` tartalma:
 
 ```bash
-LEARDY_BASE_URL=https://leardy.app
+LEARDY_BASE_URL=https://leardy.dezso.hu
 LEARDY_API_KEY=ld_ide_jon_a_kulcs
 ```
 
@@ -64,7 +64,7 @@ Példa MCP konfiguráció:
 			"command": "pnpm",
 			"args": ["--dir", "/teljes/utvonal/leardy/mcp", "start"],
 			"env": {
-				"LEARDY_BASE_URL": "https://leardy.app",
+				"LEARDY_BASE_URL": "https://leardy.dezso.hu",
 				"LEARDY_API_KEY": "ld_ide_jon_a_kulcs"
 			}
 		}
@@ -81,7 +81,7 @@ Alternatíva `tsx` közvetlen hívással:
 			"command": "npx",
 			"args": ["tsx", "/teljes/utvonal/leardy/mcp/src/index.ts"],
 			"env": {
-				"LEARDY_BASE_URL": "https://leardy.app",
+				"LEARDY_BASE_URL": "https://leardy.dezso.hu",
 				"LEARDY_API_KEY": "ld_ide_jon_a_kulcs"
 			}
 		}

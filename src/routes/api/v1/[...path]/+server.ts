@@ -182,7 +182,7 @@ async function route(
 				'GET /api/v1/search?q=&subjectId=',
 				'GET /api/v1/openapi.json'
 			],
-			docs: 'https://leardy.app/docs/public-api'
+			docs: 'https://leardy.dezso.hu/docs/public-api'
 		});
 	}
 	if (head === 'openapi.json' && method === 'GET') return ok(openapi());
