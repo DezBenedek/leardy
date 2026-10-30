@@ -2,9 +2,9 @@ import { error, json, isHttpError, type RequestHandler } from '@sveltejs/kit';
 import { getDb, getSessionUser } from '$lib/server/db';
 import { contentResponse, publicContent } from '$lib/server/content-cache';
 import {
-	getCardProgress, getOfficialCardPack, getOfficialCardPackById, getScopedQuizPackage,
+	getCardProgress, getOfficialCardPack, getOfficialCardPackById, getPublishedDeckPackage, getScopedQuizPackage,
 	getUserDeckPackage, listDecksForLesson, listOfficialCardPacks,
-	listOfficialCardPacksForLesson, listScopedPackages, listUserDecks
+	listOfficialCardPacksForLesson, listPublishedDecks, listPublishedDecksForLesson, listScopedPackages, listUserDecks
 } from '$lib/server/curriculum';
 
 export const GET: RequestHandler = async (event) => {
@@ -19,10 +19,15 @@ export const GET: RequestHandler = async (event) => {
 		const cards = event.url.searchParams.get('scope') === 'cards';
 		if (id) {
 			if (id.startsWith('deck:')) {
-				if (!user) error(404, 'Nem található.');
-				const pkg = await getUserDeckPackage(db, user.id, id.slice(5));
-				if (!pkg) error(404, 'Nem található.');
-				return contentResponse(event, { package: pkg, progress: await getCardProgress(db, user.id) }, 0, user.id);
+				// Saját csomag a tulajdonosnak, publikált tanári csomag mindenkinek.
+				if (user) {
+					const own = await getUserDeckPackage(db, user.id, id.slice(5));
+					if (own) return contentResponse(event, { package: own, progress: await getCardProgress(db, user.id) }, 0, user.id);
+				}
+				const shared = await getPublishedDeckPackage(db, id.slice(5), user?.id ?? null);
+				if (!shared) error(404, 'Nem található.');
+				if (!user) return contentResponse(event, { package: shared, progress: {} }, 0, null);
+				return contentResponse(event, { package: shared, progress: await getCardProgress(db, user.id) }, 0, user.id);
 			}
 			const resource = await publicContent(event, `package:${id}`, null, async () => {
 				const pkg = id.startsWith('pack:') ? await getOfficialCardPackById(event, id.slice(5))
@@ -36,6 +41,19 @@ export const GET: RequestHandler = async (event) => {
 			attached ? listOfficialCardPacksForLesson(db, attached)
 				: cards ? listOfficialCardPacks(event, subject, level) : listScopedPackages(event, subject, level));
 		const mine = user && !cards ? (attached ? await listDecksForLesson(db, user.id, attached) : await listUserDecks(db, user.id, subject, level)) : [];
+		// A publikált tanári csomag nem a nyilvános gyorstárból jön, hanem kérésenként,
+		// hogy a publikálás és visszavonás azonnal érvényesüljön.
+		if (attached || cards) {
+			const shared = attached
+				? await listPublishedDecksForLesson(db, attached, user?.id ?? null)
+				: await listPublishedDecks(db, subject, level, user?.id ?? null);
+			const seen = new Set([...resource.data.map((p) => p.quizId), ...mine.map((p) => p.quizId)]);
+			const extra = shared.filter((p) => !seen.has(p.quizId));
+			const packages = attached
+				? [...resource.data, ...mine, ...extra]
+				: [...mine, ...resource.data, ...extra];
+			return contentResponse(event, { packages }, resource.version, user && !cards ? user.id : null);
+		}
 		return contentResponse(event, { packages: attached ? [...resource.data, ...mine] : [...mine, ...resource.data] }, resource.version, user && !cards ? user.id : null);
 	} catch (e) {
 		if (isHttpError(e)) throw e;

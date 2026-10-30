@@ -196,8 +196,10 @@
 	   ismétlődik minden sorban; a csatolt lecke sem, ha a cím már tartalmazza. */
 	function describe(p: Package): string {
 		const kindLabel = deckCardKindLabel(p.cardKind);
-		if (!p.subjectId) return `Besorolatlan saját csomag · ${kindLabel} · ${p.questionCount} kártya`;
+		if (!p.subjectId)
+			return `${p.mine ? 'Besorolatlan saját csomag' : 'Publikált csomag'} · ${kindLabel} · ${p.questionCount} kártya`;
 		const parts: string[] = [];
+		if (!p.mine && p.quizId.startsWith('deck:')) parts.push('Publikált');
 		if (p.subjectTitle && !(subjectId && p.subjectId === subjectId)) parts.push(p.subjectTitle);
 		if (p.levelTitle && !(levelId && p.levelId === levelId)) parts.push(p.levelTitle);
 		const attachedTitles = (p.attachedLessons ?? [])

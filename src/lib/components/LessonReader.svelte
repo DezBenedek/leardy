@@ -200,7 +200,7 @@
 							{pkg.title}
 						</span>
 						<span class="mt-0.5 block text-[12px] font-medium text-stone-500 dark:text-stone-400">
-							{pkg.mine ? 'Saját' : 'Hivatalos'} kártyacsomag · {pkg.questionCount} kártya
+							{pkg.mine ? 'Saját' : pkg.quizId.startsWith('deck:') ? 'Publikált tanári' : 'Hivatalos'} kártyacsomag · {pkg.questionCount} kártya{#if !pkg.mine && pkg.quizId.startsWith('deck:') && pkg.ownerName} · {pkg.ownerName}{/if}
 						</span>
 					</span>
 					<ChevronRight size={17} class="shrink-0 text-stone-300 transition group-hover:translate-x-0.5 group-hover:text-brand-500 motion-reduce:transition-none dark:text-stone-600" />

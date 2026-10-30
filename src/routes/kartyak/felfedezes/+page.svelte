@@ -201,6 +201,7 @@
 	   (a hivatalos csomag címe `{leckecím} – kártyák`). */
 	function describe(p: Package): string {
 		const parts: string[] = [];
+		if (!p.mine && p.quizId.startsWith('deck:')) parts.push('Publikált');
 		if (p.subjectTitle && !(subjectId && p.subjectId === subjectId)) parts.push(p.subjectTitle);
 		if (p.levelTitle && !(levelId && p.levelId === levelId)) parts.push(p.levelTitle);
 		if (p.lessonTitle && !p.title.startsWith(p.lessonTitle)) parts.push(p.lessonTitle);
@@ -408,26 +409,28 @@
 							{describe(pkg)}
 						</span>
 					</a>
-					{#if savedIds[pkg.quizId]}
-						<button
-							type="button"
-							onclick={() => void removeFromLibrary(pkg)}
-							aria-label="Eltávolítás a könyvtárból: {pkg.title}"
-							title="Könyvtárban van, koppints az eltávolításhoz"
-							class="grid size-9 shrink-0 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 transition hover:bg-emerald-500/25 active:scale-95 dark:text-emerald-300"
-						>
-							<Check size={18} strokeWidth={3} />
-						</button>
-					{:else}
-						<button
-							type="button"
-							onclick={() => void addToLibrary(pkg)}
-							aria-label="Mentés a könyvtárba: {pkg.title}"
-							title="Mentés a könyvtárba"
-							class="grid size-9 shrink-0 place-items-center rounded-full bg-brand-500 text-white transition hover:bg-brand-600 active:scale-95"
-						>
-							<Plus size={18} />
-						</button>
+					{#if !pkg.mine}
+						{#if savedIds[pkg.quizId]}
+							<button
+								type="button"
+								onclick={() => void removeFromLibrary(pkg)}
+								aria-label="Eltávolítás a könyvtárból: {pkg.title}"
+								title="Könyvtárban van, koppints az eltávolításhoz"
+								class="grid size-9 shrink-0 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 transition hover:bg-emerald-500/25 active:scale-95 dark:text-emerald-300"
+							>
+								<Check size={18} strokeWidth={3} />
+							</button>
+						{:else}
+							<button
+								type="button"
+								onclick={() => void addToLibrary(pkg)}
+								aria-label="Mentés a könyvtárba: {pkg.title}"
+								title="Mentés a könyvtárba"
+								class="grid size-9 shrink-0 place-items-center rounded-full bg-brand-500 text-white transition hover:bg-brand-600 active:scale-95"
+							>
+								<Plus size={18} />
+							</button>
+						{/if}
 					{/if}
 					<a
 						data-tutorial="package-link" data-tutorial-content-id={pkg.quizId} href="/kartyak/{encodeURIComponent(pkg.quizId)}"

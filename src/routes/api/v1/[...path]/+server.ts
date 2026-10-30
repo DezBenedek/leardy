@@ -967,11 +967,12 @@ async function route(
 			: body.lessonId || body.lesson_id
 				? [String(body.lessonId ?? body.lesson_id)]
 				: [];
+		const isPublic = body.isPublic === true || body.is_public === 1 || body.is_public === true ? 1 : 0;
 		await ensureCurriculumSchema(db);
 		const batch: { run: () => Promise<unknown> }[] = [];
 		batch.push(
-			db.prepare(`INSERT INTO decks (id, user_id, title, kind, card_kind, subject_id, level_id, material_id, lesson_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-				.bind(id, user.id, title.slice(0, 200), 'cards', cardKind, subjectId, String(body.levelId ?? body.level_id ?? '').trim() || null, String(body.materialId ?? body.material_id ?? '').trim() || null, lessonIds[0] ?? null, now) as unknown as { run: () => Promise<unknown> }
+			db.prepare(`INSERT INTO decks (id, user_id, title, kind, card_kind, subject_id, level_id, material_id, lesson_id, is_public, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+				.bind(id, user.id, title.slice(0, 200), 'cards', cardKind, subjectId, String(body.levelId ?? body.level_id ?? '').trim() || null, String(body.materialId ?? body.material_id ?? '').trim() || null, lessonIds[0] ?? null, isPublic, now) as unknown as { run: () => Promise<unknown> }
 		);
 		for (let i = 0; i < cleanCards.length; i++) {
 			batch.push(
@@ -1003,7 +1004,7 @@ async function route(
 		if (!owner || owner.userId !== user.id) return err('Nincs ilyen csomag.', 404);
 		if (method === 'GET') {
 			const deck = await db
-				.prepare(`SELECT id, title, COALESCE(kind, 'cards') AS kind, COALESCE(card_kind, 'word') AS cardKind, subject_id AS subjectId, level_id AS levelId, material_id AS materialId, lesson_id AS lessonId FROM decks WHERE id = ?`)
+				.prepare(`SELECT id, title, COALESCE(kind, 'cards') AS kind, COALESCE(card_kind, 'word') AS cardKind, subject_id AS subjectId, level_id AS levelId, material_id AS materialId, lesson_id AS lessonId, COALESCE(is_public, 0) AS isPublic FROM decks WHERE id = ?`)
 				.bind(second)
 				.first();
 			const cards = await db
@@ -1044,6 +1045,11 @@ async function route(
 				sets.push('lesson_id = ?');
 				args.push(l);
 				nextLessonIds = l ? [l] : [];
+			}
+			if (body.isPublic !== undefined || body.is_public !== undefined) {
+				const v = body.isPublic ?? body.is_public;
+				sets.push('is_public = ?');
+				args.push(v === true || v === 1 ? '1' : '0');
 			}
 			if (sets.length === 0 && nextLessonIds === null) return err('Nincs módosítás.', 400);
 			if (sets.length > 0) {
@@ -1267,12 +1273,20 @@ async function route(
 		const body = await readJson(event);
 		const quizId = String(body.quizId ?? body.quiz_id ?? body.id ?? '').trim();
 		if (!quizId) return err('Hiányzik a csomag azonosítója.', 400);
-		if (quizId.startsWith('deck:')) return ok({ ok: true, owned: true });
+		if (quizId.startsWith('deck:')) {
+			const deckId = quizId.slice(5);
+			const owner = await db.prepare(`SELECT user_id AS userId FROM decks WHERE id = ?`).bind(deckId).first<{ userId: string }>().catch(() => null);
+			if (owner && owner.userId === user.id) return ok({ ok: true, owned: true });
+			const pub = await db.prepare(`SELECT id FROM decks WHERE id = ? AND COALESCE(is_public, 0) = 1`).bind(deckId).first<{ id: string }>().catch(() => null);
+			if (!pub) return err('Nincs ilyen csomag.', 404);
+			await db.prepare(`INSERT OR IGNORE INTO library (user_id, quiz_id, added_at) VALUES (?, ?, ?)`).bind(user.id, quizId, Math.floor(Date.now() / 1000)).run();
+			return ok({ ok: true });
+		}
 		if (quizId.startsWith('pack:') || quizId.startsWith('cards:')) {
 			await db.prepare(`INSERT OR IGNORE INTO library (user_id, quiz_id, added_at) VALUES (?, ?, ?)`).bind(user.id, quizId, Math.floor(Date.now() / 1000)).run();
 			return ok({ ok: true });
 		}
-		return err('Csak pack:... vagy cards:... azonosító menthető.', 400);
+		return err('Csak pack:..., cards:... vagy publikált deck:... azonosító menthető.', 400);
 	}
 	if (head === 'library' && method === 'DELETE' && !second) {
 		const body = await readJson(event);

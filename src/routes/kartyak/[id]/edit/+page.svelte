@@ -12,7 +12,7 @@
 		Languages,
 		Layers,
 		Leaf,
-		Plus,
+		Save,
 		Settings2,
 		Shapes,
 		Trash2,
@@ -21,14 +21,19 @@
 	import type { DeckCardKind, LevelNode, Subject } from '$lib/curriculum';
 	import { deckCardKindLabel } from '$lib/curriculum';
 	import { cardKindForSubject } from '$lib/sm2';
+	import { parsePastedPairs } from '$lib/deck-paste';
+	import { auth } from '$lib/auth.svelte';
 	import { toast } from '$lib/toast.svelte';
+	import { invalidate } from '$lib/query.svelte';
 	import Button from '$lib/ui/Button.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import ContentPicker, { type ContentPick } from '$lib/components/ContentPicker.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import Sheet from '$lib/ui/Sheet.svelte';
 	import Skeleton from '$lib/ui/Skeleton.svelte';
+	import Switch from '$lib/ui/Switch.svelte';
 
 	/* Saját csomag szerkesztője külön oldalon: piszkozat + kifejezett Mentés.
 	   Beállítások (név, működés, besorolás, csatolás) drawerben, kártyák alatta. */
@@ -58,8 +63,7 @@
 	let saving = $state(false);
 	let settingsOpen = $state(false);
 	let picker = $state<'subject' | 'level' | null>(null);
-	let armDelete = $state(false);
-	let armTimer: ReturnType<typeof setTimeout> | undefined;
+	let deleteOpen = $state(false);
 	let nextKey = $state(1);
 
 	const subjectIcons: Record<string, typeof Landmark> = {
@@ -92,8 +96,18 @@
 	let lessonIds = $state<string[]>([]);
 	let attachedLessons = $state<ContentPick[]>([]);
 	let lessonPickerOpen = $state(false);
+	/** Tanári publikálás: mindenkinek látszik a Felfedezésben és a csatolt leckénél. */
+	let isPublic = $state(false);
 	let cards = $state<CardRow[]>([]);
 	let removedIds = $state<string[]>([]);
+
+	/** Publikálni és leckéhez csatolni csak tanár (vagy admin) tud, diák nem. */
+	let isTeacher = $derived(
+		auth.ready &&
+			(auth.user?.role === 'teacher' ||
+				auth.user?.role === 'admin' ||
+				!!auth.user?.is_admin)
+	);
 
 	// Szerver-pillanatkép a dirty-figyeléshez
 	let snap = $state({
@@ -103,7 +117,8 @@
 		level: null as string | null,
 		material: null as string | null,
 		lesson: null as string | null,
-		lessons: [] as string[]
+		lessons: [] as string[],
+		isPublic: false
 	});
 
 	let subjects = $state<Subject[]>([]);
@@ -132,6 +147,7 @@
 	let dirty = $derived.by(() => {
 		if (norm(title) !== snap.title) return true;
 		if (cardKind !== snap.cardKind) return true;
+		if (isPublic !== snap.isPublic) return true;
 		if ((subjectId || null) !== snap.subject) return true;
 		if ((levelId || null) !== snap.level) return true;
 		if ((materialId || null) !== snap.material) return true;
@@ -206,6 +222,7 @@
 					: [];
 			lessonIds = ids;
 			lessonId = ids[0] ?? '';
+			isPublic = d.isPublic === true;
 			const rawLessons: { id: string; title: string }[] = Array.isArray(d.lessons)
 				? d.lessons
 				: [];
@@ -233,7 +250,8 @@
 				level: d.levelId ?? null,
 				material: d.materialId ?? null,
 				lesson: d.lessonId ?? null,
-				lessons: [...lessonIds]
+				lessons: [...lessonIds],
+				isPublic
 			};
 			cards = (d.cards ?? []).map(
 				(c: { id: string; front: string; back: string; sectionSlug?: string }) => ({
@@ -246,6 +264,7 @@
 				})
 			);
 			removedIds = [];
+			ensureTrailingEmpty();
 			await fetchLevels(subjectId);
 		} catch (e) {
 			loadError = e instanceof Error ? e.message : 'Nem sikerült betölteni a csomagot.';
@@ -267,10 +286,6 @@
 			return;
 		}
 		void loadDeck();
-	});
-
-	$effect(() => {
-		return () => clearTimeout(armTimer);
 	});
 
 	// Kaszkád: csak lefelé nulláz, mentés a Mentés gombbal.
@@ -325,13 +340,110 @@
 		if (lessonIds.length === 0) materialId = '';
 	}
 
-	function addRow() {
-		cards = [...cards, { key: nextKey++, id: null, front: '', back: '', sectionSlug: '', orig: null }];
+	/** Mindig van egy üres sor a végén: ha az utolsóba írnak, új üres nyílik. */
+	function ensureTrailingEmpty() {
+		const last = cards[cards.length - 1];
+		if (!last || norm(last.front) || norm(last.back)) {
+			cards = [...cards, { key: nextKey++, id: null, front: '', back: '', sectionSlug: '', orig: null }];
+		}
+	}
+
+	function onRowInput() {
+		ensureTrailingEmpty();
+	}
+
+	/** Kitöltött kártyák száma (az üres sor nem számít). */
+	let filledCount = $derived(cards.filter((c) => norm(c.front) || norm(c.back)).length);
+
+	/** Beillesztés a vágólapról: "magyar;angol" sorok, tabbal vagy |-vonallal is.
+	 *  Sima szövegnél marad az alapértelmezett beillesztés. */
+	function onPasteCard(e: ClipboardEvent, card: CardRow) {
+		const text = e.clipboardData?.getData('text') ?? '';
+		if (!text) return;
+		const pairs = parsePastedPairs(text);
+		if (pairs.length === 0) return;
+		// Egy elválasztó nélküli érték: alapértelmezett beillesztés a mezőbe.
+		if (pairs.length === 1 && !pairs[0].back) return;
+		e.preventDefault();
+		const idx = cards.findIndex((c) => c.key === card.key);
+		if (idx < 0) return;
+		// Egy csomagban legfeljebb 200 kártya lehet: a többlet nem illeszkedik be.
+		const MAX_CARDS = 200;
+		const used = cards.filter((c) => c.key === card.key || norm(c.front) || norm(c.back)).length;
+		let list = pairs;
+		if (used + pairs.length - 1 > MAX_CARDS) {
+			list = pairs.slice(0, Math.max(0, MAX_CARDS - used + 1));
+			if (list.length === 0) {
+				toast.warning('Betelt a csomag', 'Legfeljebb 200 kártya lehet egy csomagban.');
+				return;
+			}
+			toast.warning('Betelt a csomag', `Csak az első ${list.length} kártya illeszkedett be.`);
+		}
+		const next = [...cards];
+		next[idx] = { ...next[idx], front: list[0].front, back: list[0].back };
+		if (list.length > 1) {
+			const inserts: CardRow[] = list
+				.slice(1)
+				.map((p) => ({ key: nextKey++, id: null, front: p.front, back: p.back, sectionSlug: '', orig: null }));
+			next.splice(idx + 1, 0, ...inserts);
+			toast.success(`${list.length} kártya beillesztve.`);
+		}
+		cards = next;
+		ensureTrailingEmpty();
+		// A beillesztett sorok látszódjanak: a cél sor utáni sor a nézetbe kerül.
+		requestAnimationFrame(() => {
+			try {
+				const rows = document.querySelectorAll('#card-rows > li');
+				const el = rows[idx + 1] ?? rows[idx];
+				el?.scrollIntoView({ block: 'nearest' });
+			} catch {
+				// görgetés nélkül is működik
+			}
+		});
 	}
 
 	function removeRow(card: CardRow) {
+		if (cards.length <= 1) return;
 		if (card.id) removedIds = [...removedIds, card.id];
 		cards = cards.filter((c) => c.key !== card.key);
+		ensureTrailingEmpty();
+	}
+
+	/** Üres mezőben nyomott Backspace: fókusz az előző mező végére.
+	   Üres hátlapból az azonos sor előlapjára, onnan (ha az is üres)
+	   az előző sor hátlapjára. Üres előlapból az előző sor hátlapjára. */
+	function onCardKeydown(e: KeyboardEvent, field: 'front' | 'back') {
+		if (e.key !== 'Backspace') return;
+		const input = e.currentTarget as HTMLInputElement;
+		if (input.value !== '') return;
+		const li = input.closest('li');
+		if (!li) return;
+		const atEnd = (el: HTMLInputElement) => {
+			el.focus();
+			try {
+				el.setSelectionRange(el.value.length, el.value.length);
+			} catch {
+				// nem szöveges mező: csak a fókusz számít
+			}
+		};
+		if (field === 'back') {
+			e.preventDefault();
+			const frontInput = li.querySelector<HTMLInputElement>('input[data-field="front"]');
+			if (frontInput && norm(frontInput.value) !== '') {
+				atEnd(frontInput);
+				return;
+			}
+			const prev = li.previousElementSibling as HTMLElement | null;
+			const prevBack = prev?.querySelector<HTMLInputElement>('input[data-field="back"]');
+			if (prevBack) atEnd(prevBack);
+		} else {
+			const prev = li.previousElementSibling as HTMLElement | null;
+			const prevBack = prev?.querySelector<HTMLInputElement>('input[data-field="back"]');
+			if (prevBack) {
+				e.preventDefault();
+				atEnd(prevBack);
+			}
+		}
 	}
 
 	async function save() {
@@ -354,19 +466,27 @@
 				return;
 			}
 		}
+		const filledCards = cards.filter((c) => norm(c.front) && norm(c.back));
+		if (isPublic && filledCards.length === 0) {
+			toast.warning('Üres csomag', 'Publikáláshoz adj meg legalább egy kitöltött kártyát!');
+			return;
+		}
 		saving = true;
 		try {
 		// 1. Beállítások egyetlen PATCH-csel. A típus automatikus,
 		// ezért cardKind nem megy: a tantárgy dönti el a szerveren is.
-		// Több lecke: lessonIds tömb megy, a régi lessonId az elsőnek felel meg.
-		const patch: Record<string, string | string[] | null> = {};
+		// Csatolás és publikálás csak tanárnak megy: diák mentése ezeket nem érinti.
+		const patch: Record<string, string | string[] | boolean | null> = {};
 		if (t !== snap.title) patch.title = t;
 		if ((subjectId || null) !== snap.subject) patch.subjectId = subjectId || null;
 			if ((levelId || null) !== snap.level) patch.levelId = levelId || null;
 			if ((materialId || null) !== snap.material) patch.materialId = materialId || null;
-			const curLessons = [...lessonIds].sort().join('|');
-			const oldLessons = [...snap.lessons].sort().join('|');
-			if (curLessons !== oldLessons) patch.lessonIds = [...lessonIds];
+			if (isTeacher) {
+				const curLessons = [...lessonIds].sort().join('|');
+				const oldLessons = [...snap.lessons].sort().join('|');
+				if (curLessons !== oldLessons) patch.lessonIds = [...lessonIds];
+				if (isPublic !== snap.isPublic) patch.isPublic = isPublic;
+			}
 			if (Object.keys(patch).length > 0) {
 				const res = await mutationFetch(`/api/decks/${encodeURIComponent(deckId)}`, {
 					method: 'PATCH',
@@ -381,7 +501,8 @@
 				level: levelId || null,
 				material: materialId || null,
 				lesson: lessonId || null,
-				lessons: [...lessonIds]
+				lessons: [...lessonIds],
+				isPublic
 			};
 			// Tantárgyváltás után a szerver automatikus típusát vesszük át.
 			try {
@@ -393,47 +514,73 @@
 			}
 				title = t;
 			}
-			// 2. Törölt kártyák.
-			for (const rid of [...removedIds]) {
-				const res = await mutationFetch(`/api/deck-cards/${encodeURIComponent(rid)}`, { method: 'DELETE' });
+			// 2. Törölt kártyák egyetlen kérésben.
+			if (removedIds.length > 0) {
+				const res = await mutationFetch('/api/deck-cards', {
+					method: 'DELETE',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ deckId, ids: removedIds })
+				});
 				if (!res.ok) throw new Error(await readError(res, 'Nem sikerült törölni egy kártyát.'));
-				removedIds = removedIds.filter((x) => x !== rid);
+				removedIds = [];
 			}
-			// 3. Módosult kártyák.
-			for (const c of cards) {
-				if (!c.id || !c.orig) continue;
+			// 3. Módosult kártyák egyetlen kérésben.
+			const changed = cards.filter((c) => {
+				if (!c.id || !c.orig) return false;
 				const f = norm(c.front);
 				const b = norm(c.back);
-				if (f === c.orig.front && b === c.orig.back && c.sectionSlug === c.orig.section) continue;
-				const res = await mutationFetch(`/api/deck-cards/${encodeURIComponent(c.id)}`, {
-					method: 'PATCH',
+				return f !== c.orig.front || b !== c.orig.back || c.sectionSlug !== c.orig.section;
+			});
+			if (changed.length > 0) {
+				const res = await mutationFetch('/api/deck-cards', {
+					method: 'PUT',
 					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({ front: f, back: b, sectionSlug: c.sectionSlug })
+					body: JSON.stringify({
+						deckId,
+						cards: changed.map((c) => ({
+							id: c.id,
+							front: norm(c.front),
+							back: norm(c.back),
+							sectionSlug: c.sectionSlug
+						}))
+					})
 				});
 				if (!res.ok) throw new Error(await readError(res, 'Nem sikerült menteni egy kártyát.'));
-				c.front = f;
-				c.back = b;
-				c.orig = { front: f, back: b, section: c.sectionSlug };
+				for (const c of changed) {
+					c.front = norm(c.front);
+					c.back = norm(c.back);
+					c.orig = { front: c.front, back: c.back, section: c.sectionSlug };
+				}
 			}
-			// 4. Új kártyák sorrendben.
-			for (const c of cards) {
-				if (c.id || (!norm(c.front) && !norm(c.back))) continue;
+			// 4. Új kártyák egyetlen kérésben, sorrendben.
+			const fresh = cards.filter((c) => !c.id && (norm(c.front) || norm(c.back)));
+			if (fresh.length > 0) {
 				const res = await mutationFetch('/api/deck-cards', {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
 						deckId,
-						front: norm(c.front),
-						back: norm(c.back),
-						sectionSlug: ''
+						cards: fresh.map((c) => ({
+							front: norm(c.front),
+							back: norm(c.back),
+							sectionSlug: ''
+						}))
 					})
 				});
 				if (!res.ok) throw new Error(await readError(res, 'Nem sikerült felvenni egy kártyát.'));
 				const j = await res.json();
-				c.id = j.id;
-				c.orig = { front: norm(c.front), back: norm(c.back), section: '' };
+				const ids: string[] = Array.isArray(j.ids) ? j.ids : j.id ? [j.id] : [];
+				fresh.forEach((c, i) => {
+					c.id = ids[i] ?? c.id;
+					c.orig = { front: norm(c.front), back: norm(c.back), section: '' };
+				});
+				if (typeof j.skipped === 'number' && j.skipped > 0) {
+					toast.warning('Betelt a csomag', `${j.skipped} kártya nem fért be a 200-as keretbe.`);
+				}
 			}
 			toast.success('Mentve.');
+			// A részletező ne a régi gyorstárazott darabszámot mutassa.
+			invalidate(`package:${deckParam}`);
 			void goto(detailUrl);
 		} catch (e) {
 			toast.error('Nem sikerült menteni', e instanceof Error ? e.message : 'Hiba történt.');
@@ -442,28 +589,17 @@
 		}
 	}
 
-	function armOrDeleteDeck() {
-		if (!armDelete) {
-			armDelete = true;
-			clearTimeout(armTimer);
-			armTimer = setTimeout(() => (armDelete = false), 5000);
-			return;
-		}
-		void deleteDeck();
-	}
-
 	async function deleteDeck() {
-		clearTimeout(armTimer);
 		if (saving) return;
 		saving = true;
 		try {
 			const res = await mutationFetch(`/api/decks/${encodeURIComponent(deckId)}`, { method: 'DELETE' });
 			if (!res.ok) throw new Error(await readError(res, 'Nem sikerült törölni a csomagot.'));
 			toast.success('Csomag törölve.');
+			deleteOpen = false;
 			void goto('/kartyak');
 		} catch (e) {
 			toast.error('Nem sikerült törölni', e instanceof Error ? e.message : 'Hiba történt.');
-			armDelete = false;
 		} finally {
 			saving = false;
 		}
@@ -506,53 +642,64 @@
 		<IconButton ariaLabel="Csomag beállításai" size={44} onclick={() => (settingsOpen = true)}>
 			<Settings2 size={20} />
 		</IconButton>
-		<Button size="sm" disabled={!dirty || saving} busy={saving} onclick={() => void save()}>
-			<Check size={16} strokeWidth={3} />
-			Mentés
-		</Button>
+		<IconButton
+			ariaLabel="Mentés"
+			title={dirty ? 'Mentés' : 'Nincs változás'}
+			size={44}
+			disabled={!dirty || saving}
+			onclick={() => void save()}
+		>
+			<Save size={20} />
+		</IconButton>
 	</div>
 
 	<div class="mt-4 flex items-center gap-2 px-1">
 		<h2 class="font-display min-w-0 flex-1 text-[17px] font-extrabold tracking-tight text-ink-900 dark:text-white">
-			Kártyák · {cards.length}
+			Kártyák · {filledCount}
 		</h2>
 		{#if dirty}
 			<span class="shrink-0 rounded-full bg-amber-400/20 px-2.5 py-1 text-[11px] font-extrabold text-amber-600 uppercase dark:text-amber-300">
 				Módosítva
 			</span>
 		{/if}
+		{#if isPublic}
+			<span class="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 uppercase dark:text-emerald-300">
+				Publikált
+			</span>
+		{/if}
 	</div>
 
-	{#if cards.length === 0}
-		<div class="mt-2.5 rounded-[20px] border border-stone-200 bg-white p-6 text-center dark:border-white/10 dark:bg-stone-900">
-			<p class="text-[15px] font-extrabold text-ink-900 dark:text-white">Még nincs kártya</p>
-			<p class="mt-1 text-[13px] font-medium text-stone-500 dark:text-stone-400">
-				Vedd fel az elsőt az alábbi gombbal!
-			</p>
-		</div>
-	{:else}
-		<ul class="mt-2 grid gap-1.5">
+	<div class="mt-2 overflow-hidden rounded-[20px] border border-stone-200 bg-white dark:border-white/10 dark:bg-stone-900">
+		<ul id="card-rows" class="divide-y divide-stone-100 dark:divide-white/5">
 			{#each cards as card, i (card.key)}
-				<li class="rounded-2xl border border-stone-200 bg-white p-2 dark:border-white/10 dark:bg-stone-900">
-					<div class="flex items-center gap-1.5">
-						<span
-							class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-50 text-[12px] font-extrabold text-brand-600 tabular-nums dark:bg-brand-500/20 dark:text-white"
-							aria-hidden="true"
-						>
-							{i + 1}
-						</span>
-						<input
-							bind:value={card.front}
-							placeholder={frontLabel}
-							aria-label="{i + 1}. kártya {frontLabel.toLowerCase()} oldala"
-							class={cardInputCls}
-						/>
-						<input
-							bind:value={card.back}
-							placeholder={backLabel}
-							aria-label="{i + 1}. kártya {backLabel.toLowerCase()} oldala"
-							class={cardInputCls}
-						/>
+				<li class="flex items-center gap-1.5 px-2 py-1.5">
+					<span
+						class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-50 text-[12px] font-extrabold text-brand-600 tabular-nums dark:bg-brand-500/20 dark:text-white"
+						aria-hidden="true"
+					>
+						{i + 1}
+					</span>
+					<input
+						bind:value={card.front}
+						data-field="front"
+						oninput={onRowInput}
+						onpaste={(e) => onPasteCard(e, card)}
+						onkeydown={(e) => onCardKeydown(e, 'front')}
+						placeholder={frontLabel}
+						aria-label="{i + 1}. kártya {frontLabel.toLowerCase()} oldala"
+						class={cardInputCls}
+					/>
+					<input
+						bind:value={card.back}
+						data-field="back"
+						oninput={onRowInput}
+						onpaste={(e) => onPasteCard(e, card)}
+						onkeydown={(e) => onCardKeydown(e, 'back')}
+						placeholder={backLabel}
+						aria-label="{i + 1}. kártya {backLabel.toLowerCase()} oldala"
+						class={cardInputCls}
+					/>
+					{#if cards.length > 1}
 						<button
 							type="button"
 							onclick={() => removeRow(card)}
@@ -561,20 +708,11 @@
 						>
 							<X size={15} />
 						</button>
-					</div>
+					{/if}
 				</li>
 			{/each}
 		</ul>
-	{/if}
-
-	<button
-		type="button"
-		onclick={addRow}
-		class="mt-1.5 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-stone-200 py-3 text-[14px] font-extrabold text-stone-400 transition hover:border-brand-300 hover:text-brand-600 active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 dark:border-white/10 dark:text-stone-500 dark:hover:border-brand-500/50 dark:hover:text-white"
-	>
-		<Plus size={18} strokeWidth={2.75} />
-		Új kártya
-	</button>
+	</div>
 {/if}
 
 <Drawer open={settingsOpen} label="Csomag beállításai" title="Beállítások" onClose={() => (settingsOpen = false)}>
@@ -611,54 +749,69 @@
 		</div>
 
 		<p class="mt-4 text-[13px] font-semibold text-ink-900 dark:text-white">
-			Csatolás <span class="font-normal text-stone-400 dark:text-stone-500">(opcionális, több lecke is lehet)</span>
+			Kártyák típusa: {autoKindLabel}
 		</p>
-		<div class="mt-1.5 grid gap-2">
-			<button type="button" onclick={() => (lessonPickerOpen = true)} class={pickRowBtn}>
+
+		{#if isTeacher}
+			<div class="mt-3 flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-transparent">
 				<span class="min-w-0 flex-1">
-					<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Leckék</span>
-					<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
-						{attachedLessons.length > 0 ? `${attachedLessons.length} lecke csatolva` : 'Nincs csatolva'}
+					<span class="block text-[14px] font-extrabold text-ink-900 dark:text-white">Publikálva</span>
+					<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">
+						Mindenki látja a Felfedezésben és a csatolt leckénél
 					</span>
 				</span>
-				<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
-			</button>
-			{#if attachedLessons.length > 0}
-				<ul class="grid gap-1.5">
-					{#each attachedLessons as a (a.lessonId)}
-						<li class="flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-transparent">
-							<span class="min-w-0 flex-1">
-								<span class="block truncate text-[13px] font-bold text-ink-900 dark:text-white">
-									{a.lessonTitle}
+				<Switch id="deck-published" bind:checked={isPublic} label="Publikálva" />
+			</div>
+
+			<p class="mt-4 text-[13px] font-semibold text-ink-900 dark:text-white">
+				Csatolás <span class="font-normal text-stone-400 dark:text-stone-500">(opcionális, több lecke is lehet)</span>
+			</p>
+			<div class="mt-1.5 grid gap-2">
+				<button type="button" onclick={() => (lessonPickerOpen = true)} class={pickRowBtn}>
+					<span class="min-w-0 flex-1">
+						<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Leckék</span>
+						<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
+							{attachedLessons.length > 0 ? `${attachedLessons.length} lecke csatolva` : 'Nincs csatolva'}
+						</span>
+					</span>
+					<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
+				</button>
+				{#if attachedLessons.length > 0}
+					<ul class="grid gap-1.5">
+						{#each attachedLessons as a (a.lessonId)}
+							<li class="flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-transparent">
+								<span class="min-w-0 flex-1">
+									<span class="block truncate text-[13px] font-bold text-ink-900 dark:text-white">
+										{a.lessonTitle}
+									</span>
+									<span class="block truncate text-[11px] font-medium text-stone-500 dark:text-stone-400">
+										{a.crumb}
+									</span>
 								</span>
-								<span class="block truncate text-[11px] font-medium text-stone-500 dark:text-stone-400">
-									{a.crumb}
-								</span>
-							</span>
-							<button
-								type="button"
-								onclick={() => removeLesson(a.lessonId)}
-								aria-label="{a.lessonTitle} csatolás törlése"
-								class="grid size-8 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-300"
-							>
-								<X size={15} />
-							</button>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</div>
+								<button
+									type="button"
+									onclick={() => removeLesson(a.lessonId)}
+									aria-label="{a.lessonTitle} csatolás törlése"
+									class="grid size-8 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+								>
+									<X size={15} />
+								</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
+		{:else}
+			<p class="mt-4 rounded-2xl bg-stone-100 px-3 py-2.5 text-[12px] font-medium text-stone-500 dark:bg-white/5 dark:text-stone-400">
+				A csomagod privát: csak te látod. Leckéhez csatolni és publikálni csak tanár tud.
+			</p>
+		{/if}
 
 		<div class="mt-6 border-t border-stone-200 pt-4 dark:border-white/10">
-			<Button variant={armDelete ? 'danger' : 'outline'} block disabled={saving} onclick={armOrDeleteDeck}>
+			<Button variant="outline" block disabled={saving} onclick={() => (deleteOpen = true)}>
 				<Trash2 size={16} />
-				{armDelete ? 'Biztosan törlöd?' : 'Csomag törlése'}
+				Csomag törlése
 			</Button>
-			{#if armDelete}
-				<p class="mt-2 text-center text-[13px] font-medium text-stone-500 dark:text-stone-400">
-					Kattints újra a végleges törléshez. A kártyák is törlődnek.
-				</p>
-			{/if}
 		</div>
 	{/if}
 </Drawer>
@@ -767,4 +920,19 @@
 	initialSelected={attachedLessons}
 	onClose={() => (lessonPickerOpen = false)}
 	onPick={(picks) => onLessonPick(picks)}
+/>
+
+<ConfirmDialog
+	open={deleteOpen}
+	title="Csomag törlése"
+	description="Biztosan törlöd ezt a csomagot? A benne lévő kártyák is végleg törlődnek. Ez nem vonható vissza."
+	confirmLabel="Csomag törlése"
+	holdLabel="Tartsd nyomva a törléshez"
+	busy={saving}
+	onClose={() => {
+		if (!saving) deleteOpen = false;
+	}}
+	onConfirm={() => {
+		void deleteDeck();
+	}}
 />

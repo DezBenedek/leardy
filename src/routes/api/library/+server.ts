@@ -3,6 +3,7 @@ import { getDb, requireUser } from '$lib/server/db';
 import {
 	getOfficialCardPack,
 	getOfficialCardPackById,
+	getPublishedDeckPackage,
 	getUserDeckPackage,
 	listOfficialCardPacksByIds,
 	listUserDecks
@@ -37,7 +38,7 @@ export const GET: RequestHandler = async (event) => {
 		const saved = new Set(
 			(savedRes.results ?? [])
 				.map((r) => r.quizId)
-				.filter((id) => id.startsWith('cards:') || id.startsWith('pack:'))
+				.filter((id) => id.startsWith('cards:') || id.startsWith('pack:') || id.startsWith('deck:'))
 		);
 		if (event.url.searchParams.get('ids') === '1') {
 			return json({ ids: [...mine.map((p) => p.quizId), ...saved] }, { headers: NOSTORE });
@@ -50,12 +51,19 @@ export const GET: RequestHandler = async (event) => {
 		const legacyLessonIds = [...saved]
 			.filter((id) => id.startsWith('cards:'))
 			.map((id) => id.slice('cards:'.length));
-		const [byIds, legacy] = await Promise.all([
+		// Más tanárának publikált csomagja: csak ha még mindig publikált.
+		const sharedDeckIds = [...saved]
+			.filter((id) => id.startsWith('deck:'))
+			.map((id) => id.slice('deck:'.length))
+			.filter((deckId) => !mine.some((p) => p.quizId === `deck:${deckId}`));
+		const [byIds, legacy, shared] = await Promise.all([
 			listOfficialCardPacksByIds(db, packIds),
-			Promise.all(legacyLessonIds.map((lessonId) => getOfficialCardPack(db, lessonId)))
+			Promise.all(legacyLessonIds.map((lessonId) => getOfficialCardPack(db, lessonId))),
+			Promise.all(sharedDeckIds.map((deckId) => getPublishedDeckPackage(db, deckId, user.id)))
 		]);
 		const official = [...byIds, ...legacy.flatMap((p) => (p ? [p] : []))];
-		return json({ packages: [...mine, ...official] }, { headers: NOSTORE });
+		const sharedDecks = shared.flatMap((p) => (p ? [{ ...p, mine: false }] : []));
+		return json({ packages: [...mine, ...official, ...sharedDecks] }, { headers: NOSTORE });
 	} catch (e) {
 		return json(
 			{ error: e instanceof Error ? e.message : 'Nem sikerült betölteni a könyvtárat.' },
@@ -75,9 +83,17 @@ export const POST: RequestHandler = async (event) => {
 		if (!quizId) return json({ error: 'Hiányzik a csomag.' }, { status: 400 });
 		// Nincs ensure: a sémát a migrációk biztosítják.
 		if (quizId.startsWith('deck:')) {
-			const pkg = await getUserDeckPackage(db, user.id, quizId.slice('deck:'.length));
-			if (!pkg) return json({ error: 'Nem található.' }, { status: 404 });
-			return json({ ok: true, owned: true });
+			const deckId = quizId.slice('deck:'.length);
+			const own = await getUserDeckPackage(db, user.id, deckId);
+			if (own) return json({ ok: true, owned: true });
+			// Tanár publikált csomagja menthető a könyvtárba.
+			const shared = await getPublishedDeckPackage(db, deckId, user.id);
+			if (!shared) return json({ error: 'Nem található.' }, { status: 404 });
+			await db
+				.prepare(`INSERT OR IGNORE INTO library (user_id, quiz_id, added_at) VALUES (?, ?, ?)`)
+				.bind(user.id, quizId, Math.floor(Date.now() / 1000))
+				.run();
+			return json({ ok: true });
 		}
 		if (quizId.startsWith('pack:')) {
 			const pack = await getOfficialCardPackById(db, quizId.slice('pack:'.length));
@@ -112,8 +128,16 @@ export const DELETE: RequestHandler = async (event) => {
 		const body = await event.request.json().catch(() => ({}));
 		const quizId = typeof body.quizId === 'string' ? body.quizId : '';
 		if (!quizId) return json({ error: 'Hiányzik a csomag.' }, { status: 400 });
-		if (quizId.startsWith('deck:'))
-			return json({ error: 'Saját csomagot a szerkesztőben törölhetsz.' }, { status: 400 });
+		if (quizId.startsWith('deck:')) {
+			// Saját csomagot a szerkesztőben törölhetsz, másét itt távolítod el.
+			const own = await getUserDeckPackage(db, user.id, quizId.slice('deck:'.length));
+			if (own) return json({ error: 'Saját csomagot a szerkesztőben törölhetsz.' }, { status: 400 });
+			await db
+				.prepare(`DELETE FROM library WHERE user_id = ? AND quiz_id = ?`)
+				.bind(user.id, quizId)
+				.run();
+			return json({ ok: true });
+		}
 		// Nincs ensure: a sémát a migrációk biztosítják.
 		await db
 			.prepare(`DELETE FROM library WHERE user_id = ? AND quiz_id = ?`)

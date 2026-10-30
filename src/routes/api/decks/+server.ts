@@ -1,14 +1,15 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { D1PreparedStatement } from '@cloudflare/workers-types';
 import { getDb, requireUser } from '$lib/server/db';
-import { ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum';
+import { canPublishDeck, ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum';
 import { cardKindForSubject } from '$lib/sm2';
 
 /* Saját kártyacsomag létrehozása: csak bejelentkezve, csak magának.
    Típus automatikus: nyelvi tantárgynál (Angol, Német, Olasz, Spanyol)
    mindig Szókártya, minden más tantárgynál mindig Tanulókártya.
-   Body: { title, subjectId?, levelId?, materialId?, lessonId?, lessonIds?, cards?: [{front, back}] }
-   Több leckéhez csatolás: lessonIds tömbbel, a régi lessonId az elsőnek felel meg. */
+   Body: { title, subjectId?, levelId?, materialId?, lessonId?, lessonIds?, isPublic?, cards?: [{front, back}] }
+   Több leckéhez csatolás és publikálás csak tanárnak: diák kérése
+   csendben privát, csatolás nélküli csomagot hoz létre. */
 
 interface DeckCardInput {
 	front?: string;
@@ -34,6 +35,7 @@ export const POST: RequestHandler = async (event) => {
 		materialId?: string;
 		lessonId?: string;
 		lessonIds?: string[];
+		isPublic?: boolean;
 		cards?: DeckCardInput[];
 	};
 	try {
@@ -67,17 +69,21 @@ export const POST: RequestHandler = async (event) => {
 		}
 		const deckId = newId('deck');
 		const now = Math.floor(Date.now() / 1000);
-		const lessonIds = Array.isArray(body.lessonIds)
-			? [...new Set(body.lessonIds.map((s) => `${s ?? ''}`.trim()).filter(Boolean))].slice(0, 50)
-			: body.lessonId
-				? [body.lessonId]
-				: [];
+		// Csatolás és publikálás csak tanárnak jár, a diák csomagja privát marad.
+		const mayPublish = canPublishDeck(user);
+		const lessonIds =
+			mayPublish && Array.isArray(body.lessonIds)
+				? [...new Set(body.lessonIds.map((s) => `${s ?? ''}`.trim()).filter(Boolean))].slice(0, 50)
+				: mayPublish && body.lessonId
+					? [body.lessonId]
+					: [];
+		const isPublic = mayPublish && body.isPublic === true ? 1 : 0;
 		const primaryLesson = lessonIds[0] || null;
 		const batch: D1PreparedStatement[] = [
 			db
 				.prepare(
-					`INSERT INTO decks (id, user_id, title, kind, card_kind, subject_id, level_id, material_id, lesson_id, created_at)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+					`INSERT INTO decks (id, user_id, title, kind, card_kind, subject_id, level_id, material_id, lesson_id, is_public, created_at)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 				)
 				.bind(
 					deckId,
@@ -89,6 +95,7 @@ export const POST: RequestHandler = async (event) => {
 					body.levelId || null,
 					body.materialId || null,
 					primaryLesson,
+					isPublic,
 					now
 				)
 		];

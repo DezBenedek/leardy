@@ -58,6 +58,45 @@ export const GET: RequestHandler = async (event) => {
 		const saved = (libRes.results ?? []).map((r) => r.quizId).filter(Boolean);
 		const packIds = saved.filter((id) => id.startsWith('pack:')).map((id) => id.slice(5));
 		const legacyLessonIds = saved.filter((id) => id.startsWith('cards:')).map((id) => id.slice(6));
+		// Mentett publikált tanári csomagok: más tulajdonosától, még mindig publikált.
+		const sharedDeckIds = saved.filter((id) => id.startsWith('deck:')).map((id) => id.slice(5));
+		if (sharedDeckIds.length > 0) {
+			const ownIds = new Set(decks.map((d) => d.id));
+			const need = [...new Set(sharedDeckIds)].filter((id) => !ownIds.has(id)).slice(0, 200);
+			if (need.length > 0) {
+				try {
+					const pubRes = await db
+						.prepare(
+							`SELECT d.id AS id, d.subject_id AS subjectId,
+								COALESCE(s.title, '') AS subjectTitle,
+								COALESCE(s.icon, 'book') AS icon
+							 FROM decks d LEFT JOIN subjects s ON s.id = d.subject_id
+							 WHERE d.id IN (${need.map(() => '?').join(', ')}) AND COALESCE(d.is_public, 0) = 1 LIMIT 200`
+						)
+						.bind(...need)
+						.all<{ id: string; subjectId: string | null; subjectTitle: string; icon: string }>();
+					const rows = pubRes.results ?? [];
+					for (const r of rows) {
+						deckSubject.set(r.id, {
+							subjectId: r.subjectId ?? '',
+							title: r.subjectTitle ?? '',
+							icon: r.icon ?? 'book'
+						});
+					}
+					if (rows.length > 0) {
+						const cardsRes = await db
+							.prepare(
+								`SELECT id, deck_id FROM deck_cards WHERE deck_id IN (${rows.map(() => '?').join(', ')}) LIMIT 5000`
+							)
+							.bind(...rows.map((r) => r.id))
+							.all<{ id: string; deck_id: string }>();
+						deckCardIds.push(...(cardsRes.results ?? []));
+					}
+				} catch {
+					// régi DB is_public nélkül: nincs megosztott csomag
+				}
+			}
+		}
 
 		const packSubject = new Map<string, { subjectId: string; title: string; icon: string }>();
 		let lessonCardIds: { id: string; packId: string | null; lessonId: string }[] = [];

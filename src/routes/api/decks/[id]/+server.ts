@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { D1Database } from '@cloudflare/workers-types';
 import { getDb, requireUser, type PublicUser } from '$lib/server/db';
-import { ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum';
+import { canPublishDeck, ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum';
 import { cardKindForSubject } from '$lib/sm2';
 
 /* Saját csomag lekérése, módosítása, törlése.
@@ -40,7 +40,8 @@ export const GET: RequestHandler = async (event) => {
 				`SELECT id, title, COALESCE(kind, 'cards') AS kind,
 					COALESCE(card_kind, 'word') AS cardKind,
 					subject_id AS subjectId, level_id AS levelId,
-					material_id AS materialId, lesson_id AS lessonId
+					material_id AS materialId, lesson_id AS lessonId,
+					COALESCE(is_public, 0) AS isPublic
 				 FROM decks WHERE id = ?`
 			)
 			.bind(g.deckId)
@@ -53,6 +54,7 @@ export const GET: RequestHandler = async (event) => {
 				levelId: string | null;
 				materialId: string | null;
 				lessonId: string | null;
+				isPublic: number;
 			}>();
 		if (!deck) return json({ error: 'Nincs ilyen csomag.' }, { status: 404 });
 		const cardsRes = await db
@@ -111,6 +113,7 @@ export const GET: RequestHandler = async (event) => {
 				lessonId: deck.lessonId,
 				lessonIds,
 				lessons,
+				isPublic: (deck.isPublic ?? 0) === 1,
 				cards: cardsRes.results ?? []
 			}
 		});
@@ -134,6 +137,7 @@ export const PATCH: RequestHandler = async (event) => {
 		materialId?: string | null;
 		lessonId?: string | null;
 		lessonIds?: string[];
+		isPublic?: boolean;
 	};
 	try {
 		body = await event.request.json();
@@ -144,8 +148,15 @@ export const PATCH: RequestHandler = async (event) => {
 		await ensureCurriculumSchema(db);
 		const g = await guard(event, db);
 		if (g instanceof Response) return g;
+		// Csatolás és publikálás csak tanárnak: diák kérése 403-mal elutasítva,
+		// hogy a felület se tudjon csendben mást mutatni a valóságnál.
+		const mayPublish = canPublishDeck(g.user);
+		if (!mayPublish && (body.lessonIds !== undefined || body.lessonId !== undefined))
+			return json({ error: 'Leckéhez csak tanár csatolhat.' }, { status: 403 });
+		if (!mayPublish && body.isPublic !== undefined)
+			return json({ error: 'Publikálni csak tanár tud.' }, { status: 403 });
 		const sets: string[] = [];
-		const args: (string | null)[] = [];
+		const args: (string | number | null)[] = [];
 		if (body.title !== undefined) {
 			const title = body.title.trim();
 			if (!title) return json({ error: 'Add meg a csomag címét!' }, { status: 400 });
@@ -183,6 +194,10 @@ export const PATCH: RequestHandler = async (event) => {
 			args.push(lesson);
 			nextLessonIds = lesson ? [lesson] : [];
 		}
+		if (body.isPublic !== undefined) {
+			sets.push('is_public = ?');
+			args.push(body.isPublic === true ? 1 : 0);
+		}
 		// Tantárgyváltáskor az automatikus típus is frissül ugyanabban az írásban.
 		if (body.subjectId !== undefined) {
 			try {
@@ -215,6 +230,17 @@ export const PATCH: RequestHandler = async (event) => {
 				// a régi oszlop már beállt
 			}
 		}
+		// Visszavont publikálás: a mentett példányok sem nyithatók többé.
+		if (body.isPublic === false) {
+			try {
+				await db
+					.prepare(`DELETE FROM library WHERE quiz_id = ?`)
+					.bind(`deck:${g.deckId}`)
+					.run();
+			} catch {
+				// a könyvtár best-effort takarítása
+			}
+		}
 		return json({ ok: true });
 	} catch (e) {
 		return json(
@@ -240,6 +266,11 @@ export const DELETE: RequestHandler = async (event) => {
 			await db.prepare(`DELETE FROM deck_lessons WHERE deck_id = ?`).bind(g.deckId).run();
 		} catch {
 			// kapcsoló még nincs
+		}
+		try {
+			await db.prepare(`DELETE FROM library WHERE quiz_id = ?`).bind(`deck:${g.deckId}`).run();
+		} catch {
+			// a könyvtár best-effort takarítása
 		}
 		return json({ ok: true });
 	} catch (e) {

@@ -130,6 +130,10 @@ export interface Package {
 	questions: QuizQuestion[];
 	/** Saját, felhasználó által létrehozott csomag. */
 	mine?: boolean;
+	/** Tanár által publikált saját csomag: a Felfedezésben és a csatolt leckénél mindenkinek látszik. */
+	isPublic?: boolean;
+	/** Publikált csomag tulajdonosának neve (csak más tanárának csomagjánál). */
+	ownerName?: string;
 	/** Saját csomag fajtája: kártyázós vagy kvízes. */
 	kind?: 'cards' | 'quiz';
 	/** Kártyacsomag típusa: Szókártya (word) vagy Tanulókártya (study). Hiány = Szókártya. */

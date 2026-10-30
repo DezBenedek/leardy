@@ -82,8 +82,9 @@ curl -X POST https://leardy.dezso.hu/api/v1/quiz-questions \
 A kulcs tulajdonosának saját csomagjai. Típus automatikus: nyelvi tantárgynál szókártya, máshol tanulókártya.
 
 - `GET /api/v1/decks?subjectId=` - saját csomagok kártyaszámmal.
-- `POST /api/v1/decks` `{ title, subjectId?, levelId?, materialId?, lessonId?, lessonIds?, cards? }`
+- `POST /api/v1/decks` `{ title, subjectId?, levelId?, materialId?, lessonId?, lessonIds?, isPublic?, cards? }`
   - `cards`: `[{ front, back }]` max 200 létrehozáskor.
+  - `isPublic: true` - publikált tanári csomag: a Felfedezésben és a csatolt leckénél mindenkinek látszik.
 - `GET /api/v1/decks/:id` - csomag kártyákkal.
 - `GET /api/v1/decks/:id/cards` - csak kártyák.
 - `PATCH /api/v1/decks/:id`, `DELETE /api/v1/decks/:id`
@@ -124,7 +125,7 @@ curl -X POST https://leardy.dezso.hu/api/v1/progress/cards/review \
 ## Könyvtár
 
 - `GET /api/v1/library` - mentett hivatalos csomagok és saját csomagok.
-- `POST /api/v1/library` `{ quizId: "pack:..." }` - mentés (`deck:` esetén csak visszaigazol).
+- `POST /api/v1/library` `{ quizId: "pack:..." }` - mentés (`deck:` saját esetén csak visszaigazol, publikált idegen csomag esetén menti).
 - `DELETE /api/v1/library` `{ quizId }` - törlés.
 
 ## Hibakódok
