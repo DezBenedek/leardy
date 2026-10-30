@@ -6,9 +6,11 @@
 		Check,
 		ChevronRight,
 		Compass,
+		Copy,
 		Database,
 		HardDrive,
 		Info,
+		KeyRound,
 		LogOut,
 		MessageCircle,
 		Moon,
@@ -39,8 +41,17 @@
 	const tutorial = getTutorial();
 	let { data }: { data: PageData } = $props();
 
-	type Sheet = null | 'account' | 'notif' | 'theme' | 'learning' | 'storage' | 'about';
+	type Sheet = null | 'account' | 'notif' | 'theme' | 'learning' | 'storage' | 'about' | 'developer';
 	type AccountEdit = null | 'name';
+
+	interface ApiKeyItem {
+		id: string;
+		name: string;
+		prefix: string;
+		createdAt: number;
+		lastUsedAt: number | null;
+		revoked: boolean;
+	}
 
 	// Az első megjelenítéskor a szerver adatai érvényesek, így nem villan fel hibás profil.
 	let user = $derived(auth.ready ? auth.user : (data.user ?? null));
@@ -92,8 +103,103 @@
 		theme: 'Megjelenés',
 		learning: 'Tanulás',
 		storage: 'Tárhely',
-		about: 'Névjegy'
+		about: 'Névjegy',
+		developer: 'Fejlesztői beállítások'
 	};
+
+	let isTeacher = $derived(user?.role === 'teacher' || !!user?.is_admin);
+
+	let apiKeys = $state<ApiKeyItem[]>([]);
+	let apiKeysLoading = $state(false);
+	let apiKeysLoaded = $state(false);
+	let apiKeyName = $state('');
+	let apiKeyBusy = $state(false);
+	let apiNewSecret = $state<string | null>(null);
+	let apiRevokeBusy = $state<string | null>(null);
+
+	async function loadApiKeys(force = false) {
+		if (!isTeacher) return;
+		if (apiKeysLoading || (apiKeysLoaded && !force)) return;
+		apiKeysLoading = true;
+		try {
+			const res = await fetch('/api/api-keys', { credentials: 'same-origin' });
+			if (res.ok) {
+				const j = await res.json();
+				apiKeys = Array.isArray(j.keys) ? j.keys : [];
+				apiKeysLoaded = true;
+			}
+		} catch {
+			// néma hiba: a sor üres marad
+		} finally {
+			apiKeysLoading = false;
+		}
+	}
+
+	async function createApiKey(e?: SubmitEvent) {
+		e?.preventDefault();
+		if (apiKeyBusy || !isTeacher) return;
+		apiKeyBusy = true;
+		try {
+			const res = await fetch('/api/api-keys', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				credentials: 'same-origin',
+				body: JSON.stringify({ name: apiKeyName.trim() || 'API kulcs' })
+			});
+			const j = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				toast.error('Nem sikerült létrehozni', j.error ?? 'Próbáld újra.');
+				return;
+			}
+			apiNewSecret = j.secret ?? null;
+			apiKeyName = '';
+			apiKeysLoaded = false;
+			await loadApiKeys(true);
+			toast.success('API kulcs létrehozva', 'Másold ki most, később nem látszik.');
+		} catch {
+			toast.error('Nem sikerült létrehozni');
+		} finally {
+			apiKeyBusy = false;
+		}
+	}
+
+	async function revokeApiKey(id: string) {
+		if (apiRevokeBusy) return;
+		apiRevokeBusy = id;
+		try {
+			const res = await fetch(`/api/api-keys/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+			const j = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				toast.error('Nem sikerült visszavonni', j.error ?? 'Próbáld újra.');
+				return;
+			}
+			apiKeys = apiKeys.filter((k) => k.id !== id);
+			toast.success('Kulcs visszavonva');
+		} catch {
+			toast.error('Nem sikerült visszavonni');
+		} finally {
+			apiRevokeBusy = null;
+		}
+	}
+
+	async function copySecret() {
+		if (!apiNewSecret) return;
+		try {
+			await navigator.clipboard.writeText(apiNewSecret);
+			toast.success('Kimásolva');
+		} catch {
+			toast.error('Másold ki kézzel a fenti mezőből.');
+		}
+	}
+
+	function formatKeyDate(ts: number | null): string {
+		if (!ts) return 'még nem használt';
+		try {
+			return new Date(ts).toLocaleString('hu-HU', { dateStyle: 'short', timeStyle: 'short' });
+		} catch {
+			return 'ismeretlen';
+		}
+	}
 
 	let settings = $state(loadSettings());
 	let pushSt = $state<PushState>('off');
@@ -339,6 +445,10 @@
 		if (sheet === 'learning') void loadWordLangs();
 	});
 
+	$effect(() => {
+		if (sheet === 'developer') void loadApiKeys();
+	});
+
 	let pushKnown = $state(false);
 	let notifSummary = $derived(pushKnown && pushSt === 'on' ? 'Push üzenetek aktívak' : 'Push üzenetek és emlékeztetők');
 
@@ -459,6 +569,21 @@
 		<span class="min-w-0 flex-1"><span class="block text-[15px] font-bold text-ink-900 dark:text-white">Útmutató</span><span class="block text-[13px] text-ink-400 dark:text-stone-500">Első lépések és részletes bemutatók</span></span>
 		<ChevronRight size={19} class="shrink-0 text-stone-300 dark:text-stone-600" />
 	</button>
+	{#if isTeacher}
+		<button
+			onclick={() => (sheet = 'developer')}
+			class="flex w-full items-center gap-3.5 p-4 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:active:bg-white/10 dark:hover:bg-white/5"
+		>
+			<span class={tile}>
+				<KeyRound size={22} />
+			</span>
+			<span class="min-w-0 flex-1">
+				<span class="block text-[15px] font-bold text-ink-900 dark:text-white">Fejlesztői beállítások</span>
+				<span class="block truncate text-[13px] text-ink-400 dark:text-stone-500">Publikus API kulcsok kezelése</span>
+			</span>
+			<ChevronRight size={19} class="shrink-0 text-stone-300 dark:text-stone-600" />
+		</button>
+	{/if}
 	<button
 		onclick={() => (sheet = 'about')}
 		class="flex w-full items-center gap-3.5 p-4 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:active:bg-white/10 dark:hover:bg-white/5"
@@ -830,6 +955,85 @@
 				<p class="mt-2.5 rounded-xl bg-stone-100 p-3.5 text-[13px] leading-relaxed text-ink-600 dark:bg-white/5 dark:text-stone-400">
 					A Ferences Ösztöndíj Programra készült a 2026/27-es tanévben.
 				</p>
+			</div>
+		{:else if sheet === 'developer'}
+			<div class="mt-3">
+				{#if !isTeacher}
+					<p class="text-sm leading-relaxed text-stone-500 dark:text-stone-400">
+						A fejlesztői beállításokhoz tanári fiók kell.
+					</p>
+				{:else}
+					<p class="text-[13px] leading-relaxed text-stone-500 dark:text-stone-400">
+						A publikus API-val a tanulás és a kártyák szinte mindene elérhető: tantárgyak, leckék, kvízek, hivatalos és saját kártyák, haladás és gyakorlás. A kulcs a te nevedben jár el.
+					</p>
+					{#if apiNewSecret}
+						<div class="mt-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+							<p class="text-[13px] font-bold text-emerald-700 dark:text-emerald-300">Új kulcs elkészült, másold ki most</p>
+							<p class="mt-1 rounded-xl bg-white px-3 py-2 font-mono text-[13px] break-all text-ink-900 dark:bg-black/30 dark:text-white">{apiNewSecret}</p>
+							<div class="mt-2 flex gap-2">
+								<button type="button" onclick={copySecret} class="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-emerald-700">
+									<Copy size={15} /> Másolás
+								</button>
+								<button type="button" onclick={() => (apiNewSecret = null)} class="rounded-full border border-emerald-300 px-4 py-2 text-[13px] font-bold text-emerald-700 dark:border-emerald-500/30 dark:text-emerald-300">
+									Elrejtés
+								</button>
+							</div>
+							<p class="mt-2 text-[12px] leading-relaxed text-emerald-700/80 dark:text-emerald-300/80">Később nem jelenik meg újra. Teszt: curl -H "Authorization: Bearer TOKEN" /api/v1/me</p>
+						</div>
+					{/if}
+					<form onsubmit={createApiKey} class="mt-3 flex gap-2">
+						<input
+							type="text"
+							placeholder="Kulcs neve, pl. Saját script"
+							bind:value={apiKeyName}
+							maxlength={60}
+							disabled={apiKeyBusy}
+							aria-label="Kulcs neve"
+							class={inputCls}
+						/>
+						<button type="submit" disabled={apiKeyBusy} class="shrink-0 rounded-full bg-brand-500 px-5 py-2.5 text-[14px] font-bold text-white shadow-lg shadow-brand-500/20 transition hover:bg-brand-600 disabled:opacity-60">
+							{apiKeyBusy ? 'Készül…' : 'Új kulcs'}
+						</button>
+					</form>
+					<div class="mt-4">
+						<div class="flex items-center justify-between">
+							<p class="text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">Aktív kulcsok</p>
+							<button type="button" onclick={() => loadApiKeys(true)} disabled={apiKeysLoading} class="text-[13px] font-bold text-brand-600 dark:text-brand-400 disabled:opacity-50">
+								{apiKeysLoading ? 'Frissítés…' : 'Frissítés'}
+							</button>
+						</div>
+						{#if apiKeysLoading && !apiKeysLoaded}
+							<p class="mt-2 text-sm text-stone-500">Betöltés…</p>
+						{:else if apiKeys.length === 0}
+							<p class="mt-2 rounded-xl bg-stone-100 p-3.5 text-[13px] leading-relaxed text-stone-500 dark:bg-white/5 dark:text-stone-400">
+								Még nincs kulcsod. Hozz létre egyet a fenti mezővel, legfeljebb 10 aktív kulcsod lehet.
+							</p>
+						{:else}
+							<ul class="mt-2 grid gap-2">
+								{#each apiKeys as k (k.id)}
+									<li class="rounded-2xl border border-stone-200 p-3.5 dark:border-white/10">
+										<div class="flex items-center gap-2">
+											<p class="min-w-0 flex-1 truncate text-[15px] font-bold text-ink-900 dark:text-white">{k.name}</p>
+											<button
+												type="button"
+												onclick={() => revokeApiKey(k.id)}
+												disabled={apiRevokeBusy === k.id}
+												class="shrink-0 rounded-full border border-red-200 px-3 py-1.5 text-[12px] font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
+											>
+												{apiRevokeBusy === k.id ? 'Visszavonás…' : 'Visszavonás'}
+											</button>
+										</div>
+										<p class="mt-0.5 font-mono text-[12px] text-stone-400 dark:text-stone-500">{k.prefix} · létrehozva {formatKeyDate(k.createdAt)}</p>
+										<p class="text-[12px] text-stone-400 dark:text-stone-500">Utolsó használat: {formatKeyDate(k.lastUsedAt)}</p>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
+					<div class="mt-3 rounded-xl bg-stone-100 p-3.5 text-[13px] leading-relaxed text-ink-600 dark:bg-white/5 dark:text-stone-400">
+						Dokumentáció: <span class="font-mono font-semibold">docs/public-api.md</span> és <span class="font-mono font-semibold">GET /api/v1/</span>. Példa: <span class="font-mono">Authorization: Bearer ld_...</span>
+					</div>
+				{/if}
 			</div>
 		{/if}
 </Drawer>
