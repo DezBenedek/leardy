@@ -52,13 +52,16 @@ export const GET: RequestHandler = async (event) => {
 			.filter((id) => id.startsWith('cards:'))
 			.map((id) => id.slice('cards:'.length));
 		// Más tanárának publikált csomagja: csak ha még mindig publikált.
+		// Plafonnal: egy könyvtárhívás legfeljebb 50-50 csomagot tölt be részletesen.
 		const sharedDeckIds = [...saved]
 			.filter((id) => id.startsWith('deck:'))
 			.map((id) => id.slice('deck:'.length))
-			.filter((deckId) => !mine.some((p) => p.quizId === `deck:${deckId}`));
+			.filter((deckId) => !mine.some((p) => p.quizId === `deck:${deckId}`))
+			.slice(0, 50);
+		const legacyCapped = legacyLessonIds.slice(0, 50);
 		const [byIds, legacy, shared] = await Promise.all([
 			listOfficialCardPacksByIds(db, packIds),
-			Promise.all(legacyLessonIds.map((lessonId) => getOfficialCardPack(db, lessonId))),
+			Promise.all(legacyCapped.map((lessonId) => getOfficialCardPack(db, lessonId))),
 			Promise.all(sharedDeckIds.map((deckId) => getPublishedDeckPackage(db, deckId, user.id)))
 		]);
 		const official = [...byIds, ...legacy.flatMap((p) => (p ? [p] : []))];
@@ -78,6 +81,7 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		const user = await requireUser(event, db);
 		if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
+	if (((user.muted_until ?? 0) > Date.now()) && user.role !== 'admin' && user.role !== 'developer' && !user.is_admin) return json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem módosíthatsz.' }, { status: 403 });
 		const body = await event.request.json().catch(() => ({}));
 		const quizId = typeof body.quizId === 'string' ? body.quizId : '';
 		if (!quizId) return json({ error: 'Hiányzik a csomag.' }, { status: 400 });
@@ -125,6 +129,7 @@ export const DELETE: RequestHandler = async (event) => {
 	try {
 		const user = await requireUser(event, db);
 		if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
+	if (((user.muted_until ?? 0) > Date.now()) && user.role !== 'admin' && user.role !== 'developer' && !user.is_admin) return json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem módosíthatsz.' }, { status: 403 });
 		const body = await event.request.json().catch(() => ({}));
 		const quizId = typeof body.quizId === 'string' ? body.quizId : '';
 		if (!quizId) return json({ error: 'Hiányzik a csomag.' }, { status: 400 });

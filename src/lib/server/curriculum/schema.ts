@@ -1,12 +1,18 @@
 import type { D1Database } from '@cloudflare/workers-types';
+import { cachedEnsure } from '../infra/db';
 
 /**
  * Öngyógyító tanterv-séma a 0001_init migráció alapján:
  * CREATE TABLE/INDEX IF NOT EXISTS: idempotens, minden lekérdezés elején olcsón hívható,
  * így élesben sem dob `no such table` 500-ast, ha a migráció még nincs felvive.
  * A lesson_progress.updated_at INTEGER (unix másodperc).
+ * Példányonként cache-elt, állandósult állapotban maroknyi D1-kör.
  */
 export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
+	return cachedEnsure(db, 'curriculum', () => ensureCurriculumSchemaOnce(db));
+}
+
+async function ensureCurriculumSchemaOnce(db: D1Database): Promise<void> {
 	await db.batch([
 		db.prepare(
 			`CREATE TABLE IF NOT EXISTS subjects (
@@ -197,76 +203,49 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 			`CREATE INDEX IF NOT EXISTS idx_pack_lessons_lesson ON lesson_card_pack_lessons(lesson_id)`
 		)
 	]);
-	// Régebbi decks táblák utólagos bővítése kind-nal. Ha már létezik, a hiba elnyelhető.
-	try {
-		await db.prepare(`ALTER TABLE decks ADD COLUMN kind TEXT NOT NULL DEFAULT 'cards'`).run();
-	} catch {
-		// az oszlop már létezik
-	}
-	// Kártyacsomag típusa: Szókártya (word) vagy Tanulókártya (study).
-	try {
-		await db.prepare(`ALTER TABLE decks ADD COLUMN card_kind TEXT NOT NULL DEFAULT 'word'`).run();
-	} catch {
-		// az oszlop már létezik
-	}
-	try {
-		await db
-			.prepare(`ALTER TABLE lesson_card_packs ADD COLUMN card_kind TEXT NOT NULL DEFAULT 'word'`)
-			.run();
-	} catch {
-		// az oszlop már létezik
-	}
-	// Csatolás témakörhöz/leckéhez, ugyanígy utólagos bővítés.
-	for (const col of ['material_id', 'lesson_id']) {
-		try {
-			await db.prepare(`ALTER TABLE decks ADD COLUMN ${col} TEXT`).run();
-		} catch {
-			// az oszlop már létezik
-		}
-	}
-	// Publikálás: tanári csomag mindenkinek látszódhat (Felfedezés + csatolt lecke).
-	try {
-		await db.prepare(`ALTER TABLE decks ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0`).run();
-	} catch {
-		// az oszlop már létezik
-	}
-	try {
-		await db.prepare(`CREATE INDEX IF NOT EXISTS idx_decks_public ON decks(is_public)`).run();
-	} catch {
-		// az index már létezik
-	}
-	// Kérdés bekezdéshez (szekcióhoz) sorolása, utólagos bővítés.
-	try {
-		await db.prepare(`ALTER TABLE quiz_questions ADD COLUMN section_slug TEXT NOT NULL DEFAULT ''`).run();
-	} catch {
-		// az oszlop már létezik
-	}
-	// Kártya bekezdéshez (szekcióhoz) sorolása, utólagos bővítés.
-	try {
-		await db.prepare(`ALTER TABLE deck_cards ADD COLUMN section_slug TEXT NOT NULL DEFAULT ''`).run();
-	} catch {
-		// az oszlop már létezik
-	}
-	// Hivatalos kártyacsomaghoz sorolás (több csomag leckénként), utólagos bővítés.
-	try {
-		await db.prepare(`ALTER TABLE lesson_cards ADD COLUMN pack_id TEXT`).run();
-	} catch {
-		// az oszlop már létezik
-	}
-	// A tananyagválasztó címkéjének utólagos bővítése.
-	try {
-		await db.prepare(`ALTER TABLE subjects ADD COLUMN level_label TEXT NOT NULL DEFAULT 'Tananyag'`).run();
-	} catch {
-		// az oszlop már létezik
-	}
-	// SM-2 ütemezés a meglévő card_progress sorokban, új tábla nélkül.
-	// Csak a megérintett kártyához jön létre sor, ezért sor takarékos marad.
-	for (const ddl of [
-		`ALTER TABLE card_progress ADD COLUMN repetitions INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE card_progress ADD COLUMN ease REAL NOT NULL DEFAULT 2.5`,
-		`ALTER TABLE card_progress ADD COLUMN interval_days INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE card_progress ADD COLUMN due_day INTEGER NOT NULL DEFAULT 0`
-	]) {
+	// Utólagos oszlopbővítések: egyetlen PRAGMA-batch dönt, állandósult
+	// állapotban nulla ALTER-kör. A DDL-párok sorrendje kötött.
+	const [decksInfo, packsInfo, questionsInfo, cardsInfo, lessonCardsInfo, subjectsInfo, progressInfo] =
+		await db.batch([
+			db.prepare(`PRAGMA table_info(decks)`),
+			db.prepare(`PRAGMA table_info(lesson_card_packs)`),
+			db.prepare(`PRAGMA table_info(quiz_questions)`),
+			db.prepare(`PRAGMA table_info(deck_cards)`),
+			db.prepare(`PRAGMA table_info(lesson_cards)`),
+			db.prepare(`PRAGMA table_info(subjects)`),
+			db.prepare(`PRAGMA table_info(card_progress)`)
+		]);
+	const haveColumns = (result: { results?: unknown }) =>
+		new Set(((result.results ?? []) as { name: string }[]).map((column) => column.name));
+	const have = [
+		haveColumns(decksInfo),
+		haveColumns(packsInfo),
+		haveColumns(questionsInfo),
+		haveColumns(cardsInfo),
+		haveColumns(lessonCardsInfo),
+		haveColumns(subjectsInfo),
+		haveColumns(progressInfo)
+	];
+	const additions: [number, string, string][] = [
+		[0, 'kind', `ALTER TABLE decks ADD COLUMN kind TEXT NOT NULL DEFAULT 'cards'`],
+		[0, 'card_kind', `ALTER TABLE decks ADD COLUMN card_kind TEXT NOT NULL DEFAULT 'word'`],
+		[1, 'card_kind', `ALTER TABLE lesson_card_packs ADD COLUMN card_kind TEXT NOT NULL DEFAULT 'word'`],
+		[0, 'material_id', `ALTER TABLE decks ADD COLUMN material_id TEXT`],
+		[0, 'lesson_id', `ALTER TABLE decks ADD COLUMN lesson_id TEXT`],
+		[0, 'is_public', `ALTER TABLE decks ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0`],
+		[2, 'section_slug', `ALTER TABLE quiz_questions ADD COLUMN section_slug TEXT NOT NULL DEFAULT ''`],
+		[3, 'section_slug', `ALTER TABLE deck_cards ADD COLUMN section_slug TEXT NOT NULL DEFAULT ''`],
+		[4, 'pack_id', `ALTER TABLE lesson_cards ADD COLUMN pack_id TEXT`],
+		[5, 'level_label', `ALTER TABLE subjects ADD COLUMN level_label TEXT NOT NULL DEFAULT 'Tananyag'`],
+		[6, 'repetitions', `ALTER TABLE card_progress ADD COLUMN repetitions INTEGER NOT NULL DEFAULT 0`],
+		[6, 'ease', `ALTER TABLE card_progress ADD COLUMN ease REAL NOT NULL DEFAULT 2.5`],
+		[6, 'interval_days', `ALTER TABLE card_progress ADD COLUMN interval_days INTEGER NOT NULL DEFAULT 0`],
+		[6, 'due_day', `ALTER TABLE card_progress ADD COLUMN due_day INTEGER NOT NULL DEFAULT 0`],
+		[0, 'is_lesson', `ALTER TABLE decks ADD COLUMN is_lesson INTEGER NOT NULL DEFAULT 0`],
+		[0, 'created_by', `ALTER TABLE decks ADD COLUMN created_by TEXT REFERENCES users(id) ON DELETE SET NULL`]
+	];
+	for (const [table, column, ddl] of additions) {
+		if (have[table].has(column)) continue;
 		try {
 			await db.prepare(ddl).run();
 		} catch {
@@ -275,31 +254,28 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 	}
 	// Több leckéhez csatolás: kapcsolótáblák. A régi egy-leckés
 	// `lesson_id` megmarad elsődlegesnek, a kapcsoló az összes csatolást tartja.
-	try {
-		await db
-			.prepare(
-				`CREATE TABLE IF NOT EXISTS deck_lessons (
-					deck_id TEXT NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
-					lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
-					PRIMARY KEY (deck_id, lesson_id)
-				)`
-			)
-			.run();
-	} catch {
-		// már létezik
-	}
-	try {
-		await db
-			.prepare(
-				`CREATE TABLE IF NOT EXISTS lesson_card_pack_lessons (
-					pack_id TEXT NOT NULL REFERENCES lesson_card_packs(id) ON DELETE CASCADE,
-					lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
-					PRIMARY KEY (pack_id, lesson_id)
-				)`
-			)
-			.run();
-	} catch {
-		// már létezik
+	// A sort-ALTER a CREATE után jön, különben friss DB-n sosem futna le.
+	for (const ddl of [
+		`CREATE TABLE IF NOT EXISTS deck_lessons (
+			deck_id TEXT NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+			lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+			PRIMARY KEY (deck_id, lesson_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS lesson_card_pack_lessons (
+			pack_id TEXT NOT NULL REFERENCES lesson_card_packs(id) ON DELETE CASCADE,
+			lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+			PRIMARY KEY (pack_id, lesson_id)
+		)`,
+		`ALTER TABLE deck_lessons ADD COLUMN sort INTEGER NOT NULL DEFAULT 0`,
+		`CREATE INDEX IF NOT EXISTS idx_decks_public ON decks(is_public)`,
+		`CREATE INDEX IF NOT EXISTS idx_decks_lesson_flag ON decks(is_lesson)`,
+		`CREATE INDEX IF NOT EXISTS idx_deck_lessons_lesson_sort ON deck_lessons(lesson_id, sort)`
+	]) {
+		try {
+			await db.prepare(ddl).run();
+		} catch {
+			// már létezik
+		}
 	}
 	// Régi egy-leckés csatolások átmentése a kapcsolóba (idempotens).
 	try {
@@ -322,28 +298,8 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 	} catch {
 		// tábla még nincs vagy nincs mit menteni
 	}
-	// Hivatalos lecke deckek jelölése és létrehozója (0013 migráció önhelyreállítása).
-	for (const ddl of [
-		`ALTER TABLE decks ADD COLUMN is_lesson INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE decks ADD COLUMN created_by TEXT REFERENCES users(id) ON DELETE SET NULL`,
-		`ALTER TABLE deck_lessons ADD COLUMN sort INTEGER NOT NULL DEFAULT 0`
-	]) {
-		try {
-			await db.prepare(ddl).run();
-		} catch {
-			// az oszlop már létezik
-		}
-	}
-	for (const ddl of [
-		`CREATE INDEX IF NOT EXISTS idx_decks_lesson_flag ON decks(is_lesson)`,
-		`CREATE INDEX IF NOT EXISTS idx_deck_lessons_lesson_sort ON deck_lessons(lesson_id, sort)`
-	]) {
-		try {
-			await db.prepare(ddl).run();
-		} catch {
-			// az index már létezik
-		}
-	}
+	// Hivatalos lecke deckek jelölése és létrehozója: az ALTER-ek és az
+	// indexek már fentebb, a PRAGMA-alapú bővítésben és a kapcsoló-blokkban vannak.
 	// Rendszerfelhasználó a hivatalos deckek tulajdonosának (soha nem jelentkezik be).
 	try {
 		await db

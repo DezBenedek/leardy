@@ -84,7 +84,13 @@ export const GET: RequestHandler = async (event) => {
 			await db.prepare('UPDATE users SET name = ? WHERE id = ?').bind(name, userId).run().catch(() => {});
 		}
 		if (existing.role !== expectedRole) {
-			await db.prepare('UPDATE users SET role = ? WHERE id = ?').bind(expectedRole, userId).run().catch(() => {});
+			// Kiemelt szerepet az automatika nem fokozhat le: csak student és teacher között vált.
+			const privileged = ['school_leader', 'admin', 'developer'].includes(existing.role ?? '');
+			const autoTarget = expectedRole === 'student' || expectedRole === 'teacher';
+			const currentAuto = (existing.role ?? 'student') === 'student' || (existing.role ?? 'student') === 'teacher';
+			if (!privileged && autoTarget && currentAuto) {
+				await db.prepare('UPDATE users SET role = ? WHERE id = ?').bind(expectedRole, userId).run().catch(() => {});
+			}
 		}
 		await updateAuthColumns(db, userId, sub, school_id);
 	} else {

@@ -76,6 +76,7 @@ export const DELETE: RequestHandler = async (event) => {
 	await ensureLiveSchema(db);
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
+	if (((user.muted_until ?? 0) > Date.now()) && user.role !== 'admin' && user.role !== 'developer' && !user.is_admin) return json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem módosíthatsz.' }, { status: 403 });
 	const id = event.params.id ?? '';
 	if (!id) return json({ error: 'Hibás kérés.' }, { status: 400 });
 

@@ -9,7 +9,7 @@ import {
 	publicKeyInfo
 } from '$lib/server/auth/api-keys';
 
-/* Saját API kulcsok kezelése (munkamenet + tanári szerep).
+/* Saját API kulcsok kezelése (munkamenet + tanári vagy kiemelt szerep).
    GET → listázás, POST { name? } → létrehozás (a titok csak egyszer látszik). */
 
 export const GET: RequestHandler = async (event) => {
@@ -17,7 +17,7 @@ export const GET: RequestHandler = async (event) => {
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
-	if (!canUsePublicApi(user)) return json({ error: 'Az API kulcsokhoz tanári fiók kell.' }, { status: 403 });
+	if (!canUsePublicApi(user)) return json({ error: 'Az API kulcsokhoz tanári vagy kiemelt fiók kell.' }, { status: 403 });
 	try {
 		await ensureApiKeysSchema(db);
 		const res = await db
@@ -58,7 +58,7 @@ export const POST: RequestHandler = async (event) => {
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
-	if (!canUsePublicApi(user)) return json({ error: 'Az API kulcsokhoz tanári fiók kell.' }, { status: 403 });
+	if (!canUsePublicApi(user)) return json({ error: 'Az API kulcsokhoz tanári vagy kiemelt fiók kell.' }, { status: 403 });
 	let body: { name?: string };
 	try {
 		body = await event.request.json();

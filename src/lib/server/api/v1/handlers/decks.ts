@@ -1,3 +1,4 @@
+import { canTeach } from '$lib/admin/roles';
 import { ensureCurriculumSchema } from '$lib/server/curriculum/curriculum';
 import { cardKindForSubject } from '$lib/deck/sm2';
 import { err, intParam, newId, ok, readJson, strParam, type RouteCtx } from '../http';
@@ -51,7 +52,7 @@ export async function handleDecks(ctx: RouteCtx): Promise<Response | null> {
 			return err('Leckéhez csak a lecke szerkesztőből csatolhatsz csomagot.', 403);
 		}
 		const wantsPublic = body.isPublic === true || body.is_public === 1 || body.is_public === true;
-		if (wantsPublic && user.role !== 'teacher' && user.role !== 'admin' && !user.is_admin) {
+		if (wantsPublic && !canTeach(user.role, user.is_admin)) {
 			return err('Publikálni csak tanár tud.', 403);
 		}
 		const isPublic = wantsPublic ? 1 : 0;
@@ -121,7 +122,7 @@ export async function handleDecks(ctx: RouteCtx): Promise<Response | null> {
 			}
 			if (body.isPublic !== undefined || body.is_public !== undefined) {
 				const v = body.isPublic ?? body.is_public;
-				if ((v === true || v === 1) && user.role !== 'teacher' && user.role !== 'admin' && !user.is_admin) {
+				if ((v === true || v === 1) && !canTeach(user.role, user.is_admin)) {
 					return err('Publikálni csak tanár tud.', 403);
 				}
 				sets.push('is_public = ?');

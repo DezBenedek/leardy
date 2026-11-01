@@ -56,6 +56,7 @@ export const POST: RequestHandler = async (event) => {
 	await ensureClassroomSchema(db);
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
+	if (((user.muted_until ?? 0) > Date.now()) && user.role !== 'admin' && user.role !== 'developer' && !user.is_admin) return json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem módosíthatsz.' }, { status: 403 });
 	if (!isTeacher(user))
 		return json({ error: 'Csak tanárok hozhatnak létre tantermet.' }, { status: 403 });
 

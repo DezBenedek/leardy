@@ -92,22 +92,45 @@ export async function requireApiUser(event: RequestEvent, db: D1Database): Promi
 		// Kulcs nélkül: munkamenet is elfogadott (böngészős teszteléshez).
 		const token = event.cookies.get('leardy_session');
 		if (!token) return null;
-		const row = await db
-			.prepare(
-				`SELECT u.id, u.name, u.email,
-					COALESCE(u.school_id, '') AS school_id,
-					COALESCE(u.role, 'student') AS role,
-					COALESCE(u.xp, 0) AS xp,
-					COALESCE(u.streak, 0) AS streak,
-					COALESCE(u.is_admin, 0) AS is_admin
-				 FROM sessions s
-				 JOIN users u ON u.id = s.user_id
-				 WHERE s.token = ? AND s.expires_at > ?`
-			)
-			.bind(token, Date.now())
-			.first<PublicUser>();
-		if (!row) return null;
-		return { user: row, keyId: '', keyName: '', via: 'session' };
+		try {
+			const row = await db
+				.prepare(
+					`SELECT u.id, u.name, u.email,
+						COALESCE(u.school_id, '') AS school_id,
+						COALESCE(u.role, 'student') AS role,
+						COALESCE(u.xp, 0) AS xp,
+						COALESCE(u.streak, 0) AS streak,
+						COALESCE(u.is_admin, 0) AS is_admin,
+						COALESCE(u.suspended_until, 0) AS suspended_until,
+						COALESCE(u.muted_until, 0) AS muted_until
+					 FROM sessions s
+					 JOIN users u ON u.id = s.user_id
+					 WHERE s.token = ? AND s.expires_at > ?`
+				)
+				.bind(token, Date.now())
+				.first<PublicUser>();
+			if (!row) return null;
+			if ((row.suspended_until ?? 0) > Date.now()) return null;
+			return { user: row, keyId: '', keyName: '', via: 'session' };
+		} catch {
+			// Régi séma a 0015-ös migráció előtt.
+			const row = await db
+				.prepare(
+					`SELECT u.id, u.name, u.email,
+						COALESCE(u.school_id, '') AS school_id,
+						COALESCE(u.role, 'student') AS role,
+						COALESCE(u.xp, 0) AS xp,
+						COALESCE(u.streak, 0) AS streak,
+						COALESCE(u.is_admin, 0) AS is_admin
+					 FROM sessions s
+					 JOIN users u ON u.id = s.user_id
+					 WHERE s.token = ? AND s.expires_at > ?`
+				)
+				.bind(token, Date.now())
+				.first<PublicUser>();
+			if (!row) return null;
+			return { user: row, keyId: '', keyName: '', via: 'session' };
+		}
 	}
 	if (!secret.startsWith(API_KEY_PREFIX) || secret.length < 12) return null;
 	const keyHash = await hashApiKey(secret);
@@ -121,19 +144,9 @@ export async function requireApiUser(event: RequestEvent, db: D1Database): Promi
 		.bind(keyHash)
 		.first<ApiKeyRow>();
 	if (!key || key.revoked_at) return null;
-	const user = await db
-		.prepare(
-			`SELECT id, name, email,
-				COALESCE(school_id, '') AS school_id,
-				COALESCE(role, 'student') AS role,
-				COALESCE(xp, 0) AS xp,
-				COALESCE(streak, 0) AS streak,
-				COALESCE(is_admin, 0) AS is_admin
-			 FROM users WHERE id = ?`
-		)
-		.bind(key.user_id)
-		.first<PublicUser>();
+	const user = await dbUserById(db, key.user_id);
 	if (!user) return null;
+	if ((user.suspended_until ?? 0) > Date.now()) return null;
 	try {
 		await db
 			.prepare(`UPDATE api_keys SET last_used_at = ? WHERE id = ?`)
@@ -146,7 +159,42 @@ export async function requireApiUser(event: RequestEvent, db: D1Database): Promi
 }
 
 export function canUsePublicApi(user: PublicUser): boolean {
-	return user.role === 'teacher' || !!user.is_admin;
+	if (!!user.is_admin) return true;
+	const r = (user.role ?? 'student') as string;
+	return r === 'teacher' || r === 'school_leader' || r === 'admin' || r === 'developer';
+}
+
+/** Felhasználó betöltése kulcshoz: új oszlopokkal, régi sémán visszalépéssel. */
+async function dbUserById(db: D1Database, userId: string): Promise<PublicUser | null> {
+	try {
+		return await db
+			.prepare(
+				`SELECT id, name, email,
+					COALESCE(school_id, '') AS school_id,
+					COALESCE(role, 'student') AS role,
+					COALESCE(xp, 0) AS xp,
+					COALESCE(streak, 0) AS streak,
+					COALESCE(is_admin, 0) AS is_admin,
+					COALESCE(suspended_until, 0) AS suspended_until,
+					COALESCE(muted_until, 0) AS muted_until
+				 FROM users WHERE id = ?`
+			)
+			.bind(userId)
+			.first<PublicUser>();
+	} catch {
+		return await db
+			.prepare(
+				`SELECT id, name, email,
+					COALESCE(school_id, '') AS school_id,
+					COALESCE(role, 'student') AS role,
+					COALESCE(xp, 0) AS xp,
+					COALESCE(streak, 0) AS streak,
+					COALESCE(is_admin, 0) AS is_admin
+				 FROM users WHERE id = ?`
+			)
+			.bind(userId)
+			.first<PublicUser>();
+	}
 }
 
 export function publicKeyInfo(row: ApiKeyRow): {

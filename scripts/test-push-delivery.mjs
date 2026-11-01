@@ -6,7 +6,7 @@ import test from 'node:test';
 import { typescriptModuleUrl } from './typescript-module.mjs';
 
 const push = await import(await typescriptModuleUrl(new URL('../src/lib/server/messaging/push.ts', import.meta.url)));
-const { runPushSchedule, reminderClock } = await import(await typescriptModuleUrl(new URL('../src/lib/server/messaging/push-scheduler.ts', import.meta.url)));
+const { runPushSchedule, reminderClock, zonedTimeToUtc } = await import(await typescriptModuleUrl(new URL('../src/lib/server/messaging/push-scheduler.ts', import.meta.url)));
 const { pwaManifest } = await import(await typescriptModuleUrl(new URL('../src/lib/app/pwa-manifest.ts', import.meta.url)));
 const now = Date.parse('2026-10-25T19:05:00Z');
 const message = { title: 'Új tantermi üzenet', body: 'Holnap gyakorlunk.', url: '/tanterem/room', tag: 'msg:one' };
@@ -157,5 +157,38 @@ test('A napi emlékeztető külön beállítássor nélkül is elindul zárt app
  try {
   assert.deepEqual(await runPushSchedule(h.db, now), { sent: 1, failed: 0 });
   assert.equal((await runPushSchedule(h.db, now + 60_000)).sent, 0);
+ } finally { h.cleanup(); }
+});
+
+test('A zónánkénti időpont UTC-re váltása pontos', () => {
+ assert.equal(zonedTimeToUtc('2026-07-01', '20:00', 'Europe/Budapest'), Date.parse('2026-07-01T18:00:00Z'));
+ assert.equal(zonedTimeToUtc('2026-01-15', '20:00', 'Europe/Budapest'), Date.parse('2026-01-15T19:00:00Z'));
+});
+
+test('Az emlékeztető előre ütemezve, pontosan az esedékességkor megy ki', async () => {
+ const h = await setup();
+ try {
+  const early = Date.parse('2026-07-01T17:00:00Z');
+  assert.equal((await runPushSchedule(h.db, early)).sent, 0);
+  const row = h.sql.prepare('SELECT next_attempt_at, delivered_at FROM push_deliveries').get();
+  assert.equal(row.next_attempt_at, Date.parse('2026-07-01T18:00:00Z'));
+  assert.equal(row.delivered_at, null);
+  assert.equal((await runPushSchedule(h.db, Date.parse('2026-07-01T18:01:00Z'))).sent, 1);
+  assert.equal(h.captured.length, 1);
+ } finally { h.cleanup(); }
+});
+
+test('Az átállított idő a régi jövő sorát törli, csak az új megy ki', async () => {
+ const h = await setup();
+ try {
+  h.sql.exec(`INSERT INTO notification_prefs (user_id, updated_at) VALUES ('student', 0);`);
+  const start = Date.parse('2026-07-01T17:00:00Z');
+  assert.equal((await runPushSchedule(h.db, start)).sent, 0);
+  h.sql.exec(`UPDATE notification_prefs SET reminder_time = '20:30'`);
+  assert.equal((await runPushSchedule(h.db, start + 30 * 60_000)).sent, 0);
+  const rows = h.sql.prepare('SELECT event_key FROM push_deliveries').all();
+  assert.deepEqual(rows.map((row) => row.event_key), ['reminder:2026-07-01@20:30']);
+  assert.equal((await runPushSchedule(h.db, Date.parse('2026-07-01T18:01:00Z'))).sent, 0);
+  assert.equal((await runPushSchedule(h.db, Date.parse('2026-07-01T18:31:00Z'))).sent, 1);
  } finally { h.cleanup(); }
 });

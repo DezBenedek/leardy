@@ -216,6 +216,24 @@
 		{@render progressNotices()}
 		{@render children()}
 	</main>
+{:else if data.suspended}
+	<!-- Felfüggesztett fiók: indok és lejárat, kijelentkezési lehetőséggel -->
+	<div class="mx-auto grid min-h-dvh w-full max-w-md place-items-center px-6">
+		<div class="w-full rounded-3xl border border-red-200 bg-white p-6 text-center shadow-xl dark:border-red-500/30 dark:bg-stone-900">
+			<p class="font-display text-[20px] font-extrabold tracking-tight text-ink-900 dark:text-white">A fiókod fel van függesztve</p>
+			<p class="mt-1 text-[14px] text-stone-500 dark:text-stone-400">
+				{#if data.suspended.reason}{data.suspended.reason} · {/if}Feloldás: {new Date(data.suspended.until).toLocaleString('hu-HU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+			</p>
+			<p class="mt-2 text-[13px] text-stone-500 dark:text-stone-400">Ha szerinted téves, vedd fel a kapcsolatot az iskoláddal.</p>
+			<button
+				type="button"
+				onclick={() => { void auth.logout().finally(() => invalidate('app:session')); }}
+				class="mt-4 w-full rounded-full bg-ink-900 px-5 py-2.5 text-[14px] font-bold text-white transition hover:opacity-90 dark:bg-white dark:text-ink-900"
+			>
+				Kijelentkezés
+			</button>
+		</div>
+	</div>
 {:else if !user}
 	<!-- Auth-gate: be nem lépve az app nem használható, csak Google belépés -->
 	<div class="mx-auto grid min-h-dvh w-full max-w-md place-items-center px-6">

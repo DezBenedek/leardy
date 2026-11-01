@@ -11,25 +11,85 @@ export function reminderClock(now: number, timeZone: string): { day: string; tim
 	return { day: `${value('year')}-${value('month')}-${value('day')}`, time: `${value('hour')}:${value('minute')}` };
 }
 
+/** "HH:MM" érvényesítése, hibás értékre az alapértelmezett idő. */
+function clampReminderTime(value: unknown): string {
+	return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : '20:00';
+}
+
+/** Adott nap és helyi időpont UTC milliszekundummá alakítása a zónában.
+ *  Elv: a faliórát először UTC-nek vesszük, majd levonjuk a zóna
+ *  ahhoz a pillanathoz tartozó eltolását. Átállás napján közelítő. */
+export function zonedTimeToUtc(day: string, time: string, timeZone: string): number {
+	const guess = Date.parse(`${day}T${clampReminderTime(time)}:00Z`);
+	if (Number.isNaN(guess)) return NaN;
+	const parts = new Intl.DateTimeFormat('en-CA', {
+		timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+		hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+	}).formatToParts(new Date(guess));
+	const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+	const asUtc = Date.parse(
+		`${value('year')}-${value('month')}-${value('day')}T${value('hour')}:${value('minute')}:${value('second')}Z`
+	);
+	if (Number.isNaN(asUtc)) return NaN;
+	return guess + (guess - asUtc);
+}
+
 export async function runPushSchedule(db: D1Database, now = Date.now()) {
 	await ensurePushDeliverySchema(db);
-	const zones = await db.prepare(`SELECT DISTINCT COALESCE(p.time_zone, 'Europe/Budapest') AS time_zone
+	// Időzóna és időpont páronként ütemezünk: a sort már órákkal korábban
+	// létrehozzuk a pontos esedékességre, így egy késő vagy kimaradó cron
+	// után is időben megy ki az értesítés, duplikáció nélkül.
+	const combos = await db.prepare(`SELECT DISTINCT
+			COALESCE(p.time_zone, 'Europe/Budapest') AS time_zone,
+			COALESCE(p.reminder_time, '20:00') AS reminder_time
 		FROM push_subscriptions s LEFT JOIN notification_prefs p ON p.user_id = s.user_id
 		WHERE COALESCE(p.reminder, 1) = 1`)
-		.all<{ time_zone: string }>();
-	for (const { time_zone: timeZone } of zones.results ?? []) {
-		const { day, time } = reminderClock(now, timeZone);
+		.all<{ time_zone: string; reminder_time: string }>();
+	const groups = new Map<string, { day: string; keys: string[] }>();
+	for (const combo of combos.results ?? []) {
+		let timeZone = 'Europe/Budapest';
+		try {
+			new Intl.DateTimeFormat('en-CA', { timeZone: combo.time_zone }).format();
+			timeZone = combo.time_zone;
+		} catch {
+			// Ismeretlen zóna: az alapértelmezettel számolunk.
+		}
+		const reminderTime = clampReminderTime(combo.reminder_time);
+		const { day } = reminderClock(now, timeZone);
+		const due = zonedTimeToUtc(day, reminderTime, timeZone);
+		if (Number.isNaN(due)) continue;
+		// Lejárt, de még ma esedékes: azonnal küldendő (eddigi viselkedés).
+		// Több mint egy órája lejárt: már nem zaklatunk vele.
+		if (due <= now && now - due > 3600_000) continue;
+		const base = Math.max(due, now);
 		// Időpontonként egy emlékeztető: az átállított időpont aznap is működik.
 		await db.prepare(`INSERT OR IGNORE INTO push_deliveries
 			(endpoint, event_key, kind, payload_json, created_at, expires_at, next_attempt_at)
-			SELECT s.endpoint, ? || COALESCE(p.reminder_time, '20:00'), 'reminder',
+			SELECT s.endpoint, ? || ?, 'reminder',
 				json_object('title', 'Ideje gyakorolni',
 					'body', 'Ne szakadjon meg a sorozatod, nézz rá a mai leckéidre.',
-					'url', '/', 'tag', ? || COALESCE(p.reminder_time, '20:00')), ?, ?, ?
+					'url', '/', 'tag', ? || ?), ?, ?, ?
 			FROM push_subscriptions s LEFT JOIN notification_prefs p ON p.user_id = s.user_id
 			WHERE COALESCE(p.reminder, 1) = 1 AND COALESCE(p.time_zone, 'Europe/Budapest') = ?
-				AND COALESCE(p.reminder_time, '20:00') <= ?`)
-			.bind(`reminder:${day}@`, `reminder:${day}@`, now, now + 3600_000, now, timeZone, time).run();
+				AND substr('0' || COALESCE(p.reminder_time, '20:00'), -5) = ?`)
+			.bind(`reminder:${day}@`, reminderTime, `reminder:${day}@`, reminderTime,
+				now, base + 3600_000, due > now ? due : now, timeZone, reminderTime).run();
+		const groupKey = `${timeZone}|${day}`;
+		let group = groups.get(groupKey);
+		if (!group) {
+			group = { day, keys: [] as string[] };
+			groups.set(groupKey, group);
+		}
+		group.keys.push(`reminder:${day}@${reminderTime}`);
+	}
+	// Felülírt időpont: a régi, még ki nem küldött mai sor nem mehet ki.
+	// Csoportonként egyszer, hogy a többféle időpont ne törölje egymást.
+	for (const { day, keys } of groups.values()) {
+		const uniq = [...new Set(keys)];
+		await db.prepare(`DELETE FROM push_deliveries
+			WHERE kind = 'reminder' AND delivered_at IS NULL AND event_key LIKE ?
+			AND event_key NOT IN (${uniq.map(() => '?').join(',')})`)
+			.bind(`reminder:${day}@%`, ...uniq).run();
 	}
 	// Csak a még be nem adott feladatokra jelzünk, a némítást is megtartva.
 	for (const kind of ['task', 'assignment'] as const) {
@@ -50,6 +110,9 @@ export async function runPushSchedule(db: D1Database, now = Date.now()) {
 			.bind(now, now, now, now + 86400_000).run();
 	}
 	const result = await processPushQueue(db, now);
-	console.log(JSON.stringify({ event: 'push-cron', scheduledAt: now, ...result }));
+	// Üres futásnál nincs log: percenként 1440 sor helyett csak a valódi forgalom látszik.
+	if (result.sent > 0 || result.failed > 0) {
+		console.log(JSON.stringify({ event: 'push-cron', scheduledAt: now, ...result }));
+	}
 	return result;
 }

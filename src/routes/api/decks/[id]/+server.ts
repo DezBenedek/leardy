@@ -161,6 +161,9 @@ export const PATCH: RequestHandler = async (event) => {
 		await ensureCurriculumSchema(db);
 		const g = await guard(event, db);
 		if (g instanceof Response) return g;
+		if (((g.user.muted_until ?? 0) > Date.now()) && g.user.role !== 'admin' && g.user.role !== 'developer' && !g.user.is_admin) {
+			return json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem módosíthatsz.' }, { status: 403 });
+		}
 		// Hivatalos lecke csomag a Kártyák felől nem írható.
 		try {
 			const flag = await db
@@ -263,6 +266,9 @@ export const DELETE: RequestHandler = async (event) => {
 		await ensureCurriculumSchema(db);
 		const g = await guard(event, db);
 		if (g instanceof Response) return g;
+		if (((g.user.muted_until ?? 0) > Date.now()) && g.user.role !== 'admin' && g.user.role !== 'developer' && !g.user.is_admin) {
+			return json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem módosíthatsz.' }, { status: 403 });
+		}
 		// Hivatalos lecke csomag a Kártyák felől nem törölhető.
 		try {
 			const flag = await db

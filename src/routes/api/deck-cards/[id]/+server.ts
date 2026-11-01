@@ -9,6 +9,7 @@ export const PATCH: RequestHandler = async (event) => {
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
+	if (((user.muted_until ?? 0) > Date.now()) && user.role !== 'admin' && user.role !== 'developer' && !user.is_admin) return json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem módosíthatsz.' }, { status: 403 });
 	const cardId = event.params.id ?? '';
 	let body: { front?: string; back?: string; sectionSlug?: string };
 	try {
@@ -66,6 +67,7 @@ export const DELETE: RequestHandler = async (event) => {
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
+	if (((user.muted_until ?? 0) > Date.now()) && user.role !== 'admin' && user.role !== 'developer' && !user.is_admin) return json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem módosíthatsz.' }, { status: 403 });
 	const cardId = event.params.id ?? '';
 	try {
 		await ensureCurriculumSchema(db);

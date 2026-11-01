@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "cloudflare": {
+      "source": "cloudflare/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloudflare/SKILL.md",
+      "computedHash": "e7c26bb690042060d60fcccf3e5807d000c9c064f732b6fcfccb8bbcdc5dc04a"
+    },
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "computedHash": "b146008599c31057cef1c145774cea5d5afb30e8f43fa802e47a4b461419aaaf"
+    },
+    "svelte5-best-practices": {
+      "source": "ejirocodes/agent-skills",
+      "sourceType": "github",
+      "skillPath": "svelte/skills/svelte5-best-practices/SKILL.md",
+      "computedHash": "bfcbba3d355aede6f6be9720f195206d4dcaa7c152787ea00c06cb4a1ac44ba4"
+    }
+  }
+}

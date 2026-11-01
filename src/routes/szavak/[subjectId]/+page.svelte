@@ -3,8 +3,9 @@
 	import { beforeNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { ArrowLeft, ArrowLeftRight, ChevronDown } from '@lucide/svelte';
+	import { ArrowLeft, ArrowLeftRight, ChevronRight } from '@lucide/svelte';
 	import WordPractice from '$lib/components/WordPractice.svelte';
+	import Drawer from '$lib/components/Drawer.svelte';
 	import type { Package } from '$lib/curriculum/curriculum';
 	import { loadDeckOpened } from '$lib/deck/deck-history';
 	import { Query } from '$lib/state/query.svelte';
@@ -63,7 +64,7 @@
 
 	// Szógyakorlás: alapból a definíció van elől, a kifejezés hátul.
 	let swapped = $state(true);
-	let listOpen = $state(false);
+	let packsOpen = $state(false);
 
 	let questions = $derived([...new Map(packages.flatMap((p) => p.questions).map((q) => [q.id, q])).values()]);
 	let cardToPack = $derived.by(() => {
@@ -176,47 +177,34 @@
 	{@render saveStatus()}
 
 	<section aria-label="Csomagok" class="mt-4 pb-6">
-		<div class="rounded-[20px] border border-stone-200 bg-white overflow-hidden dark:border-white/10 dark:bg-stone-900">
-			<button
-				type="button"
-				aria-expanded={listOpen}
-				onclick={() => (listOpen = !listOpen)}
-				class="flex w-full items-center gap-2 px-3.5 py-2.5 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:hover:bg-white/5 dark:active:bg-white/10"
-			>
-				<span class="min-w-0 flex-1 truncate text-[13px] font-extrabold tracking-wide text-stone-400 uppercase dark:text-stone-500">
-					Ebből gyakorolsz · {packages.length}
-				</span>
-				<ChevronDown
-					size={18}
-					class={[
-						'shrink-0 text-stone-400 transition-transform duration-300 motion-reduce:transition-none',
-						listOpen ? 'rotate-180' : ''
-					]}
-					aria-hidden="true"
-				/>
-			</button>
-			<div
-				class="grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none"
-				style="grid-template-rows: {listOpen ? '1fr' : '0fr'}"
-			>
-				<div class="min-h-0 overflow-hidden">
-					<div class="grid gap-2 border-t border-stone-100 px-3 py-3 dark:border-white/5">
-						{#each packages as p (p.quizId)}
-							<a
-								href={resolve('/kartyak/[id]', { id: p.quizId })}
-								class="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-3.5 py-2.5 transition hover:border-brand-300 active:scale-[0.99] dark:border-white/10 dark:bg-stone-900"
-							>
-								<span class="min-w-0 flex-1">
-									<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">{p.title}</span>
-									<span class="block truncate text-[12px] font-medium text-stone-500 dark:text-stone-400">
-										{p.questionCount} szó
-									</span>
-								</span>
-							</a>
-						{/each}
-					</div>
-				</div>
-			</div>
-		</div>
+		<button
+			type="button"
+			onclick={() => (packsOpen = true)}
+			class="flex w-full items-center gap-2 rounded-[20px] border border-stone-200 bg-white px-3.5 py-2.5 text-left transition hover:bg-stone-50 active:bg-stone-100 active:scale-[0.99] dark:border-white/10 dark:bg-stone-900 dark:hover:bg-white/5 dark:active:bg-white/10"
+		>
+			<span class="min-w-0 flex-1 truncate text-[13px] font-extrabold tracking-wide text-stone-400 uppercase dark:text-stone-500">
+				Ebből gyakorolsz · {packages.length}
+			</span>
+			<ChevronRight size={18} class="shrink-0 text-stone-400" aria-hidden="true" />
+		</button>
 	</section>
+
+	<Drawer open={packsOpen} label="Ebből gyakorolsz" title="Ebből gyakorolsz" onClose={() => (packsOpen = false)}>
+		<div class="grid gap-2 pb-2">
+			{#each packages as p (p.quizId)}
+				<a
+					href={resolve('/kartyak/[id]', { id: p.quizId })}
+					class="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-3.5 py-2.5 transition hover:border-brand-300 active:scale-[0.99] dark:border-white/10 dark:bg-stone-900"
+				>
+					<span class="min-w-0 flex-1">
+						<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">{p.title}</span>
+						<span class="block truncate text-[12px] font-medium text-stone-500 dark:text-stone-400">
+							{p.questionCount} szó
+						</span>
+					</span>
+					<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
+				</a>
+			{/each}
+		</div>
+	</Drawer>
 {/if}

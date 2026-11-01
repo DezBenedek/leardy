@@ -1,4 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types';
+import { canTeach } from '$lib/admin/roles';
+import { cachedEnsure, missingColumns } from '../infra/db';
 import type { PublicUser } from '../infra/db';
 
 export interface Classroom {
@@ -17,6 +19,10 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 /** Önhelyreállító tanterem-séma: új és régi DB-ken is biztonságos. */
 export async function ensureClassroomSchema(db: D1Database): Promise<void> {
+	return cachedEnsure(db, 'classroom', () => ensureClassroomSchemaOnce(db));
+}
+
+async function ensureClassroomSchemaOnce(db: D1Database): Promise<void> {
 	await db.batch([
 		db.prepare(
 			`CREATE TABLE IF NOT EXISTS classrooms (
@@ -41,12 +47,14 @@ export async function ensureClassroomSchema(db: D1Database): Promise<void> {
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_classrooms_code ON classrooms(code)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_members_user ON classroom_members(user_id)`)
 	]);
-	for (const ddl of [
-		`ALTER TABLE classrooms ADD COLUMN subject TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE classrooms ADD COLUMN description TEXT NOT NULL DEFAULT ''`
-	]) {
+	const classroomAdditions: [string, string][] = [
+		['subject', `ALTER TABLE classrooms ADD COLUMN subject TEXT NOT NULL DEFAULT ''`],
+		['description', `ALTER TABLE classrooms ADD COLUMN description TEXT NOT NULL DEFAULT ''`]
+	];
+	const classroomColumns = new Map(classroomAdditions);
+	for (const column of await missingColumns(db, 'classrooms', [...classroomColumns.keys()])) {
 		try {
-			await db.prepare(ddl).run();
+			await db.prepare(classroomColumns.get(column) ?? '').run();
 		} catch {
 			// oszlop már létezik
 		}
@@ -54,7 +62,7 @@ export async function ensureClassroomSchema(db: D1Database): Promise<void> {
 }
 
 export function isTeacher(user: PublicUser | null): boolean {
-	return user?.role === 'teacher' || user?.role === 'admin';
+	return canTeach(user?.role, user?.is_admin);
 }
 
 export type MessageRefType = '' | 'subject' | 'lesson' | 'quiz' | 'deck' | 'topic';
@@ -147,6 +155,10 @@ export interface AssignmentSubmission {
 
 /** Üzenet- és feladattábla önhelyreállító létrehozása. */
 export async function ensureClassContentSchema(db: D1Database): Promise<void> {
+	return cachedEnsure(db, 'classContent', () => ensureClassContentSchemaOnce(db));
+}
+
+async function ensureClassContentSchemaOnce(db: D1Database): Promise<void> {
 	await ensureClassroomSchema(db);
 	await ensureAssignmentSchema(db);
 	await db.batch([
@@ -208,15 +220,21 @@ export async function ensureClassContentSchema(db: D1Database): Promise<void> {
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_tasks_class ON classroom_tasks(classroom_id, created_at)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_submissions_task ON task_submissions(task_id)`)
 	]);
-	try {
-		await db.prepare(`ALTER TABLE messages ADD COLUMN ref_title TEXT`).run();
-	} catch {
-		// oszlop már létezik
+	if ((await missingColumns(db, 'messages', ['ref_title'])).length > 0) {
+		try {
+			await db.prepare(`ALTER TABLE messages ADD COLUMN ref_title TEXT`).run();
+		} catch {
+			// oszlop már létezik
+		}
 	}
 }
 
 /** Beadandó-táblák önhelyreállító létrehozása (meghívja az ensureClassContentSchema is). */
 export async function ensureAssignmentSchema(db: D1Database): Promise<void> {
+	return cachedEnsure(db, 'assignment', () => ensureAssignmentSchemaOnce(db));
+}
+
+async function ensureAssignmentSchemaOnce(db: D1Database): Promise<void> {
 	await ensureClassroomSchema(db);
 	await db.batch([
 		db.prepare(
@@ -269,13 +287,27 @@ export async function ensureAssignmentSchema(db: D1Database): Promise<void> {
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_assignment_subs_assignment ON assignment_submissions(assignment_id)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_assignment_uploads_lookup ON assignment_uploads(assignment_id, user_id, created_at)`)
 	]);
-	for (const ddl of [
-		`ALTER TABLE classroom_assignments ADD COLUMN require_audio INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE assignment_submissions ADD COLUMN grade INTEGER`,
-		`ALTER TABLE assignment_submissions ADD COLUMN feedback TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE assignment_submissions ADD COLUMN graded_at INTEGER`,
-		`ALTER TABLE assignment_submissions ADD COLUMN graded_by TEXT`
-	]) {
+	// Utólagos oszlopbővítések, csak a valóban hiányzókra. Egy PRAGMA-batch dönt.
+	const [assignmentInfo, submissionInfo] = await db.batch([
+		db.prepare(`PRAGMA table_info(classroom_assignments)`),
+		db.prepare(`PRAGMA table_info(assignment_submissions)`)
+	]);
+	const haveAssignment = new Set(
+		((assignmentInfo.results ?? []) as { name: string }[]).map((column) => column.name)
+	);
+	const haveSubmission = new Set(
+		((submissionInfo.results ?? []) as { name: string }[]).map((column) => column.name)
+	);
+	const assignmentAdditions: [string, string][] = [
+		['require_audio', `ALTER TABLE classroom_assignments ADD COLUMN require_audio INTEGER NOT NULL DEFAULT 0`],
+		['grade', `ALTER TABLE assignment_submissions ADD COLUMN grade INTEGER`],
+		['feedback', `ALTER TABLE assignment_submissions ADD COLUMN feedback TEXT NOT NULL DEFAULT ''`],
+		['graded_at', `ALTER TABLE assignment_submissions ADD COLUMN graded_at INTEGER`],
+		['graded_by', `ALTER TABLE assignment_submissions ADD COLUMN graded_by TEXT`]
+	];
+	for (const [column, ddl] of assignmentAdditions) {
+		const have = column === 'require_audio' ? haveAssignment : haveSubmission;
+		if (have.has(column)) continue;
 		try {
 			await db.prepare(ddl).run();
 		} catch {
@@ -285,8 +317,27 @@ export async function ensureAssignmentSchema(db: D1Database): Promise<void> {
 }
 
 /** Jelszo-reset tokenek + web push feliratkozasok + app beallitasok (VAPID kulcs).
- *  Onhelyreallito: a 0026 migracio nelkul is mukodik. */
+ *  Onhelyreallito: a 0026 migracio nelkul is mukodik.
+ *  Adatbazis-peldanyonkkent egyszer fut le: a DDL micronszinten CPU-t
+ *  es koronkent tobb D1-korut egetne el feleslegesen. */
+const securityEnsured = new WeakMap<object, Promise<void>>();
+
 export async function ensureSecuritySchema(db: D1Database): Promise<void> {
+	const pending = securityEnsured.get(db);
+	if (pending) return pending;
+	const run = (async () => {
+		await ensureSecuritySchemaOnce(db);
+	})();
+	securityEnsured.set(db, run);
+	try {
+		await run;
+	} catch (error) {
+		if (securityEnsured.get(db) === run) securityEnsured.delete(db);
+		throw error;
+	}
+}
+
+async function ensureSecuritySchemaOnce(db: D1Database): Promise<void> {
 	await db.batch([
 		db.prepare(
 			`CREATE TABLE IF NOT EXISTS password_reset_tokens (

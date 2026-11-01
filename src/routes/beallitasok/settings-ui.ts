@@ -1,7 +1,7 @@
 import { Moon, Smartphone, Sun } from '@lucide/svelte';
 import type { ThemeChoice } from '$lib/state/theme.svelte';
 
-export type Sheet = null | 'account' | 'notif' | 'theme' | 'learning' | 'storage' | 'about' | 'developer';
+export type Sheet = null | 'account' | 'notif' | 'theme' | 'learning' | 'storage' | 'about';
 export type AccountEdit = null | 'name';
 
 export const inputCls =
@@ -19,8 +19,7 @@ export const sheetTitles: Record<Exclude<Sheet, null>, string> = {
 	theme: 'Megjelenés',
 	learning: 'Tanulás',
 	storage: 'Tárhely',
-	about: 'Névjegy',
-	developer: 'Fejlesztői beállítások'
+	about: 'Névjegy'
 };
 
 export const accountEditTitles: Record<Exclude<AccountEdit, null>, string> = {

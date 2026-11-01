@@ -4,6 +4,7 @@
 	import { mutationFetch } from '$lib/platform/mutation-fetch';
 	import { KeyRound, Plus, Sparkles, Users } from '@lucide/svelte';
 	import { auth } from '$lib/state/auth.svelte';
+	import { canTeach } from '$lib/admin/roles';
 	import { toast } from '$lib/state/toast.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import SubjectPicker from '$lib/components/SubjectPicker.svelte';
@@ -37,9 +38,9 @@
 		if (seededData !== data) {
 			teaching = [...data.teaching];
 			joined = [...data.joined];
-			teacherMode = data.isTeacher || auth.user?.role === 'teacher';
+			teacherMode = data.isTeacher || canTeach(auth.user?.role, auth.user?.is_admin);
 			seededData = data;
-		} else if (auth.user?.role === 'teacher') {
+		} else if (canTeach(auth.user?.role, auth.user?.is_admin)) {
 			teacherMode = true;
 		}
 	});

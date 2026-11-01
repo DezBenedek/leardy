@@ -1,4 +1,5 @@
 import type { AnswerFields } from '../../question-types/types';
+import { canTeach } from '$lib/admin/roles';
 import { isQuestionType, loadQuestionOptions, questionType, readQuestionOptions, storedQuestionOptions } from '../../question-types/registry';
 import { cardKindForSubject } from '../../deck/sm2';
 import type { D1Database } from '@cloudflare/workers-types';
@@ -9,7 +10,7 @@ import { publishedLevelSql } from './curriculum-publication';
 import { lessonContentMarkdown, readLessonContent, validateLessonContent } from '../../curriculum/lesson-content';
 
 export function canCreateLevel(user: PublicUser): boolean {
-	return user.role === 'teacher' || !!user.is_admin;
+	return canTeach(user.role, user.is_admin);
 }
 
 export async function editorContext(event: RequestEvent) {
@@ -421,6 +422,9 @@ function emailField(body: Record<string, unknown>): string {
 
 /** Minden írás ugyanazt a tananyaghoz kötött jogosultságvizsgálatot használja. */
 export async function mutateCurriculum(db: D1Database, user: PublicUser, body: Record<string, unknown>) {
+	const mutedUntil = (user as PublicUser & { muted_until?: number }).muted_until ?? 0;
+	const privileged = user.role === 'admin' || user.role === 'developer' || !!user.is_admin;
+	if (!privileged && mutedUntil > Date.now()) error(403, 'A fiókod ideiglenesen némítva van, ezért most nem szerkeszthetsz.');
 	const action = body.action;
 	if (action === 'createLevel') {
 		if (!canCreateLevel(user)) error(403, 'Új tananyagot tanár hozhat létre.');

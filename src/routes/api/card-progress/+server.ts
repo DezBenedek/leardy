@@ -9,6 +9,7 @@ export const POST: RequestHandler = async (event) => {
 		if (!db) return json({ error: 'Nincs adatbázis.' }, { status: 500 });
 		const user = await requireUser(event, db);
 		if (!user) return json({ error: 'Bejelentkezés szükséges.' }, { status: 401 });
+	if (((user.muted_until ?? 0) > Date.now()) && user.role !== 'admin' && user.role !== 'developer' && !user.is_admin) return json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem módosíthatsz.' }, { status: 403 });
 		const body = await event.request.json().catch(() => ({}));
 		const raw: unknown[] = Array.isArray(body.results) ? body.results : [];
 		const results = raw

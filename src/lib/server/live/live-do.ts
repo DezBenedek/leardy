@@ -44,6 +44,8 @@ interface LiveState {
 	/** Tanárok: nézők, soha nem részei a névsornak és a pontoknak. */
 	viewers: Record<string, LiveViewer>;
 	answers: Record<string, Record<string, LiveAnswer>>;
+	/** Némított résztvevők lejárattal: válaszuk figyelmen kívül marad. */
+	mutedUntil: Record<string, number>;
 	startedAt: number | null;
 	finishedAt: number | null;
 }
@@ -64,6 +66,7 @@ function defaultState(): LiveState {
 		participants: {},
 		viewers: {},
 		answers: {},
+		mutedUntil: {},
 		startedAt: null,
 		finishedAt: null
 	};
@@ -344,6 +347,14 @@ export class LiveRoom extends DurableObject<RoomEnv> {
 		return this.room.participants[userId]?.role === 'teacher';
 	}
 
+	private isMuted(userId: string, now = Date.now()): boolean {
+		try {
+			return (this.room.mutedUntil?.[userId] ?? 0) > now;
+		} catch {
+			return false;
+		}
+	}
+
 	// A worker Request és a DOM Request típusa eltér: any-vel fogadjuk, belül csak
 	// szabványos tagokat (headers, method, url, json) használunk.
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -375,6 +386,7 @@ export class LiveRoom extends DurableObject<RoomEnv> {
 		}
 		const name = url.searchParams.get('name') ?? '';
 		const role = url.searchParams.get('role') ?? 'student';
+		const mutedUntil = Math.floor(Number(url.searchParams.get('mutedUntil') ?? 0)) || 0;
 		const pair = new WebSocketPair();
 		const [client, server] = Object.values(pair);
 		try {
@@ -387,6 +399,13 @@ export class LiveRoom extends DurableObject<RoomEnv> {
 		}
 		if (name) {
 			this.attachViewer(userId, name, role === 'teacher');
+			if (mutedUntil > Date.now()) {
+				try {
+					this.room.mutedUntil = { ...(this.room.mutedUntil ?? {}), [userId]: mutedUntil };
+				} catch {
+					// némítás rögzítése nem kritikus
+				}
+			}
 			void this.save().then(() => this.broadcast());
 		}
 		try {
@@ -439,6 +458,14 @@ export class LiveRoom extends DurableObject<RoomEnv> {
 			const name = String(body['name'] ?? 'Diák').slice(0, 80) || 'Diák';
 			const role = body['role'] === 'teacher' ? 'teacher' : 'student';
 			if (!userId) return Response.json({ error: 'Hiányzó userId.' }, { status: 400 });
+			const joinMuted = Math.floor(Number(body['mutedUntil'] ?? 0)) || 0;
+			if (joinMuted > Date.now()) {
+				try {
+					this.room.mutedUntil = { ...(this.room.mutedUntil ?? {}), [userId]: joinMuted };
+				} catch {
+					// némítás rögzítése nem kritikus
+				}
+			}
 			if (role === 'teacher') {
 				this.attachViewer(userId, name, true);
 			} else if (!this.room.participants[userId]) {
@@ -463,6 +490,9 @@ export class LiveRoom extends DurableObject<RoomEnv> {
 			const questionIdx = Math.floor(Number(body['questionIdx']));
 			if (!userId) return Response.json({ error: 'Hiányzó userId.' }, { status: 400 });
 			if (this.isViewer(userId)) return Response.json({ error: 'A tanár nem válaszol.' }, { status: 403 });
+			if (this.isMuted(userId)) {
+				return Response.json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem válaszolhatsz.' }, { status: 403 });
+			}
 			// A kliens a saját sorrendjében indexel: kevert módban visszafejtjük az alapindexre.
 			const order = this.orderFor(userId);
 			if (!Number.isInteger(questionIdx) || questionIdx < 0 || questionIdx >= order.length) {
@@ -523,6 +553,7 @@ export class LiveRoom extends DurableObject<RoomEnv> {
 			const questionIdx = Math.floor(Number(body['questionIdx']));
 			if (!uid || !Number.isInteger(questionIdx)) return;
 			if (this.isViewer(uid)) return;
+			if (this.isMuted(uid)) return;
 			const order = this.orderFor(uid);
 			if (questionIdx < 0 || questionIdx >= order.length) return;
 			const baseIdx = order[questionIdx];

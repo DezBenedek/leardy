@@ -5,7 +5,7 @@ Minden végpont a kulcs tulajdonosának nevében jár el (saját csomagok, szerk
 
 ## Hitelesítés
 
-Kulcs létrehozása: Beállítások, Fejlesztői beállítások (csak tanári fiókkal).
+Kulcs létrehozása: Admin menü, Fejlesztő oldal, Saját API kulcsok (tanári vagy kiemelt fiókkal).
 
 Használat háromféleképpen:
 

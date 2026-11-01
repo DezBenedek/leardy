@@ -10,6 +10,7 @@ const replacements = {
 	'@sveltejs/kit': import.meta.resolve('@sveltejs/kit'),
 	'$lib/server/infra/db': await typescriptModuleUrl(new URL('../src/lib/server/infra/db.ts', import.meta.url)),
 	'$lib/server/infra/quiz-templates': await typescriptModuleUrl(new URL('../src/lib/server/infra/quiz-templates.ts', import.meta.url)),
+	'$lib/server/admin/guards': await typescriptModuleUrl(new URL('../src/lib/server/admin/guards.ts', import.meta.url)),
 	'$lib/quiz/quiz-editor': editorUrl,
 	'$lib/question-types/registry': await typescriptModuleUrl(new URL('../src/lib/question-types/registry.ts', import.meta.url)),
 	'$lib/content/question-image': await typescriptModuleUrl(new URL('../src/lib/content/question-image.ts', import.meta.url))

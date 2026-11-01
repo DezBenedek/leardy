@@ -1,6 +1,7 @@
 import { loadQuestionOptions } from '$lib/question-types/registry';
 import { error, json, type RequestEvent, type RequestHandler } from '@sveltejs/kit';
 import { getDb, requireUser } from '$lib/server/infra/db';
+import { ensureWritable } from '$lib/server/admin/guards';
 import { ensureQuizTemplateSchema, listQuizTemplates } from '$lib/server/infra/quiz-templates';
 import { draftOptionsJson, draftCorrectAnswer, isTemplateSeed, questionTypeTitle, validateQuestion } from '$lib/quiz/quiz-editor';
 import { normalizeQuestionImageUrl } from '$lib/content/question-image';
@@ -11,6 +12,7 @@ async function context(event: RequestEvent) {
 	if (!db) error(503, 'Az adatbázis most nem elérhető.');
 	const user = await requireUser(event, db);
 	if (!user) error(401, 'A saját sablonokhoz jelentkezz be.');
+	ensureWritable(user);
 	await ensureQuizTemplateSchema(db);
 	return { db, user };
 }

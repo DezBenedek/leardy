@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Toggle from '$lib/components/Toggle.svelte';
+	import { canTeach } from '$lib/admin/roles';
 	import type { AppSettings } from '$lib/state/settings';
 	import type { User } from '$lib/state/auth.svelte';
 
@@ -52,7 +53,7 @@
 		</div>
 		<Toggle bind:checked={settings.openAllLessonSections} label="Bekezdések a leckékben nyitva" />
 	</div>
-	{#if user?.role === 'teacher' || user?.is_admin}
+	{#if canTeach(user?.role, user?.is_admin)}
 		<div class="flex items-center gap-3 py-3">
 			<div class="min-w-0 flex-1">
 				<p class="text-[15px] font-semibold text-ink-900 dark:text-white">Teljes szöveg a szerkesztőben</p>

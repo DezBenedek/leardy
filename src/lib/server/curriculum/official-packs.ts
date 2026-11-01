@@ -77,14 +77,20 @@ export async function listOfficialCardPacksForLesson(
 		const extraIds = (extra.results ?? [])
 			.map((r) => r.packId)
 			.filter((id) => id && !byPack.has(id));
-		for (const pid of extraIds.slice(0, 50)) {
+		// Egy kötegelt IN-lekérés az egyenkénti ciklus helyett (50-es plafonnal).
+		const wanted = extraIds.slice(0, 50);
+		if (wanted.length > 0) {
 			try {
-				const { packs, cardsByPack } = await fetchCardPacks(db, `WHERE p.id = ?`, [pid]);
-				const r = packs[0];
-				if (!r) continue;
-				byPack.set(r.packId, r);
-				const qs = cardsByPack.get(r.packId) ?? [];
-				if (qs.length > 0) mergedCards.set(r.packId, qs);
+				const { packs, cardsByPack } = await fetchCardPacks(
+					db,
+					`WHERE p.id IN (${wanted.map(() => '?').join(', ')})`,
+					wanted
+				);
+				for (const r of packs) {
+					byPack.set(r.packId, r);
+					const qs = cardsByPack.get(r.packId) ?? [];
+					if (qs.length > 0) mergedCards.set(r.packId, qs);
+				}
 			} catch {
 				// egy hibás csomag nem blokkol
 			}
@@ -204,25 +210,29 @@ export async function listOfficialCardPacksByIds(
 	const db = resolveDb(dbOrEvent);
 	const ids = [...new Set(packIds.filter(Boolean))];
 	if (ids.length === 0) return [];
-	const { packs, cardsByPack } = await fetchCardPacks(
-		db,
-		`WHERE p.id IN (${ids.map(() => '?').join(', ')})`,
-		ids
-	);
-	const multi = await packMultiMap(
-		db,
-		packs.map((r) => r.packId)
-	).catch(() => new Map<string, { id: string; title: string }[]>());
+	// D1 paraméterkorlát miatt darabolva, eredmény összefűzve.
 	const out: Package[] = [];
-	for (const r of packs) {
-		const questions = cardsByPack.get(r.packId) ?? [];
-		if (questions.length === 0) continue;
-		const m = multi.get(r.packId);
-		const attached = m && m.length > 0 ? m : [{ id: r.lessonId, title: r.lessonTitle }];
-		if (!attached.some((a) => a.id === r.lessonId)) {
-			attached.unshift({ id: r.lessonId, title: r.lessonTitle });
+	for (let i = 0; i < ids.length; i += 50) {
+		const chunk = ids.slice(i, i + 50);
+		const { packs, cardsByPack } = await fetchCardPacks(
+			db,
+			`WHERE p.id IN (${chunk.map(() => '?').join(', ')})`,
+			chunk
+		);
+		const multi = await packMultiMap(
+			db,
+			packs.map((r) => r.packId)
+		).catch(() => new Map<string, { id: string; title: string }[]>());
+		for (const r of packs) {
+			const questions = cardsByPack.get(r.packId) ?? [];
+			if (questions.length === 0) continue;
+			const m = multi.get(r.packId);
+			const attached = m && m.length > 0 ? m : [{ id: r.lessonId, title: r.lessonTitle }];
+			if (!attached.some((a) => a.id === r.lessonId)) {
+				attached.unshift({ id: r.lessonId, title: r.lessonTitle });
+			}
+			out.push(toCardPack(r, questions, attached));
 		}
-		out.push(toCardPack(r, questions, attached));
 	}
 	return out;
 }

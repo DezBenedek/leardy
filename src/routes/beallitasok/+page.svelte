@@ -7,7 +7,6 @@
 		Compass,
 		Database,
 		Info,
-		KeyRound,
 		Palette,
 		UserRound
 	} from '@lucide/svelte';
@@ -16,7 +15,7 @@
 	import GoogleLoginButton from '$lib/components/GoogleLoginButton.svelte';
 	import WhatsNew from '$lib/components/WhatsNew.svelte';
 	import { auth } from '$lib/state/auth.svelte';
-	import { loadSettings, saveSettings } from '$lib/state/settings';
+	import { loadSettings, saveSettings, type AppSettings } from '$lib/state/settings';
 	import { applyDisplaySettings } from '$lib/state/display';
 	import { toast } from '$lib/state/toast.svelte';
 	import { pushState, subscribePush, type PushState } from '$lib/platform/push-client';
@@ -29,7 +28,6 @@
 	import SettingsLearning from './SettingsLearning.svelte';
 	import SettingsStorage from './SettingsStorage.svelte';
 	import SettingsAbout from './SettingsAbout.svelte';
-	import SettingsDeveloper from './SettingsDeveloper.svelte';
 	import SettingsNameEdit from './SettingsNameEdit.svelte';
 	import {
 		accountEditTitles,
@@ -40,7 +38,6 @@
 		type AccountEdit,
 		type Sheet
 	} from './settings-ui';
-	import { ApiKeysStore } from './api-keys.svelte';
 	import {
 		clearAllCache as clearAllCacheStorage,
 		clearOfflineLibrary as clearOfflineLibraryStorage,
@@ -85,11 +82,8 @@
 		accountEdit = null;
 	}
 
-	let isTeacher = $derived(user?.role === 'teacher' || !!user?.is_admin);
-
-	const api = new ApiKeysStore(() => isTeacher);
-
 	let settings = $state(loadSettings());
+	let pendingSave = $state<AppSettings | null>(null);
 	let pushSt = $state<PushState>('off');
 	let pushBusy = $state(false);
 	let deleteAccountOpen = $state(false);
@@ -275,8 +269,26 @@
 		// Így a csúszka húzása közben nem írunk minden képkockánál a helyi tárba.
 		const snapshot = $state.snapshot(settings);
 		applyDisplaySettings(snapshot);
-		const t = setTimeout(() => saveSettings(snapshot), 250);
+		pendingSave = snapshot;
+		const t = setTimeout(() => {
+			pendingSave = null;
+			saveSettings(snapshot);
+		}, 250);
 		return () => clearTimeout(t);
+	});
+
+	$effect(() => {
+		// Lapbezáráskor a még várakozó mentést is elküldjük a szerverre,
+		// különben az új időpont csak helyben élne.
+		const flush = () => {
+			if (pendingSave) {
+				const s = pendingSave;
+				pendingSave = null;
+				saveSettings(s);
+			}
+		};
+		window.addEventListener('pagehide', flush);
+		return () => window.removeEventListener('pagehide', flush);
 	});
 
 	$effect(() => {
@@ -285,10 +297,6 @@
 
 	$effect(() => {
 		if (sheet === 'learning') void loadWordLangs();
-	});
-
-	$effect(() => {
-		if (sheet === 'developer') void api.loadApiKeys();
 	});
 
 	let pushKnown = $state(false);
@@ -399,21 +407,6 @@
 		<span class="min-w-0 flex-1"><span class="block text-[15px] font-bold text-ink-900 dark:text-white">Útmutató</span><span class="block text-[13px] text-ink-400 dark:text-stone-500">Első lépések és részletes bemutatók</span></span>
 		<ChevronRight size={19} class="shrink-0 text-stone-300 dark:text-stone-600" />
 	</button>
-	{#if isTeacher}
-		<button
-			onclick={() => (sheet = 'developer')}
-			class="flex w-full items-center gap-3.5 p-4 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:active:bg-white/10 dark:hover:bg-white/5"
-		>
-			<span class={tile}>
-				<KeyRound size={22} />
-			</span>
-			<span class="min-w-0 flex-1">
-				<span class="block text-[15px] font-bold text-ink-900 dark:text-white">Fejlesztői beállítások</span>
-				<span class="block truncate text-[13px] text-ink-400 dark:text-stone-500">Publikus API kulcsok kezelése</span>
-			</span>
-			<ChevronRight size={19} class="shrink-0 text-stone-300 dark:text-stone-600" />
-		</button>
-	{/if}
 	<button
 		onclick={() => (sheet = 'about')}
 		class="flex w-full items-center gap-3.5 p-4 text-left transition hover:bg-stone-50 active:bg-stone-100 dark:active:bg-white/10 dark:hover:bg-white/5"
@@ -473,8 +466,6 @@
 			/>
 		{:else if sheet === 'about'}
 			<SettingsAbout onOpenWhatsNew={() => (whatsNewOpen = true)} />
-		{:else if sheet === 'developer'}
-			<SettingsDeveloper {isTeacher} {api} />
 		{/if}
 </Drawer>
 

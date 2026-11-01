@@ -11,6 +11,7 @@ export const POST: RequestHandler = async (event) => {
 	// haladás-mentés ~30 DDL-lekérdezéssel indult 1 sor írásához.
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Nincs bejelentkezve.' }, { status: 401 });
+	if (((user.muted_until ?? 0) > Date.now()) && user.role !== 'admin' && user.role !== 'developer' && !user.is_admin) return json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem módosíthatsz.' }, { status: 403 });
 	const body = (await event.request.json().catch(() => null)) as {
 		lessonId?: unknown;
 		done?: unknown;

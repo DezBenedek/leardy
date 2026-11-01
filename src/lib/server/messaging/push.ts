@@ -93,6 +93,13 @@ interface VapidKeys {
 	privateJwk: JsonWebKey;
 }
 
+/** Futásonkénti push-gyorsítótár: egy VAPID-lekérés és gazdagépenként egy JWT.
+ *  Egy sorozatban 100 kézbesítés is osztozhat rajtuk ECDSA-aláírás helyett. */
+export interface PushSendCache {
+	keys?: Promise<VapidKeys>;
+	jwts: Map<string, string>;
+}
+
 export async function ensureVapidKeys(db: D1Database): Promise<VapidKeys> {
 	await ensureSecuritySchema(db);
 	const row = await db
@@ -331,13 +338,19 @@ export interface PushPayload {
 export async function sendPushToSubscription(
 	db: D1Database,
 	sub: PushSubscription,
-	msg: PushPayload
+	msg: PushPayload,
+	cache?: PushSendCache
 ): Promise<boolean> {
 	try {
-		const { privateJwk, publicKey } = await ensureVapidKeys(db);
+		const { privateJwk, publicKey } = await (cache?.keys ?? ensureVapidKeys(db));
 		const endpoint = new URL(sub.endpoint);
 		if (endpoint.protocol !== 'https:') return false;
-		const jwt = await vapidJwt(publicKey, privateJwk, `${endpoint.protocol}//${endpoint.host}`);
+		const audience = `${endpoint.protocol}//${endpoint.host}`;
+		let jwt = cache?.jwts.get(audience);
+		if (!jwt) {
+			jwt = await vapidJwt(publicKey, privateJwk, audience);
+			cache?.jwts.set(audience, jwt);
+		}
 		const payload = TEXT_ENCODER.encode(JSON.stringify(msg));
 		const { body } = await encryptAes128Gcm(b64urlDecode(sub.p256dh), b64urlDecode(sub.auth), payload);
 		const res = await fetch(sub.endpoint, {
@@ -441,10 +454,16 @@ export async function notifyClassroom(
 	}
 }
 
+/** Példányonkénti séma-cache: egy cron-futáson belül a második hívás már nem DDL-ez. */
+const deliveryEnsured = new WeakMap<object, Promise<void>>();
+
 export async function ensurePushDeliverySchema(db: D1Database): Promise<void> {
-	await ensureSecuritySchema(db);
-	await db.batch([
-		db.prepare(`CREATE TABLE IF NOT EXISTS push_deliveries (
+	const pending = deliveryEnsured.get(db);
+	if (pending) return pending;
+	const run = (async () => {
+		await ensureSecuritySchema(db);
+		await db.batch([
+			db.prepare(`CREATE TABLE IF NOT EXISTS push_deliveries (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			endpoint TEXT NOT NULL REFERENCES push_subscriptions(endpoint) ON DELETE CASCADE,
 			event_key TEXT NOT NULL, kind TEXT NOT NULL, classroom_id TEXT NOT NULL DEFAULT '',
@@ -454,7 +473,15 @@ export async function ensurePushDeliverySchema(db: D1Database): Promise<void> {
 			UNIQUE(endpoint, event_key)
 		)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_push_delivery_pending ON push_deliveries(delivered_at, next_attempt_at)`)
-	]);
+		]);
+	})();
+	deliveryEnsured.set(db, run);
+	try {
+		await run;
+	} catch (error) {
+		if (deliveryEnsured.get(db) === run) deliveryEnsured.delete(db);
+		throw error;
+	}
 }
 
 async function enqueuePush(db: D1Database, subs: PushSubscription[], msg: PushPayload, kind: PushKind, classroomId: string): Promise<void> {
@@ -485,6 +512,9 @@ export async function processPushQueue(db: D1Database, now = Date.now()): Promis
 	let sent = 0;
 	let failed = 0;
 	const deliveries = claimed.results ?? [];
+	// Egy futáson belül egy VAPID-lekérés és gazdagépenként egy JWT elég.
+	const cache: PushSendCache = { jwts: new Map() };
+	if (deliveries.length > 0) cache.keys = ensureVapidKeys(db);
 	for (let i = 0; i < deliveries.length; i += 5) {
 		await Promise.all(deliveries.slice(i, i + 5).map(async (delivery) => {
 			const sub = await db.prepare(`SELECT endpoint, p256dh, auth, user_id FROM push_subscriptions WHERE endpoint = ?`)
@@ -497,7 +527,7 @@ export async function processPushQueue(db: D1Database, now = Date.now()): Promis
 				allowed = !!membership;
 			}
 			if (sub && allowed) allowed = (await allowedRecipients(db, [sub.user_id], delivery.kind, delivery.classroom_id)).length > 0;
-			const ok = allowed && sub ? await sendPushToSubscription(db, sub, JSON.parse(delivery.payload_json)) : false;
+			const ok = allowed && sub ? await sendPushToSubscription(db, sub, JSON.parse(delivery.payload_json), cache) : false;
 			if (ok || !allowed) {
 				await db.prepare(`UPDATE push_deliveries SET delivered_at = ?, lease_token = NULL, lease_until = 0 WHERE id = ? AND lease_token = ?`)
 					.bind(Date.now(), delivery.id, token).run();

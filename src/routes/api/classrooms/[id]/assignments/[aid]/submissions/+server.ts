@@ -71,6 +71,20 @@ export const GET: RequestHandler = async (event) => {
 				graded_at: number | null;
 			}>();
 		const rows = members.results ?? [];
+		// Egy lekérdezés az összes feltöltésre, diákonkénti csoportosítással (N+1 helyett).
+		const allUploads = await db
+			.prepare(
+				`SELECT id, assignment_id, classroom_id, user_id, kind, r2_key, file_name, mime, size, width, height, created_at
+				 FROM assignment_uploads WHERE assignment_id = ? ORDER BY created_at`
+			)
+			.bind(aid)
+			.all<AssignmentUpload>();
+		const uploadsByUser = new Map<string, AssignmentUpload[]>();
+		for (const u of allUploads.results ?? []) {
+			const list = uploadsByUser.get(u.user_id);
+			if (list) list.push(u);
+			else uploadsByUser.set(u.user_id, [u]);
+		}
 		const out: {
 			user_id: string;
 			name: string;
@@ -85,7 +99,7 @@ export const GET: RequestHandler = async (event) => {
 			uploads: AssignmentUpload[];
 		}[] = [];
 		for (const r of rows) {
-			const ups = await uploadsFor(db, aid, r.user_id);
+			const ups = uploadsByUser.get(r.user_id) ?? [];
 			out.push({
 				user_id: r.user_id,
 				name: r.name,
@@ -117,6 +131,7 @@ export const POST: RequestHandler = async (event) => {
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
 	const user = await requireUser(event, db);
 	if (!user) return json({ error: 'Jelentkezz be!' }, { status: 401 });
+	if (((user.muted_until ?? 0) > Date.now()) && user.role !== 'admin' && user.role !== 'developer' && !user.is_admin) return json({ error: 'A fiókod ideiglenesen némítva van, ezért most nem módosíthatsz.' }, { status: 403 });
 	const classroomId = event.params.id ?? '';
 	const aid = event.params.aid ?? '';
 

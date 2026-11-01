@@ -125,23 +125,32 @@ function setSeen(key: string, value: string): void {
 	}
 }
 
-async function checkDailyReminder(): Promise<void> {
-	const s = loadSettings();
+async function checkDailyReminder(now = new Date(), s = loadSettings()): Promise<void> {
 	if (!s.reminder || !canNotify()) return;
+	// Előbb az olcsó helyi ellenőrzés, hálózat nélkül: amíg nincs itt az idő,
+	// nem kérdezzük a push állapotot, így a tick nem csúszik.
+	if (nowHM(now) < s.reminderTime) return;
+	const today = todayKey(now);
+	const seenKey = `${today}@${s.reminderTime}`;
+	if (getSeen(REMINDER_LAST_KEY) === seenKey) return;
+	// Késői nyitásra nem csörgetünk órákkal később: 60 perc türelmi idő után
+	// csak megjegyezzük, hogy mára nem kell szólni.
+	const [rh, rm] = s.reminderTime.split(':').map(Number);
+	const due = new Date(now);
+	due.setHours(rh, rm, 0, 0);
+	if (now.getTime() - due.getTime() > 60 * 60_000) {
+		setSeen(REMINDER_LAST_KEY, seenKey);
+		return;
+	}
+	// Feliratkozott eszközön a szerver cron jelez zárt appnál is, itt nem duplázunk.
 	if (await hasPushSubscription()) return;
-	// Pontos percrehegyezes helyett "lejart, de ma meg nem szolt" logika:
-	// a tick keshet, a lap lehet hatterben, ebredereskor potolni kell.
-	// A HH:MM nullazott alakban szovegesen osszehasonlithato.
-	if (nowHM() < s.reminderTime) return;
-	const today = todayKey();
-	if (getSeen(REMINDER_LAST_KEY) === `${today}@${s.reminderTime}`) return;
 	const ok = await showLocalNotification(
 		'Ideje gyakorolni',
 		'Ne szakadjon meg a sorozatod, nézz rá a mai leckéidre.',
 		'/',
 		`reminder:${today}`
 	);
-	if (ok) setSeen(REMINDER_LAST_KEY, `${today}@${s.reminderTime}`);
+	if (ok) setSeen(REMINDER_LAST_KEY, seenKey);
 }
 
 interface ClassroomListItem {
@@ -160,12 +169,17 @@ async function fetchJson(url: string, timeoutMs = 10_000): Promise<unknown> {
 	}
 }
 
+let pushCache: { at: number; on: boolean } | null = null;
+
 async function hasPushSubscription(): Promise<boolean> {
-	return await pushState() === 'on';
+	const now = Date.now();
+	if (pushCache && now - pushCache.at < 5 * 60_000) return pushCache.on;
+	const on = (await pushState()) === 'on';
+	pushCache = { at: now, on };
+	return on;
 }
 
-async function checkClassroomUpdates(firstRun: boolean): Promise<void> {
-	const s = loadSettings();
+async function checkClassroomUpdates(firstRun: boolean, s = loadSettings()): Promise<void> {
 	if ((!s.pushClassMessage && !s.pushClassTask && !s.dueSoon) || !canNotify()) return;
 	const muted = new Set(s.mutedClassrooms ?? []);
 	const pushOn = await hasPushSubscription();
@@ -263,8 +277,7 @@ async function checkClassroomUpdates(firstRun: boolean): Promise<void> {
 	}
 }
 
-async function checkFeatureUpdates(): Promise<void> {
-	const s = loadSettings();
+async function checkFeatureUpdates(s = loadSettings()): Promise<void> {
 	if (!s.pushFeatures || !canNotify()) return;
 	const seen = getSeen(SEEN_VERSION_KEY);
 	if (!seen) {
@@ -315,19 +328,21 @@ async function tickLoop(): Promise<void> {
 	tickTimer = null;
 	if (engineStopped || document.hidden || tickRunning) return;
 	tickRunning = true;
+	// Egy beállításolvasás tickenként a három külön parse helyett.
+	const settings = loadSettings();
 	try {
 		try {
-			await checkDailyReminder();
+			await checkDailyReminder(new Date(), settings);
 		} catch {
 			// nem akasztjuk meg a tobbit
 		}
 		try {
-			await checkClassroomUpdates(false);
+			await checkClassroomUpdates(false, settings);
 		} catch {
 			// halozati hiba: csendben ujra
 		}
 		try {
-			await checkFeatureUpdates();
+			await checkFeatureUpdates(settings);
 		} catch {
 			// nem kritikus
 		}
@@ -343,19 +358,20 @@ async function firstTickLoop(firstRun: boolean): Promise<void> {
 	tickTimer = null;
 	if (engineStopped || tickRunning) return;
 	tickRunning = true;
+	const settings = loadSettings();
 	try {
 		try {
-			await checkDailyReminder();
+			await checkDailyReminder(new Date(), settings);
 		} catch {
 			// nem akasztjuk meg a tobbit
 		}
 		try {
-			await checkClassroomUpdates(firstRun);
+			await checkClassroomUpdates(firstRun, settings);
 		} catch {
 			// halozati hiba: csendben ujra
 		}
 		try {
-			await checkFeatureUpdates();
+			await checkFeatureUpdates(settings);
 		} catch {
 			// nem kritikus
 		}

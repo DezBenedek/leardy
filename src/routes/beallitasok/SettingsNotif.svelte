@@ -80,6 +80,7 @@
 					<input type="time" value={settings.reminderTime} onchange={onReminderTime} aria-label="Napi időpont"
 						class="min-h-11 w-[118px] rounded-lg border border-stone-200 bg-white px-3 py-2 text-center text-[15px] font-semibold text-ink-900 tabular-nums outline-none focus:border-brand-500 dark:border-white/15 dark:bg-white/5 dark:text-white" />
 				</label>
+				<p class="mt-2 text-[12px] leading-relaxed text-stone-500">Zárt appnál pontosan csak aktivált push üzenetekkel érkezik, és csak bejelentkezve.</p>
 			{/if}
 		</li>
 		<li class="flex items-center gap-3 py-3">

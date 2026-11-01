@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
+import { canTeach } from '$lib/admin/roles';
 import type { Package, QuizQuestion } from '$lib/curriculum/curriculum';
 import {
 	deckMultiMap,
@@ -9,12 +10,12 @@ import {
 } from './shared';
 
 /** Tanári jogosultság szókártya-publikáláshoz és leckéhez csatoláshoz.
- *  Csak tanár, admin szerep vagy admin jelölés számít, a diák nem. */
+ *  Tanár, iskola vezető, admin és fejlesztő publikálhat, a diák nem. */
 export function canPublishDeck(
 	user: { role?: string | null; is_admin?: number | null } | null | undefined
 ): boolean {
 	if (!user) return false;
-	return user.role === 'teacher' || user.role === 'admin' || !!user.is_admin;
+	return canTeach(user.role, user.is_admin);
 }
 
 /** Publikált csomagsorok Package-alakba: kártyák + többes csatolás.

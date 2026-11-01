@@ -1,4 +1,5 @@
 import { error, json, type RequestHandler } from '@sveltejs/kit';
+import { ensureWritable } from '$lib/server/admin/guards';
 import { editorContext, getEditorLesson } from '$lib/server/curriculum/curriculum-editor';
 import { getUploadsBucket } from '$lib/server/infra/uploads';
 import { MAX_QUESTION_IMAGE_BYTES, questionImageMime } from '$lib/content/question-image';
@@ -7,6 +8,7 @@ export function uploadLessonImage(prefix: 'quiz-images' | 'lesson-images'): Requ
 return async (event) => {
 	if (event.request.headers.get('origin') !== event.url.origin) error(403, 'A kérés forrása érvénytelen.');
 	const { db, user } = await editorContext(event);
+	ensureWritable(user);
 	const length = Number(event.request.headers.get('content-length'));
 	const limit = MAX_QUESTION_IMAGE_BYTES + 65536;
 	if (length > limit) error(413, 'A kép legfeljebb 10 MB lehet.');

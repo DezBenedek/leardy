@@ -4,6 +4,7 @@ import {
 	getDb,
 	ensureAuthSchema,
 	getSessionUser,
+	getSuspendedSession,
 	requireUser,
 	publicUser,
 	SESSION_COOKIE,
@@ -14,7 +15,16 @@ export const GET: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) return json({ error: 'Az adatbázis most nem elérhető.' }, { status: 503 });
 	const user = await getSessionUser(event, db);
-	if (!user) return json({ error: 'Nincs bejelentkezve.' }, { status: 401, headers: { 'cache-control': 'no-store' } });
+	if (!user) {
+		const suspended = await getSuspendedSession(event, db);
+		if (suspended) {
+			return json(
+				{ error: 'A fiókod ideiglenesen fel van függesztve.', suspended },
+				{ status: 403, headers: { 'cache-control': 'no-store' } }
+			);
+		}
+		return json({ error: 'Nincs bejelentkezve.' }, { status: 401, headers: { 'cache-control': 'no-store' } });
+	}
 	const isEditor = await canEnterEditor(db, user).catch(() => false);
 	return json({ user, isEditor }, { headers: { 'cache-control': 'no-store' } });
 };

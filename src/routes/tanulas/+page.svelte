@@ -34,6 +34,7 @@
 	import { normHu } from '$lib/deck/deck-history';
 	import { loadLastLesson } from '$lib/curriculum/lesson-history';
 	import { Query, getOrFetch, peek } from '$lib/state/query.svelte';
+	import { canTeach } from '$lib/admin/roles';
 	import { loadScope, saveScope } from '$lib/platform/scope';
 	import { loadSettings } from '$lib/state/settings';
 	import { toast } from '$lib/state/toast.svelte';
@@ -53,7 +54,7 @@
 	let localMode = $state(false);
 	let offlineCatalog = $state.raw(buildOfflineCatalog([]));
 	let offlineLoading = $state(true);
-	let canEdit = $derived(!localMode && (user?.role === 'teacher' || !!user?.is_admin || data.isEditor));
+	let canEdit = $derived(!localMode && (canTeach(user?.role, user?.is_admin) || data.isEditor));
 	let catalogVersion = 0;
 	async function refreshOfflineCatalog() {
 		const version = ++catalogVersion;
@@ -184,6 +185,17 @@
 	/* Keresés + szűrő + rendezés. A kereső fókuszban kinyílik, a fejléc
 	   gombjai összehúzódnak (Kártya oldal mintája). A rendezés a szűrőben él. */
 	let query = $state('');
+	// A szűrés 150 ms késleltetéssel követi a gépelést, így nagy tananyagban
+	// sem fut le billentyűnként a teljes normalizálás és rendezés.
+	let debouncedQuery = $state('');
+
+	$effect(() => {
+		const v = query;
+		const t = setTimeout(() => {
+			debouncedQuery = v;
+		}, 150);
+		return () => clearTimeout(t);
+	});
 	let searchFocus = $state(false);
 	let filterOpen = $state(false);
 	let fPicker = $state<'sort' | null>(null);
@@ -225,7 +237,7 @@
 	/* Látható tananyagok: szintszűrés, állapot, keresés, rendezés. Üres témakör
 	   és üres tananyag nem rajzolódik ki. */
 	let visibleLevels = $derived.by(() => {
-		const q = normHu(query.trim());
+		const q = normHu(debouncedQuery.trim());
 		let ls = levels.filter((l) => (levelId ? l.id === levelId : true));
 		if (sortId === 'nev') ls = [...ls].sort((a, b) => a.title.localeCompare(b.title, 'hu'));
 		return ls
@@ -266,7 +278,7 @@
 	let collapsed = $state<Record<string, boolean>>({});
 
 	function isMatOpen(id: string): boolean {
-		if (query.trim() !== '') return true;
+		if (debouncedQuery.trim() !== '') return true;
 		return !collapsed[id];
 	}
 
@@ -488,7 +500,7 @@
 			<span class="sr-only">Betöltés…</span>
 		</div>
 	{:else if !activeTree || visibleLevels.length === 0}
-		{#if activeTree && (query.trim() !== '' || status !== 'all')}
+		{#if activeTree && (debouncedQuery.trim() !== '' || status !== 'all')}
 			<EmptyState
 				title="Nincs találat"
 				description="Próbálj másik keresést, vagy állíts a szűrőkön."

@@ -14,6 +14,7 @@
 	import { parsePastedPairs } from '$lib/deck/deck-paste';
 	import { pruneEmptyRows } from '$lib/deck/deck-rows';
 	import { auth } from '$lib/state/auth.svelte';
+	import { canTeach } from '$lib/admin/roles';
 	import { toast } from '$lib/state/toast.svelte';
 	import { invalidate } from '$lib/state/query.svelte';
 	import Button from '$lib/ui/Button.svelte';
@@ -58,12 +59,9 @@
 	let cards = $state<CardRow[]>([]);
 	let removedIds = $state<string[]>([]);
 
-	/** Publikálni csak tanár (vagy admin) tud, diák nem. */
+	/** Publikálni csak tanár (vagy kiemelt szerep) tud, diák nem. */
 	let isTeacher = $derived(
-		auth.ready &&
-			(auth.user?.role === 'teacher' ||
-				auth.user?.role === 'admin' ||
-				!!auth.user?.is_admin)
+		auth.ready && canTeach(auth.user?.role, auth.user?.is_admin)
 	);
 
 	// Szerver-pillanatkép a dirty-figyeléshez

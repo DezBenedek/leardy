@@ -15,7 +15,16 @@ export async function loadSession(fetcher: typeof fetch, online = true) {
 	if (!online) return offlineSession();
 	try {
 		const response = await fetcher('/api/auth/me', { cache: 'no-store' });
-		if (response.status === 401 || response.status === 403) return { user: null, isEditor: false, offline: false };
+		if (response.status === 401) return { user: null, isEditor: false, offline: false };
+		if (response.status === 403) {
+			const body = (await response.json().catch(() => ({}))) as {
+				suspended?: { name: string; reason: string; until: number };
+			};
+			if (body.suspended) {
+				return { user: null, isEditor: false, offline: false, suspended: body.suspended };
+			}
+			return { user: null, isEditor: false, offline: false };
+		}
 		if (!response.ok) return offlineSession();
 		const result = await response.json();
 		if (!result.user?.id || typeof result.user.name !== 'string') return offlineSession();

@@ -6,11 +6,12 @@ import { typescriptModuleUrl } from './typescript-module.mjs';
 
 const imageUrl = await typescriptModuleUrl(new URL('../src/lib/content/question-image.ts', import.meta.url));
 const uploadsUrl = await typescriptModuleUrl(new URL('../src/lib/server/infra/uploads.ts', import.meta.url));
+const guardsUrl = await typescriptModuleUrl(new URL('../src/lib/server/admin/guards.ts', import.meta.url));
 const kitUrl = import.meta.resolve('@sveltejs/kit');
 const authUrl = `data:text/javascript;base64,${Buffer.from(`import { error } from '${kitUrl}'; export async function editorContext(event) { if (!event.locals.user) error(401, 'Jelentkezz be.'); return { db: {}, user: event.locals.user }; } export async function getEditorLesson(db, user, id) { if (!user.canEdit || id !== 'test-lesson') error(403, 'Nincs jogosultságod.'); return { id }; }`).toString('base64')}`;
 async function routeModule(path) {
 	let source = await readFile(new URL(path, import.meta.url), 'utf8');
-	for (const [name, url] of Object.entries({ '@sveltejs/kit': kitUrl, '$lib/server/curriculum/curriculum-editor': authUrl, '$lib/server/infra/uploads': uploadsUrl, '$lib/content/question-image': imageUrl, ...(path.includes('/lesson-image-upload.ts') ? {} : { '$lib/server/infra/lesson-image-upload': uploadModuleUrl }) })) source = source.replaceAll(`from '${name}'`, `from '${url}'`);
+	for (const [name, url] of Object.entries({ '@sveltejs/kit': kitUrl, '$lib/server/curriculum/curriculum-editor': authUrl, '$lib/server/infra/uploads': uploadsUrl, '$lib/server/admin/guards': guardsUrl, '$lib/content/question-image': imageUrl, ...(path.includes('/lesson-image-upload.ts') ? {} : { '$lib/server/infra/lesson-image-upload': uploadModuleUrl }) })) source = source.replaceAll(`from '${name}'`, `from '${url}'`);
 	const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 	return `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`;
 }

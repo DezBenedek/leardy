@@ -1,5 +1,6 @@
 import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { getDb } from '$lib/server/infra/db';
+import { ensureWritable } from '$lib/server/admin/guards';
 import { editorContext, getEditorLesson } from '$lib/server/curriculum/curriculum-editor';
 import {
 	aiLimits,
@@ -22,6 +23,7 @@ export const POST: RequestHandler = async (event) => {
 	const db = getDb(event);
 	if (!db) error(503, 'Az adatbázis most nem elérhető.');
 	const { user } = await editorContext(event);
+	ensureWritable(user);
 	const body = await event.request.json().catch(() => null) as {
 		lessonId?: unknown;
 		kind?: unknown;

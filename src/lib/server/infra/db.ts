@@ -15,6 +15,10 @@ export interface DbUser {
 	xp?: number;
 	streak?: number;
 	is_admin?: number;
+	suspended_until?: number;
+	muted_until?: number;
+	suspended_reason?: string;
+	muted_reason?: string;
 }
 
 export interface PublicUser {
@@ -26,6 +30,8 @@ export interface PublicUser {
 	xp: number;
 	streak: number;
 	is_admin: number;
+	suspended_until?: number;
+	muted_until?: number;
 }
 
 export const SESSION_COOKIE = 'leardy_session';
@@ -43,8 +49,43 @@ export function getDb(event: RequestEvent): D1Database | null {
  * Önhelyreállító auth-séma: CSAK users + sessions.
  * A CREATE TABLE IF NOT EXISTS idempotens, élesben is biztonságos.
  * A régi (bővítetlen) users táblákhoz az ALTER-ek adják hozzá a hiányzó oszlopokat.
+ * Példányonként cache-elt, állandósult állapotban 3 D1-kör: batch + PRAGMA + index.
  */
 export async function ensureAuthSchema(db: D1Database): Promise<void> {
+	return cachedEnsure(db, 'auth', () => ensureAuthSchemaOnce(db));
+}
+
+/**
+ * Példányonkénti ensure-cache: ugyanaz a DB-objektum egy kérésen vagy
+ * cron-futáson belül egy ensure-t csak egyszer futtat le. A séma az
+ * isolate életében nem változik, hibánál a bejegyzés törlődik.
+ */
+const ensureCache = new WeakMap<object, Map<string, Promise<void>>>();
+
+export function cachedEnsure(db: D1Database, name: string, run: () => Promise<void>): Promise<void> {
+	let byName = ensureCache.get(db);
+	if (!byName) {
+		byName = new Map();
+		ensureCache.set(db, byName);
+	}
+	const pending = byName.get(name);
+	if (pending) return pending;
+	const task = run().catch((error) => {
+		if (byName.get(name) === task) byName.delete(name);
+		throw error;
+	});
+	byName.set(name, task);
+	return task;
+}
+
+/** Egy tábla hiányzó oszlopai egyetlen PRAGMA-lekérdezésből. */
+export async function missingColumns(db: D1Database, table: string, columns: string[]): Promise<string[]> {
+	const info = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+	const have = new Set((info.results ?? []).map((column) => column.name));
+	return columns.filter((column) => !have.has(column));
+}
+
+async function ensureAuthSchemaOnce(db: D1Database): Promise<void> {
 	await db.batch([
 		db.prepare(
 			`CREATE TABLE IF NOT EXISTS users (
@@ -60,7 +101,11 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 				xp INTEGER NOT NULL DEFAULT 0,
 				streak INTEGER NOT NULL DEFAULT 0,
 				last_study_date TEXT NOT NULL DEFAULT '',
-				is_admin INTEGER NOT NULL DEFAULT 0
+				is_admin INTEGER NOT NULL DEFAULT 0,
+				suspended_until INTEGER NOT NULL DEFAULT 0,
+				muted_until INTEGER NOT NULL DEFAULT 0,
+				suspended_reason TEXT NOT NULL DEFAULT '',
+				muted_reason TEXT NOT NULL DEFAULT ''
 			)`
 		),
 		db.prepare(
@@ -74,18 +119,25 @@ export async function ensureAuthSchema(db: D1Database): Promise<void> {
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`),
 		db.prepare(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`)
 	]);
-	// Meglévő (régi sémájú) users tábla bővítése. Ha az oszlop már létezik, a D1 hibát dob, azt elnyeljük.
-	for (const ddl of [
-		`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'`,
-		`ALTER TABLE users ADD COLUMN xp INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE users ADD COLUMN streak INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE users ADD COLUMN last_study_date TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE users ADD COLUMN google_sub TEXT`,
-		`ALTER TABLE users ADD COLUMN school_id TEXT NOT NULL DEFAULT ''`
-	]) {
+	// Meglévő (régi sémájú) users tábla bővítése, csak a valóban hiányzó oszlopokkal.
+	// Egy PRAGMA-lekérdezés dönti el, állandósult állapotban nincs ALTER-kör.
+	const userAdditions: [string, string][] = [
+		['role', `ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'`],
+		['xp', `ALTER TABLE users ADD COLUMN xp INTEGER NOT NULL DEFAULT 0`],
+		['streak', `ALTER TABLE users ADD COLUMN streak INTEGER NOT NULL DEFAULT 0`],
+		['last_study_date', `ALTER TABLE users ADD COLUMN last_study_date TEXT NOT NULL DEFAULT ''`],
+		['is_admin', `ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`],
+		['google_sub', `ALTER TABLE users ADD COLUMN google_sub TEXT`],
+		['school_id', `ALTER TABLE users ADD COLUMN school_id TEXT NOT NULL DEFAULT ''`],
+		['suspended_until', `ALTER TABLE users ADD COLUMN suspended_until INTEGER NOT NULL DEFAULT 0`],
+		['muted_until', `ALTER TABLE users ADD COLUMN muted_until INTEGER NOT NULL DEFAULT 0`],
+		['suspended_reason', `ALTER TABLE users ADD COLUMN suspended_reason TEXT NOT NULL DEFAULT ''`],
+		['muted_reason', `ALTER TABLE users ADD COLUMN muted_reason TEXT NOT NULL DEFAULT ''`]
+	];
+	const userColumns = new Map(userAdditions);
+	for (const column of await missingColumns(db, 'users', [...userColumns.keys()])) {
 		try {
-			await db.prepare(ddl).run();
+			await db.prepare(userColumns.get(column) ?? '').run();
 		} catch {
 			// oszlop már létezik
 		}
@@ -151,7 +203,9 @@ export function publicUser(u: DbUser): PublicUser {
 		role: (u as Partial<PublicUser>).role ?? 'student',
 		xp: (u as Partial<PublicUser>).xp ?? 0,
 		streak: (u as Partial<PublicUser>).streak ?? 0,
-		is_admin: (u as Partial<PublicUser>).is_admin ?? 0
+		is_admin: (u as Partial<PublicUser>).is_admin ?? 0,
+		suspended_until: (u as Partial<PublicUser>).suspended_until ?? 0,
+		muted_until: (u as Partial<PublicUser>).muted_until ?? 0
 	};
 }
 
@@ -190,23 +244,70 @@ export async function getSessionUser(
 ): Promise<PublicUser | null> {
 	const token = event.cookies.get(SESSION_COOKIE);
 	if (!token) return null;
-	const row = await db
-		.prepare(
-			`SELECT u.id, u.name, u.email,
-				COALESCE(u.school_id, '') AS school_id,
-				COALESCE(u.role, 'student') AS role,
-				COALESCE(u.xp, 0) AS xp,
-				COALESCE(u.streak, 0) AS streak,
-				COALESCE(u.is_admin, 0) AS is_admin
-			 FROM sessions s
-			 JOIN users u ON u.id = s.user_id
-			 WHERE s.token = ? AND s.expires_at > ?`
-		)
-		.bind(token, Date.now())
-		.first<PublicUser>();
-	return row ?? null;
+	try {
+		const row = await db
+			.prepare(
+				`SELECT u.id, u.name, u.email,
+					COALESCE(u.school_id, '') AS school_id,
+					COALESCE(u.role, 'student') AS role,
+					COALESCE(u.xp, 0) AS xp,
+					COALESCE(u.streak, 0) AS streak,
+					COALESCE(u.is_admin, 0) AS is_admin,
+					COALESCE(u.suspended_until, 0) AS suspended_until,
+					COALESCE(u.muted_until, 0) AS muted_until
+				 FROM sessions s
+				 JOIN users u ON u.id = s.user_id
+				 WHERE s.token = ? AND s.expires_at > ?`
+			)
+			.bind(token, Date.now())
+			.first<PublicUser>();
+		if (!row) return null;
+		if ((row.suspended_until ?? 0) > Date.now()) return null;
+		return row;
+	} catch {
+		// Régi séma a 0015-ös migráció előtt: tiltó oszlopok nélkül.
+		const row = await db
+			.prepare(
+				`SELECT u.id, u.name, u.email,
+					COALESCE(u.school_id, '') AS school_id,
+					COALESCE(u.role, 'student') AS role,
+					COALESCE(u.xp, 0) AS xp,
+					COALESCE(u.streak, 0) AS streak,
+					COALESCE(u.is_admin, 0) AS is_admin
+				 FROM sessions s
+				 JOIN users u ON u.id = s.user_id
+				 WHERE s.token = ? AND s.expires_at > ?`
+			)
+			.bind(token, Date.now())
+			.first<PublicUser>();
+		return row ?? null;
+	}
 }
 
+/** Felfüggesztett munkamenet adatai: a tiltott fiók miért nem tud belépni. */
+export async function getSuspendedSession(
+	event: RequestEvent,
+	db: D1Database
+): Promise<{ name: string; reason: string; until: number } | null> {
+	const token = event.cookies.get(SESSION_COOKIE);
+	if (!token) return null;
+	try {
+		const row = await db
+			.prepare(
+				`SELECT u.name AS name,
+					COALESCE(u.suspended_reason, '') AS reason,
+					COALESCE(u.suspended_until, 0) AS until
+				 FROM sessions s
+				 JOIN users u ON u.id = s.user_id
+				 WHERE s.token = ? AND s.expires_at > ? AND COALESCE(u.suspended_until, 0) > ?`
+			)
+			.bind(token, Date.now(), Date.now())
+			.first<{ name: string; reason: string; until: number }>();
+		return row ?? null;
+	} catch {
+		return null;
+	}
+}
 /** Bejelentkezett user, vagy null. Minden védett végpont belépési pontja. */
 export async function requireUser(
 	event: RequestEvent,
