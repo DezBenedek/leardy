@@ -63,10 +63,12 @@ export async function handleQuizzes(ctx: RouteCtx): Promise<Response | null> {
 		} catch {
 			return err('Ehhez a tananyaghoz nincs szerkesztési jogosultságod.', 403);
 		}
+		const existing = await db.prepare(`SELECT id FROM quizzes WHERE lesson_id = ?`).bind(lessonId).first<{ id: string }>().catch(() => null);
+		if (existing) return err('Ehhez a leckéhez már tartozik kvíz.', 409);
 		const id = newId('quiz');
 		await db
 			.prepare(`INSERT INTO quizzes (id, lesson_id, section_slug, title, sort) VALUES (?, ?, ?, ?, ?)`)
-			.bind(id, lessonId, String(body.sectionSlug ?? body.section_slug ?? '').trim().slice(0, 80), title.slice(0, 200), Number(body.sort) || 0)
+			.bind(id, lessonId, '', title.slice(0, 200), Number(body.sort) || 0)
 			.run();
 		return ok({ ok: true, id }, 201);
 	}
@@ -100,10 +102,7 @@ export async function handleQuizzes(ctx: RouteCtx): Promise<Response | null> {
 				sets.push('title = ?');
 				args.push(t.slice(0, 200));
 			}
-			if (body.sectionSlug !== undefined || body.section_slug !== undefined) {
-				sets.push('section_slug = ?');
-				args.push(String(body.sectionSlug ?? body.section_slug ?? '').trim().slice(0, 80));
-			}
+
 			if (body.sort !== undefined) {
 				sets.push('sort = ?');
 				args.push(Number(body.sort) || 0);
@@ -117,6 +116,8 @@ export async function handleQuizzes(ctx: RouteCtx): Promise<Response | null> {
 				} catch {
 					return err('A célleckéhez nincs jogosultságod.', 403);
 				}
+				const taken = await db.prepare(`SELECT id FROM quizzes WHERE lesson_id = ? AND id != ?`).bind(nl, second).first<{ id: string }>().catch(() => null);
+				if (taken) return err('A célleckéhez már tartozik kvíz.', 409);
 				sets.push('lesson_id = ?');
 				args.push(nl);
 			}

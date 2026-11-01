@@ -71,18 +71,19 @@ curl -X POST https://leardy.dezso.hu/api/v1/quiz-questions \
 
 - `GET /api/v1/card-packs?subjectId=&lessonId=&limit=&offset=` - csomagok kártyaszámmal.
 - `GET /api/v1/card-packs/:id` - csomag kártyákkal.
-- `POST /api/v1/card-packs` `{ lessonId, title, cardKind?, sort?, lessonIds? }`
-- `PATCH /api/v1/card-packs/:id`, `DELETE /api/v1/card-packs/:id`
+- `POST /api/v1/card-packs` - kivezetve (410): hivatalos csomag csak a lecke szerkesztőből hozható létre.
+- `PATCH /api/v1/card-packs/:id`, `DELETE /api/v1/card-packs/:id` - kivezetve (410).
 - `GET /api/v1/lesson-cards?lessonId=&packId=` - kártyák (az egyik szűrő kötelező).
-- `POST /api/v1/lesson-cards` `{ lessonId, front, back, packId?, sectionSlug? }`
-- `GET/PATCH/DELETE /api/v1/lesson-cards/:id`
+- `POST /api/v1/lesson-cards` - kivezetve (410): hivatalos kártya csak a lecke szerkesztőből hozható létre.
+- `GET /api/v1/lesson-cards?lessonId=&packId=` és `GET /api/v1/lesson-cards/:id` - csak olvasás.
+- `PATCH/DELETE /api/v1/lesson-cards/:id` - kivezetve (410).
 
 ## Saját csomagok és kártyák
 
 A kulcs tulajdonosának saját csomagjai. Típus automatikus: nyelvi tantárgynál szókártya, máshol tanulókártya.
 
 - `GET /api/v1/decks?subjectId=` - saját csomagok kártyaszámmal.
-- `POST /api/v1/decks` `{ title, subjectId?, levelId?, materialId?, lessonId?, lessonIds?, isPublic?, cards? }`
+- `POST /api/v1/decks` `{ title, subjectId?, levelId?, materialId?, isPublic?, cards? }` - leckéhez csatolni nem lehet (403), publikálni csak tanár tud.
   - `cards`: `[{ front, back }]` max 200 létrehozáskor.
   - `isPublic: true` - publikált tanári csomag: a Felfedezésben és a csatolt leckénél mindenkinek látszik.
 - `GET /api/v1/decks/:id` - csomag kártyákkal.

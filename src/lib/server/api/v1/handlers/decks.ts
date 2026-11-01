@@ -1,4 +1,4 @@
-import { ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum/curriculum';
+import { ensureCurriculumSchema } from '$lib/server/curriculum/curriculum';
 import { cardKindForSubject } from '$lib/deck/sm2';
 import { err, intParam, newId, ok, readJson, strParam, type RouteCtx } from '../http';
 
@@ -47,17 +47,19 @@ export async function handleDecks(ctx: RouteCtx): Promise<Response | null> {
 		}
 		const id = newId('deck');
 		const now = Math.floor(Date.now() / 1000);
-		const lessonIds = Array.isArray(body.lessonIds)
-			? [...new Set(body.lessonIds.map((s) => String(s).trim()).filter(Boolean))].slice(0, 50)
-			: body.lessonId || body.lesson_id
-				? [String(body.lessonId ?? body.lesson_id)]
-				: [];
-		const isPublic = body.isPublic === true || body.is_public === 1 || body.is_public === true ? 1 : 0;
+		if (body.lessonIds !== undefined || body.lessonId !== undefined || body.lesson_id !== undefined) {
+			return err('Leckéhez csak a lecke szerkesztőből csatolhatsz csomagot.', 403);
+		}
+		const wantsPublic = body.isPublic === true || body.is_public === 1 || body.is_public === true;
+		if (wantsPublic && user.role !== 'teacher' && user.role !== 'admin' && !user.is_admin) {
+			return err('Publikálni csak tanár tud.', 403);
+		}
+		const isPublic = wantsPublic ? 1 : 0;
 		await ensureCurriculumSchema(db);
 		const batch: { run: () => Promise<unknown> }[] = [];
 		batch.push(
-			db.prepare(`INSERT INTO decks (id, user_id, title, kind, card_kind, subject_id, level_id, material_id, lesson_id, is_public, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-				.bind(id, user.id, title.slice(0, 200), 'cards', cardKind, subjectId, String(body.levelId ?? body.level_id ?? '').trim() || null, String(body.materialId ?? body.material_id ?? '').trim() || null, lessonIds[0] ?? null, isPublic, now) as unknown as { run: () => Promise<unknown> }
+			db.prepare(`INSERT INTO decks (id, user_id, title, kind, card_kind, subject_id, level_id, material_id, lesson_id, is_public, is_lesson, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 0, ?, ?)`)
+				.bind(id, user.id, title.slice(0, 200), 'cards', cardKind, subjectId, String(body.levelId ?? body.level_id ?? '').trim() || null, String(body.materialId ?? body.material_id ?? '').trim() || null, isPublic, user.id, now) as unknown as { run: () => Promise<unknown> }
 		);
 		for (let i = 0; i < cleanCards.length; i++) {
 			batch.push(
@@ -66,13 +68,6 @@ export async function handleDecks(ctx: RouteCtx): Promise<Response | null> {
 			);
 		}
 		await db.batch(batch as never[]);
-		if (lessonIds.length > 0) {
-			try {
-				await setDeckLessons(db, id, lessonIds);
-			} catch {
-				// nem kritikus
-			}
-		}
 		return ok({ ok: true, id, cardKind }, 201);
 	}
 	if (head === 'decks' && second && third === 'cards' && method === 'GET') {
@@ -85,8 +80,9 @@ export async function handleDecks(ctx: RouteCtx): Promise<Response | null> {
 		return ok({ cards: res.results ?? [] });
 	}
 	if (head === 'decks' && second && !third) {
-		const owner = await db.prepare(`SELECT user_id AS userId FROM decks WHERE id = ?`).bind(second).first<{ userId: string }>().catch(() => null);
+		const owner = await db.prepare(`SELECT user_id AS userId, COALESCE(is_lesson, 0) AS isLesson FROM decks WHERE id = ?`).bind(second).first<{ userId: string; isLesson: number }>().catch(() => null);
 		if (!owner || owner.userId !== user.id) return err('Nincs ilyen csomag.', 404);
+		if ((owner.isLesson ?? 0) === 1) return err('Ezt a csomagot a lecke szerkesztőben szerkesztheted.', 403);
 		if (method === 'GET') {
 			const deck = await db
 				.prepare(`SELECT id, title, COALESCE(kind, 'cards') AS kind, COALESCE(card_kind, 'word') AS cardKind, subject_id AS subjectId, level_id AS levelId, material_id AS materialId, lesson_id AS lessonId, COALESCE(is_public, 0) AS isPublic FROM decks WHERE id = ?`)
@@ -120,32 +116,20 @@ export async function handleDecks(ctx: RouteCtx): Promise<Response | null> {
 				sets.push('material_id = ?');
 				args.push(String(body.materialId ?? body.material_id ?? '').trim() || null);
 			}
-			let nextLessonIds: string[] | null = null;
-			if (body.lessonIds !== undefined) {
-				nextLessonIds = Array.isArray(body.lessonIds) ? [...new Set(body.lessonIds.map((s: unknown) => String(s).trim()).filter(Boolean))].slice(0, 50) : [];
-				sets.push('lesson_id = ?');
-				args.push(nextLessonIds[0] ?? null);
-			} else if (body.lessonId !== undefined || body.lesson_id !== undefined) {
-				const l = String(body.lessonId ?? body.lesson_id ?? '').trim() || null;
-				sets.push('lesson_id = ?');
-				args.push(l);
-				nextLessonIds = l ? [l] : [];
+			if (body.lessonIds !== undefined || body.lessonId !== undefined || body.lesson_id !== undefined) {
+				return err('Leckéhez csak a lecke szerkesztőből csatolhatsz csomagot.', 403);
 			}
 			if (body.isPublic !== undefined || body.is_public !== undefined) {
 				const v = body.isPublic ?? body.is_public;
+				if ((v === true || v === 1) && user.role !== 'teacher' && user.role !== 'admin' && !user.is_admin) {
+					return err('Publikálni csak tanár tud.', 403);
+				}
 				sets.push('is_public = ?');
 				args.push(v === true || v === 1 ? '1' : '0');
 			}
-			if (sets.length === 0 && nextLessonIds === null) return err('Nincs módosítás.', 400);
+			if (sets.length === 0) return err('Nincs módosítás.', 400);
 			if (sets.length > 0) {
 				await db.prepare(`UPDATE decks SET ${sets.join(', ')} WHERE id = ?`).bind(...args, second).run();
-			}
-			if (nextLessonIds !== null) {
-				try {
-					await setDeckLessons(db, second, nextLessonIds);
-				} catch {
-					// nem kritikus
-				}
 			}
 			return ok({ ok: true });
 		}

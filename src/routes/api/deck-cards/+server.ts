@@ -41,11 +41,13 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		await ensureCurriculumSchema(db);
 		const owner = await db
-			.prepare(`SELECT user_id AS userId FROM decks WHERE id = ?`)
+			.prepare(`SELECT user_id AS userId, COALESCE(is_lesson, 0) AS isLesson FROM decks WHERE id = ?`)
 			.bind(deckId)
-			.first<{ userId: string }>();
+			.first<{ userId: string; isLesson: number }>();
 		if (!owner || owner.userId !== user.id)
 			return json({ error: 'Nincs ilyen csomag.' }, { status: 404 });
+		if (owner.isLesson === 1)
+			return json({ error: 'Ezt a csomagot a lecke szerkesztőben szerkesztheted.' }, { status: 403 });
 		// Kötegelt felvétel: a teljes lista egy kérésben érkezik.
 		if (Array.isArray(body.cards)) {
 			const cleaned = body.cards.map(cleanCardInput);
@@ -127,11 +129,13 @@ export const PUT: RequestHandler = async (event) => {
 	try {
 		await ensureCurriculumSchema(db);
 		const owner = await db
-			.prepare(`SELECT user_id AS userId FROM decks WHERE id = ?`)
+			.prepare(`SELECT user_id AS userId, COALESCE(is_lesson, 0) AS isLesson FROM decks WHERE id = ?`)
 			.bind(deckId)
-			.first<{ userId: string }>();
+			.first<{ userId: string; isLesson: number }>();
 		if (!owner || owner.userId !== user.id)
 			return json({ error: 'Nincs ilyen csomag.' }, { status: 404 });
+		if (owner.isLesson === 1)
+			return json({ error: 'Ezt a csomagot a lecke szerkesztőben szerkesztheted.' }, { status: 403 });
 		const cleaned: { id: string; front: string; back: string; sectionSlug: string }[] = [];
 		for (let i = 0; i < list.length; i++) {
 			const id = list[i].id?.trim() ?? '';
@@ -183,11 +187,13 @@ export const DELETE: RequestHandler = async (event) => {
 	try {
 		await ensureCurriculumSchema(db);
 		const owner = await db
-			.prepare(`SELECT user_id AS userId FROM decks WHERE id = ?`)
+			.prepare(`SELECT user_id AS userId, COALESCE(is_lesson, 0) AS isLesson FROM decks WHERE id = ?`)
 			.bind(deckId)
-			.first<{ userId: string }>();
+			.first<{ userId: string; isLesson: number }>();
 		if (!owner || owner.userId !== user.id)
 			return json({ error: 'Nincs ilyen csomag.' }, { status: 404 });
+		if (owner.isLesson === 1)
+			return json({ error: 'Ezt a csomagot a lecke szerkesztőben szerkesztheted.' }, { status: 403 });
 		const placeholders = ids.map(() => '?').join(',');
 		const res = await db
 			.prepare(`DELETE FROM deck_cards WHERE deck_id = ? AND id IN (${placeholders})`)

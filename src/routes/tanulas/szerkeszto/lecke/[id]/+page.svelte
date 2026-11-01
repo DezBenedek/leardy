@@ -5,5 +5,5 @@
 </script>
 
 {#key data.lesson.id}
-	<LessonEditor lesson={data.lesson} initialQuizzes={data.quizzes} />
+	<LessonEditor lesson={data.lesson} initialQuizzes={data.quizzes} initialDecks={data.decks} />
 {/key}

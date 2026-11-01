@@ -13,17 +13,18 @@
 	import { markdownLessonDoc } from '$lib/curriculum/lesson-markdown';
 	import { getLessonDraft, putLessonDraft, removeLessonDraft, lessonDraftKey, type LessonDraft } from '$lib/curriculum/lesson-draft';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
-	import { ArrowDown, ArrowLeft, ArrowUp, ListChecks, Menu, Pencil, Plus, Save, Trash2, FileClock, X } from '@lucide/svelte';
+	import { ArrowDown, ArrowLeft, ArrowUp, Layers, ListChecks, Menu, Pencil, Plus, Save, Trash2, FileClock, X } from '@lucide/svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import ActionMenu from '$lib/ui/ActionMenu.svelte';
 	import Drawer from './Drawer.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
+	import LessonDecksDrawer from './LessonDecksDrawer.svelte';
 	import { editCurriculum } from '$lib/curriculum/curriculum-edit-api';
-	import { parseEditableSections, type EditorLesson, type EditorQuiz } from '$lib/curriculum/curriculum-editor';
+	import { parseEditableSections, type EditorLesson, type EditorQuiz, type EditorLessonDeck } from '$lib/curriculum/curriculum-editor';
 	import { toast } from '$lib/state/toast.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 
-	let { lesson, initialQuizzes = [] }: { lesson: EditorLesson; initialQuizzes?: EditorQuiz[] } = $props();
+	let { lesson, initialQuizzes = [], initialDecks = [] }: { lesson: EditorLesson; initialQuizzes?: EditorQuiz[]; initialDecks?: EditorLessonDeck[] } = $props();
 	const editorId = $props.id();
 	const initialContent: LessonContentV1 = untrack(() => ({ version: 1, sections: lesson.content
 		? lesson.content.sections.map((section) => ({ ...section, doc: editableLessonDoc(section.doc) }))
@@ -151,7 +152,9 @@
 	});
 	let renameOpen = $state(false);
 	let deleteOpen = $state(false);
+	let decksOpen = $state(false);
 	let quizTotal = $state(untrack(() => initialQuizzes.reduce((n, q) => n + (q.questions?.length ?? 0), 0)));
+	let deckTotal = $state(untrack(() => initialDecks.reduce((n, d) => n + (d.count ?? 0), 0)));
 	let rename = $state('');
 	let formError = $state('');
 	const fieldClass = 'w-full rounded-xl border border-stone-300 bg-white px-3 py-3 text-ink-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:opacity-60 dark:border-white/15 dark:bg-white/5 dark:text-white';
@@ -188,6 +191,7 @@
 	const goBack = createBackNavigation(() => resolve(backUrl), { direct: true });
 
 	const quizLabel = $derived(quizTotal > 0 ? `Kvíz (${quizTotal})` : 'Kvíz');
+	const deckLabel = $derived(deckTotal > 0 ? `Kártyacsomagok (${deckTotal})` : 'Kártyacsomagok');
 
 	function openRename() { rename = title; formError = ''; renameOpen = true; }
 	function openDelete() { formError = ''; deleteOpen = true; }
@@ -293,6 +297,7 @@
 			<IconButton ariaLabel="Mentés" size={44} disabled={locked || !dirty} onclick={() => { void save(); }}><Save size={20} /></IconButton>
 			<ActionMenu compact triggerIcon={Menu} label="Lecke műveletei" disabled={locked} actions={[
 				{ id: 'quiz', label: quizLabel, icon: ListChecks, onclick: () => { void openQuiz(); } },
+				{ id: 'decks', label: deckLabel, icon: Layers, onclick: () => { decksOpen = true; } },
 				{ id: 'rename', label: 'Átnevezés', icon: Pencil, onclick: openRename },
 				{ id: 'delete', label: 'Törlés', icon: Trash2, tone: 'danger', onclick: openDelete }
 			]} />
@@ -360,6 +365,14 @@
 	{busy}
 	onClose={() => { if (!locked) deleteOpen = false; }}
 	onConfirm={() => { void deleteLesson(); }}
+/>
+
+<LessonDecksDrawer
+	lessonId={lesson.id}
+	levelId={lesson.levelId}
+	open={decksOpen}
+	initialDecks={initialDecks}
+	onClose={() => { decksOpen = false; }}
 />
 
 <style>

@@ -18,7 +18,6 @@
 	import { invalidate } from '$lib/state/query.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import ContentPicker, { type ContentPick } from '$lib/components/ContentPicker.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import Skeleton from '$lib/ui/Skeleton.svelte';
@@ -29,7 +28,8 @@
 	import { backLabel, frontLabel, levelLabel, norm, type CardRow } from './edit-format';
 
 	/* Saját csomag szerkesztője külön oldalon: piszkozat + kifejezett Mentés.
-	   Beállítások (név, működés, besorolás, csatolás) drawerben, kártyák alatta. */
+	   Beállítások (név, besorolás, publikálás) drawerben, kártyák alatta.
+	   Leckéhez csatolni csak a lecke szerkesztőből lehet. */
 
 	const deckParam = $derived(page.params.id ?? '');
 	const deckId = $derived(
@@ -51,17 +51,14 @@
 	let subjectId = $state('');
 	let levelId = $state('');
 	let materialId = $state('');
-	let lessonId = $state('');
-	/** Több leckéhez csatolás: az összes csatolt lecke azonosítója. */
-	let lessonIds = $state<string[]>([]);
-	let attachedLessons = $state<ContentPick[]>([]);
-	let lessonPickerOpen = $state(false);
+	/** Hivatalos lecke csomag: a Kártyák felől nem szerkeszthető. */
+	let officialBlocked = $state<{ lessonId: string | null } | null>(null);
 	/** Tanári publikálás: mindenkinek látszik a Felfedezésben és a csatolt leckénél. */
 	let isPublic = $state(false);
 	let cards = $state<CardRow[]>([]);
 	let removedIds = $state<string[]>([]);
 
-	/** Publikálni és leckéhez csatolni csak tanár (vagy admin) tud, diák nem. */
+	/** Publikálni csak tanár (vagy admin) tud, diák nem. */
 	let isTeacher = $derived(
 		auth.ready &&
 			(auth.user?.role === 'teacher' ||
@@ -76,8 +73,6 @@
 		subject: null as string | null,
 		level: null as string | null,
 		material: null as string | null,
-		lesson: null as string | null,
-		lessons: [] as string[],
 		isPublic: false
 	});
 
@@ -89,9 +84,7 @@
 	let levelLabelLow = $derived(levelLabel.toLowerCase());
 
 	let materials = $derived(levels.find((l) => l.id === levelId)?.materials ?? []);
-	let lessonOptions = $derived(materials.find((m) => m.id === materialId)?.lessons ?? []);
 	let materialTitle = $derived(materials.find((m) => m.id === materialId)?.title ?? '');
-	let lessonTitle = $derived(lessonOptions.find((l) => l.id === lessonId)?.title ?? '');
 	/** Automatikus típus a tantárgy alapján: nyelvnél Szókártya, máshol Tanulókártya. */
 	let autoKindLabel = $derived(deckCardKindLabel(cardKind));
 
@@ -103,10 +96,6 @@
 		if ((subjectId || null) !== snap.subject) return true;
 		if ((levelId || null) !== snap.level) return true;
 		if ((materialId || null) !== snap.material) return true;
-		const cur = [...lessonIds].sort().join('|');
-		const old = [...snap.lessons].sort().join('|');
-		if (cur !== old) return true;
-		if ((lessonId || null) !== snap.lesson) return true;
 		if (removedIds.length > 0) return true;
 		for (const c of cards) {
 			const f = norm(c.front);
@@ -133,7 +122,16 @@
 		loadError = null;
 		try {
 			const res = await fetchDeckRaw(deckId);
-			if (!res.ok) throw new Error(await readError(res, 'Nem sikerült betölteni a csomagot.'));
+			if (!res.ok) {
+				const blocked = await res.json().catch(() => ({}));
+				if (res.status === 403 && blocked?.isLesson) {
+					officialBlocked = { lessonId: typeof blocked.lessonId === 'string' ? blocked.lessonId : null };
+					loading = false;
+					return;
+				}
+				throw new Error(await readError(res, 'Nem sikerült betölteni a csomagot.'));
+			}
+			officialBlocked = null;
 			const j = await res.json();
 			const d = j.deck;
 			title = d.title ?? '';
@@ -141,42 +139,13 @@
 			subjectId = d.subjectId ?? '';
 			levelId = d.levelId ?? '';
 			materialId = d.materialId ?? '';
-			const ids: string[] = Array.isArray(d.lessonIds)
-				? d.lessonIds.filter(Boolean)
-				: d.lessonId
-					? [d.lessonId]
-					: [];
-			lessonIds = ids;
-			lessonId = ids[0] ?? '';
 			isPublic = d.isPublic === true;
-			const rawLessons: { id: string; title: string }[] = Array.isArray(d.lessons)
-				? d.lessons
-				: [];
-			attachedLessons = lessonIds.map((id) => {
-				const found = rawLessons.find((l) => l.id === id);
-				return {
-					kind: 'lesson' as const,
-					subjectId: subjectId,
-					subjectTitle: '',
-					levelId: levelId,
-					levelTitle: '',
-					levelLabel: 'Tananyag',
-					topicId: materialId,
-					topicTitle: '',
-					lessonId: id,
-					lessonTitle: found?.title ?? id,
-					quizCount: 0,
-					crumb: found?.title ?? id
-				};
-			});
 			snap = {
 				title,
 				cardKind,
 				subject: d.subjectId ?? null,
 				level: d.levelId ?? null,
 				material: d.materialId ?? null,
-				lesson: d.lessonId ?? null,
-				lessons: [...lessonIds],
 				isPublic
 			};
 			cards = (d.cards ?? []).map(
@@ -220,9 +189,6 @@
 		subjectId = v;
 		levelId = '';
 		materialId = '';
-		lessonId = '';
-		lessonIds = [];
-		attachedLessons = [];
 		for (const c of cards) c.sectionSlug = '';
 		const subj = subjects.find((s) => s.id === v);
 		cardKind = cardKindForSubject(subj?.title ?? '', subj?.icon ?? 'book', v || null);
@@ -232,38 +198,12 @@
 	function onLevel(v: string) {
 		levelId = v;
 		materialId = '';
-		lessonId = '';
-		lessonIds = [];
-		attachedLessons = [];
 		for (const c of cards) c.sectionSlug = '';
 	}
 
 	function onMaterial(v: string) {
 		materialId = v;
-		// Többes csatolásnál a témakör csak tájékoztató: a leckék maradnak.
 		for (const c of cards) c.sectionSlug = '';
-	}
-
-	function onLessonPick(picks: ContentPick[]) {
-		attachedLessons = picks;
-		lessonIds = picks.map((p) => p.lessonId).filter(Boolean);
-		lessonId = lessonIds[0] ?? '';
-		// Örökölt egy-leckés mezők az első választáshoz igazodnak.
-		const first = picks[0];
-		if (first) {
-			materialId = first.topicId ?? materialId;
-		} else {
-			materialId = '';
-			lessonId = '';
-		}
-		lessonPickerOpen = false;
-	}
-
-	function removeLesson(id: string) {
-		attachedLessons = attachedLessons.filter((p) => p.lessonId !== id);
-		lessonIds = lessonIds.filter((x) => x !== id);
-		lessonId = lessonIds[0] ?? '';
-		if (lessonIds.length === 0) materialId = '';
 	}
 
 	/** Mindig van egy üres sor a végén: ha az utolsóba írnak, új üres nyílik. */
@@ -455,18 +395,14 @@
 		try {
 		// 1. Beállítások egyetlen PATCH-csel. A típus automatikus,
 		// ezért cardKind nem megy: a tantárgy dönti el a szerveren is.
-		// Csatolás és publikálás csak tanárnak megy: diák mentése ezeket nem érinti.
-		const patch: Record<string, string | string[] | boolean | null> = {};
+		// Publikálás csak tanárnak megy: diák mentése ezt nem érinti.
+		// Leckéhez csatolni csak a lecke szerkesztőből lehet.
+		const patch: Record<string, string | boolean | null> = {};
 		if (t !== snap.title) patch.title = t;
 		if ((subjectId || null) !== snap.subject) patch.subjectId = subjectId || null;
 			if ((levelId || null) !== snap.level) patch.levelId = levelId || null;
 			if ((materialId || null) !== snap.material) patch.materialId = materialId || null;
-			if (isTeacher) {
-				const curLessons = [...lessonIds].sort().join('|');
-				const oldLessons = [...snap.lessons].sort().join('|');
-				if (curLessons !== oldLessons) patch.lessonIds = [...lessonIds];
-				if (isPublic !== snap.isPublic) patch.isPublic = isPublic;
-			}
+			if (isTeacher && isPublic !== snap.isPublic) patch.isPublic = isPublic;
 			if (Object.keys(patch).length > 0) {
 				const res = await mutationFetch(`/api/decks/${encodeURIComponent(deckId)}`, {
 					method: 'PATCH',
@@ -480,8 +416,6 @@
 				subject: subjectId || null,
 				level: levelId || null,
 				material: materialId || null,
-				lesson: lessonId || null,
-				lessons: [...lessonIds],
 				isPublic
 			};
 			// Tantárgyváltás után a szerver automatikus típusát vesszük át.
@@ -606,6 +540,26 @@
 			<ArrowLeft size={21} />
 		</IconButton>
 	</div>
+{:else if officialBlocked}
+	<EmptyState
+		title="Hivatalos lecke csomag"
+		description="Ezt a csomagot a lecke szerkesztőben szerkesztheted. A Kártyák oldalon csak gyakorolhatod."
+	/>
+	<div class="mt-4 flex justify-center gap-2">
+		{#if officialBlocked.lessonId}
+			<Button
+				onclick={() => {
+					const target = `/tanulas/szerkeszto/lecke/${encodeURIComponent(officialBlocked?.lessonId ?? '')}/kartya/${encodeURIComponent(deckId)}`;
+					void goto(target);
+				}}
+			>
+				Megnyitás a lecke szerkesztőben
+			</Button>
+		{/if}
+		<IconButton ariaLabel="Vissza az adatlapra" size={44} onclick={goBack}>
+			<ArrowLeft size={21} />
+		</IconButton>
+	</div>
 {:else}
 	<div class="flex items-center gap-2">
 		<IconButton ariaLabel="Vissza az adatlapra" size={44} onclick={goBack}>
@@ -673,13 +627,10 @@
 	{autoKindLabel}
 	{isTeacher}
 	bind:isPublic
-	{attachedLessons}
 	{saving}
 	{subjectId}
 	onPickSubject={() => (picker = 'subject')}
 	onPickLevel={() => (picker = 'level')}
-	onOpenLessonPicker={() => (lessonPickerOpen = true)}
-	onRemoveLesson={removeLesson}
 	onDelete={() => (deleteOpen = true)}
 />
 
@@ -703,16 +654,6 @@
 />
 
 
-<ContentPicker
-	open={lessonPickerOpen}
-	{subjects}
-	baseSubjectId={subjectId || undefined}
-	select="lesson"
-	multi
-	initialSelected={attachedLessons}
-	onClose={() => (lessonPickerOpen = false)}
-	onPick={(picks) => onLessonPick(picks)}
-/>
 
 <ConfirmDialog
 	open={deleteOpen}

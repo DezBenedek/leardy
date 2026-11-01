@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { D1Database } from '@cloudflare/workers-types';
 import { getDb, requireUser, type PublicUser } from '$lib/server/infra/db';
-import { canPublishDeck, ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum/curriculum';
+import { canPublishDeck, ensureCurriculumSchema } from '$lib/server/curriculum/curriculum';
 import { cardKindForSubject } from '$lib/deck/sm2';
 
 /* Saját csomag lekérése, módosítása, törlése.
@@ -41,7 +41,8 @@ export const GET: RequestHandler = async (event) => {
 					COALESCE(card_kind, 'word') AS cardKind,
 					subject_id AS subjectId, level_id AS levelId,
 					material_id AS materialId, lesson_id AS lessonId,
-					COALESCE(is_public, 0) AS isPublic
+					COALESCE(is_public, 0) AS isPublic,
+					COALESCE(is_lesson, 0) AS isLesson
 				 FROM decks WHERE id = ?`
 			)
 			.bind(g.deckId)
@@ -55,8 +56,20 @@ export const GET: RequestHandler = async (event) => {
 				materialId: string | null;
 				lessonId: string | null;
 				isPublic: number;
+				isLesson: number;
 			}>();
 		if (!deck) return json({ error: 'Nincs ilyen csomag.' }, { status: 404 });
+		// Hivatalos lecke csomag a Kártyák felől nem szerkeszthető: a lecke alatti oldalra mutatunk.
+		if ((deck.isLesson ?? 0) === 1) {
+			let lessonId: string | null = deck.lessonId;
+			try {
+				const link = await db.prepare(`SELECT lesson_id AS id FROM deck_lessons WHERE deck_id = ? ORDER BY sort LIMIT 1`).bind(g.deckId).first<{ id: string }>();
+				if (link?.id) lessonId = link.id;
+			} catch {
+				// kapcsoló nélkül marad a régi mező
+			}
+			return json({ error: 'Ezt a csomagot a lecke szerkesztőben szerkesztheted.', isLesson: true, lessonId }, { status: 403 });
+		}
 		const cardsRes = await db
 			.prepare(
 				`SELECT id, COALESCE(front, '') AS front, COALESCE(back, '') AS back,
@@ -148,11 +161,24 @@ export const PATCH: RequestHandler = async (event) => {
 		await ensureCurriculumSchema(db);
 		const g = await guard(event, db);
 		if (g instanceof Response) return g;
+		// Hivatalos lecke csomag a Kártyák felől nem írható.
+		try {
+			const flag = await db
+				.prepare(`SELECT COALESCE(is_lesson, 0) AS isLesson FROM decks WHERE id = ?`)
+				.bind(g.deckId)
+				.first<{ isLesson: number }>();
+			if (flag && flag.isLesson === 1) {
+				return json({ error: 'Ezt a csomagot a lecke szerkesztőben szerkesztheted.' }, { status: 403 });
+			}
+		} catch {
+			// jelölő nélkül folytatjuk
+		}
 		// Csatolás és publikálás csak tanárnak: diák kérése 403-mal elutasítva,
 		// hogy a felület se tudjon csendben mást mutatni a valóságnál.
 		const mayPublish = canPublishDeck(g.user);
-		if (!mayPublish && (body.lessonIds !== undefined || body.lessonId !== undefined))
-			return json({ error: 'Leckéhez csak tanár csatolhat.' }, { status: 403 });
+		// Leckéhez csatolni csak a lecke szerkesztőből lehet.
+		if (body.lessonIds !== undefined || body.lessonId !== undefined)
+			return json({ error: 'Leckéhez csak a lecke szerkesztőből csatolhatsz csomagot.' }, { status: 403 });
 		if (!mayPublish && body.isPublic !== undefined)
 			return json({ error: 'Publikálni csak tanár tud.' }, { status: 403 });
 		const sets: string[] = [];
@@ -181,19 +207,6 @@ export const PATCH: RequestHandler = async (event) => {
 			sets.push('material_id = ?');
 			args.push(body.materialId || null);
 		}
-		let nextLessonIds: string[] | null = null;
-		if (body.lessonIds !== undefined) {
-			nextLessonIds = Array.isArray(body.lessonIds)
-				? [...new Set(body.lessonIds.map((s) => `${s ?? ''}`.trim()).filter(Boolean))].slice(0, 50)
-				: [];
-			sets.push('lesson_id = ?');
-			args.push(nextLessonIds[0] ?? null);
-		} else if (body.lessonId !== undefined) {
-			const lesson = body.lessonId || null;
-			sets.push('lesson_id = ?');
-			args.push(lesson);
-			nextLessonIds = lesson ? [lesson] : [];
-		}
 		if (body.isPublic !== undefined) {
 			sets.push('is_public = ?');
 			args.push(body.isPublic === true ? 1 : 0);
@@ -216,19 +229,12 @@ export const PATCH: RequestHandler = async (event) => {
 				// típus nélkül is menthető a besorolás
 			}
 		}
-		if (sets.length === 0 && nextLessonIds === null) return json({ error: 'Nincs módosítás.' }, { status: 400 });
+		if (sets.length === 0) return json({ error: 'Nincs módosítás.' }, { status: 400 });
 		if (sets.length > 0) {
 			await db
 				.prepare(`UPDATE decks SET ${sets.join(', ')} WHERE id = ?`)
 				.bind(...args, g.deckId)
 				.run();
-		}
-		if (nextLessonIds !== null) {
-			try {
-				await setDeckLessons(db, g.deckId, nextLessonIds);
-			} catch {
-				// a régi oszlop már beállt
-			}
 		}
 		// Visszavont publikálás: a mentett példányok sem nyithatók többé.
 		if (body.isPublic === false) {
@@ -257,6 +263,18 @@ export const DELETE: RequestHandler = async (event) => {
 		await ensureCurriculumSchema(db);
 		const g = await guard(event, db);
 		if (g instanceof Response) return g;
+		// Hivatalos lecke csomag a Kártyák felől nem törölhető.
+		try {
+			const flag = await db
+				.prepare(`SELECT COALESCE(is_lesson, 0) AS isLesson FROM decks WHERE id = ?`)
+				.bind(g.deckId)
+				.first<{ isLesson: number }>();
+			if (flag && flag.isLesson === 1) {
+				return json({ error: 'Ezt a csomagot a lecke szerkesztőben törölheted.' }, { status: 403 });
+			}
+		} catch {
+			// jelölő nélkül folytatjuk
+		}
 		// CASCADE mellett is explicit töröljük a kártyákat (D1 FK-kikapcsolás ellen).
 		await db.batch([
 			db.prepare(`DELETE FROM deck_cards WHERE deck_id = ?`).bind(g.deckId),

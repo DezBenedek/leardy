@@ -33,7 +33,7 @@
 <svelte:head><title>Kvíz: {lesson.title} | Leardy</title></svelte:head>
 <svelte:window onbeforeunload={beforeUnload} />
 
-<QuizEditorCore {adapter} {sections} initialQuizzes={quizzes}
+<QuizEditorCore {adapter} {sections} initialQuizzes={quizzes} lessonId={lesson.id}
 	onDirtyChange={(value) => (hasUnsavedChanges = value)} onBusyChange={(value) => (busy = value)}>
 	{#snippet header(actions)}
 		<header class="mb-4 flex flex-wrap items-center gap-2 sm:gap-3">

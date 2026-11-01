@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick, untrack, type Snippet } from 'svelte';
-	import { ArrowDown, ArrowUp, Copy, Eye, LayoutTemplate, Pencil, Trash2 } from '@lucide/svelte';
+	import { ArrowDown, ArrowUp, Copy, Eye, LayoutTemplate, LoaderCircle, Menu, Pencil, Sparkles, Trash2 } from '@lucide/svelte';
 	import AddItemButton from '$lib/ui/AddItemButton.svelte';
 	import { readSettings } from '$lib/question-types/settings';
 	import { typeComponents } from '$lib/question-types/components';
@@ -14,6 +14,9 @@
 	import QuestionForm from './QuestionForm.svelte';
 	import QuestionTypeSheet from './QuestionTypeSheet.svelte';
 	import TemplateSheet from './TemplateSheet.svelte';
+	import AiCountPicker from './AiCountPicker.svelte';
+	import AiFocusPicker, { type AiFocusId } from './AiFocusPicker.svelte';
+	import AiSectionsPicker from './AiSectionsPicker.svelte';
 	import type { QuizAdapter } from './quiz-adapter';
 	import {
 		blankQuestion, deleteCustomTemplate, draftToPreview, effectiveSectionSlug, loadCustomTemplates,
@@ -28,12 +31,13 @@
 		adapter: QuizAdapter;
 		sections: SectionOption[];
 		initialQuizzes: EditorQuiz[];
+		lessonId?: string;
 		header?: Snippet<[Snippet]>;
 		onCountChange?: (total: number) => void;
 		onDirtyChange?: (dirty: boolean) => void;
 		onBusyChange?: (busy: boolean) => void;
 	}
-	let { adapter, sections, initialQuizzes, header, onCountChange, onDirtyChange, onBusyChange }: Props = $props();
+	let { adapter, sections, initialQuizzes, lessonId = '', header, onCountChange, onDirtyChange, onBusyChange }: Props = $props();
 
 	const initial = untrack(() => [...initialQuizzes]);
 	let questions = $state<QuestionDraft[]>(initial.flatMap((quiz) => [...quiz.questions]
@@ -41,7 +45,7 @@
 		.map((q) => ({ id: q.id, quizId: quiz.id, question_text: q.question_text, imageUrl: q.imageUrl, settings: readSettings(q.settings), type: q.type,
 			options: [...q.options], pairs: q.pairs.map((p) => ({ ...p })), correct_answer: q.correct_answer,
 			sectionSlug: effectiveSectionSlug(q.sectionSlug, quiz.section_slug), sort: q.sort }))));
-	let quizId = $state(initial.at(-1)?.id ?? '');
+	let quizId = $state(initial.at(0)?.id ?? '');
 	let busy = $state(false);
 	let imageUploading = $state(false);
 	let templateBusy = $state(false);
@@ -56,6 +60,16 @@
 	let customTemplates = $state<CustomTemplate[]>([]);
 	let preview = $state<{ title: string; questions: QuizQuestion[] } | null>(null);
 	let pending = $state<{ title: string; description: string; label: string; action: () => void } | null>(null);
+	let aiOpen = $state(false);
+	let aiCount = $state(6);
+	let aiSections = $state<string[]>([]);
+	let aiFocus = $state<AiFocusId>('mixed');
+	let aiDifficulty = $state<'easy' | 'normal' | 'hard'>('normal');
+	let aiBusy = $state(false);
+	let aiError = $state('');
+	let aiSkipped = $state(0);
+	let aiDrafts = $state<{ draft: QuestionDraft; selected: boolean }[]>([]);
+	const aiEditorBusy = $derived(editorBusy || aiBusy);
 	let listElement: HTMLUListElement | undefined = $state();
 	// Minden típus saját piszkozatot őriz, így a váltás visszafordítható.
 	let typeDrafts: Partial<Record<QuestionTypeId, QuestionDraft>> = {};
@@ -166,8 +180,8 @@
 		busy = true;
 		formError = '';
 		try {
-			// A létrehozás ugyanahhoz a mentési művelethez tartozik, nincs beágyazott foglaltságzár.
-			if (!quizId) quizId = (await adapter.createQuiz('Kvíz', '')).id;
+			// A kvíz lusta létrehozása ugyanahhoz a mentési művelethez tartozik.
+			if (!quizId) quizId = (await adapter.ensureQuiz()).id;
 			const targetQuizId = draft.quizId || quizId;
 			const saved = await adapter.saveQuestion(targetQuizId, draft, draft.id || undefined);
 			const normalized = { ...draft, ...draftToPreview(draft), id: saved.id, quizId: targetQuizId };
@@ -200,20 +214,99 @@
 		void focusQuestion(result.value.id);
 	}
 	async function moveQuestionRow(id: string, delta: number) {
-		if (editorBusy) return;
+		if (editorBusy || !quizId) return;
 		const index = questions.findIndex((q) => q.id === id);
 		const target = index + delta;
 		if (index < 0 || target < 0 || target >= questions.length) return;
 		const next = [...questions];
 		[next[index], next[target]] = [next[target], next[index]];
-		const result = await run(() => adapter.reorderLessonQuestions(next.map((q) => q.id)));
+		const result = await run(() => adapter.reorderQuestions(quizId, next.map((q) => q.id)));
 		if (!result) return;
-		const assignments = new Map(result.value.assignments.map((q) => [q.id, q.quizId]));
-		questions = next.map((q, sort) => ({ ...q, sort, quizId: assignments.get(q.id) ?? q.quizId }));
+		questions = next.map((q, sort) => ({ ...q, sort }));
 		void focusQuestion(id);
 	}
 	function requestDelete(question: QuestionDraft) {
 		pending = { title: 'Törlöd a kérdést?', description: `„${question.question_text}” véglegesen törlődik a leckéből.`, label: 'Kérdés törlése', action: () => void deleteQuestionRow(question.id) };
+	}
+	function openAi() {
+		if (aiEditorBusy) return;
+		aiError = '';
+		aiOpen = true;
+	}
+	function aiSectionTitle(slug: string): string {
+		return sections.find((section) => section.slug === slug)?.title ?? 'Teljes lecke';
+	}
+	async function generateAi() {
+		if (aiBusy || !lessonId) return;
+		aiBusy = true;
+		aiError = '';
+		aiSkipped = 0;
+		try {
+			const response = await fetch('/api/ai/generate', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ lessonId, kind: 'quiz', count: aiCount, sectionSlugs: aiSections, difficulty: aiDifficulty, focus: aiFocus })
+			});
+			const result = await response.json().catch(() => ({}));
+			if (!response.ok) throw new Error(result.message ?? result.error ?? 'Az AI generálás nem sikerült. Próbáld újra.');
+			const list = Array.isArray(result.drafts) ? result.drafts : [];
+			aiSkipped = typeof result.skipped === 'number' ? result.skipped : 0;
+			aiDrafts = list.map((item: { type: string; question_text: string; options: string[]; correct_answer: string; sectionSlug?: string }, index: number) => ({
+				draft: {
+					...seedToDraft(
+						{
+							type: (['choice', 'tf', 'text'].includes(item.type) ? item.type : 'text') as QuestionTypeId,
+							title: '',
+							subtitle: '',
+							question_text: String(item.question_text ?? ''),
+							options: Array.isArray(item.options) ? item.options.map((o: unknown) => String(o ?? '')) : [],
+							pairs: [],
+							correct_answer: String(item.correct_answer ?? '')
+						},
+						quizId,
+						questions.length + index
+					),
+					sectionSlug: typeof item.sectionSlug === 'string' ? item.sectionSlug.trim().slice(0, 100) : ''
+				},
+				selected: true
+			}));
+			if (!aiDrafts.length) aiError = 'Az AI nem adott értékelhető kérdést. Próbáld újra más bekezdéssel vagy darabszámmal.';
+		} catch (err) {
+			aiError = err instanceof Error ? err.message : 'Az AI generálás nem sikerült. Próbáld újra.';
+		} finally {
+			aiBusy = false;
+		}
+	}
+	function previewAi() {
+		const picked = aiDrafts.filter((item) => item.selected).map((item) => item.draft);
+		if (!picked.length) return;
+		const invalid = picked.findIndex((draft) => validateQuestion(draft));
+		if (invalid >= 0) {
+			aiError = `A ${invalid + 1}. kiválasztott kérdés hibás: ${validateQuestion(picked[invalid]) ?? ''}`;
+			return;
+		}
+		aiError = '';
+		preview = { title: 'AI kérdések előnézete', questions: picked.map(draftToPreview) };
+	}
+	async function insertAi() {
+		const picked = aiDrafts.filter((item) => item.selected).map((item) => item.draft);
+		if (!picked.length || aiEditorBusy) return;
+		busy = true;
+		aiError = '';
+		try {
+			const saved = await adapter.saveQuestions(picked);
+			const fresh = saved.ids.map((id, index) => ({ ...clone(picked[index]), id, quizId: saved.quizId, sort: questions.length + index }));
+			if (!quizId) quizId = saved.quizId;
+			questions = [...questions, ...fresh];
+			aiDrafts = aiDrafts.filter((item) => !item.selected);
+			aiOpen = false;
+			toast.success(`${fresh.length} kérdés beszúrva`);
+			if (fresh.length) void focusQuestion(fresh[fresh.length - 1].id);
+		} catch (err) {
+			aiError = err instanceof Error ? err.message : 'Nem sikerült beszúrni a kérdéseket. Próbáld újra.';
+		} finally {
+			busy = false;
+		}
 	}
 	async function deleteQuestionRow(id: string) {
 		const index = questions.findIndex((q) => q.id === id);
@@ -227,8 +320,11 @@
 
 {#snippet actions()}
 	<div class="flex shrink-0 items-center gap-1 sm:gap-2">
-		<Button size="sm" variant="ghost" ariaLabel="Kvíz előnézete" disabled={editorBusy || !questions.length} onclick={previewAll}><Eye size={17} aria-hidden="true" /><span class="hidden sm:inline">Előnézet</span></Button>
-		<Button size="sm" variant="ghost" ariaLabel="Saját sablonok" disabled={editorBusy} onclick={openTemplates}><LayoutTemplate size={17} aria-hidden="true" /><span class="hidden sm:inline">Sablonok</span></Button>
+		<ActionMenu compact triggerIcon={Menu} label="Kvíz műveletei" disabled={aiEditorBusy} actions={[
+			{ id: 'preview', label: 'Előnézet', icon: Eye, disabled: !questions.length, onclick: previewAll },
+			{ id: 'templates', label: 'Sablonok', icon: LayoutTemplate, onclick: openTemplates },
+			...(lessonId ? [{ id: 'ai', label: 'AI generálás', icon: Sparkles, onclick: openAi }] : [])
+		]} />
 	</div>
 {/snippet}
 
@@ -282,6 +378,64 @@
 <TemplateSheet open={templateSheetOpen} custom={customTemplates} busy={templateBusy} error={templateError}
 	onRetry={openTemplates}
 	onClose={() => (templateSheetOpen = false)} onPick={applyTemplate} onDeleteCustom={removeTemplate} />
+{#if lessonId}
+	<Sheet open={aiOpen} label="AI generálás" title="AI generálás" onClose={() => { if (!aiBusy) aiOpen = false; }}>
+		<div class="mt-4 space-y-4">
+			<AiCountPicker bind:value={aiCount} max={10} disabled={aiBusy} />
+			<AiSectionsPicker bind:selected={aiSections} {sections} disabled={aiBusy} />
+			<AiFocusPicker bind:value={aiFocus} disabled={aiBusy} />
+			<div>
+				<p class="text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Nehézség</p>
+				<div class="mt-1.5 flex flex-wrap gap-1.5" role="group" aria-label="Kérdések nehézsége">
+					{#each [{ id: 'easy', label: 'Könnyű' }, { id: 'normal', label: 'Közepes' }, { id: 'hard', label: 'Nehéz' }] as d (d.id)}
+						<button
+							type="button"
+							aria-pressed={aiDifficulty === d.id}
+							disabled={aiBusy}
+							onclick={() => (aiDifficulty = d.id as 'easy' | 'normal' | 'hard')}
+							class={['rounded-xl px-3.5 py-2 text-sm font-extrabold transition active:scale-[0.97] disabled:opacity-60', aiDifficulty === d.id ? 'bg-brand-500 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-white/10 dark:text-stone-300 dark:hover:bg-white/15']}
+						>{d.label}</button>
+					{/each}
+				</div>
+			</div>
+			{#if aiError}<p role="alert" class="text-sm text-red-600 dark:text-red-400">{aiError}</p>{/if}
+			<Button block busy={aiBusy} disabled={aiBusy} onclick={() => void generateAi()}>Generálás</Button>
+			{#if aiBusy}
+				<p role="status" class="flex items-center gap-2 text-sm font-medium text-stone-500 dark:text-stone-400"><LoaderCircle size={17} class="animate-spin motion-reduce:animate-none" aria-hidden="true" /> Generálás folyamatban, ez akár egy percig is tarthat.</p>
+			{/if}
+			{#if aiDrafts.length > 0}
+				<div class="border-t border-stone-200 pt-3 dark:border-white/10">
+					<p class="text-xs font-bold text-stone-500 dark:text-stone-400">
+						{aiDrafts.filter((item) => item.selected).length} / {aiDrafts.length} kiválasztva{#if aiSkipped > 0} · {aiSkipped} hibás sor kimaradt{/if}
+					</p>
+					<ul class="mt-2 space-y-1.5">
+						{#each aiDrafts as item, index (index)}
+							<li>
+								<button
+									type="button"
+									aria-pressed={item.selected}
+									disabled={aiBusy}
+									onclick={() => (item.selected = !item.selected)}
+									class={['flex w-full items-center gap-2.5 rounded-2xl p-2.5 text-left transition active:scale-[0.99] disabled:opacity-60', item.selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
+								>
+									<span class={['grid size-6 shrink-0 place-items-center rounded-lg text-sm font-extrabold', item.selected ? 'bg-brand-500 text-white' : 'bg-stone-200 text-stone-500 dark:bg-white/10 dark:text-stone-300']}>{item.selected ? '✓' : index + 1}</span>
+									<span class="min-w-0 flex-1">
+										<span class="block truncate text-[14px] font-bold text-ink-900 dark:text-white">{item.draft.question_text || 'Névtelen kérdés'}</span>
+										<span class="block truncate text-[11px] text-stone-500 dark:text-stone-400">{questionTypeTitle(item.draft.type)}{item.draft.sectionSlug ? ` · ${aiSectionTitle(item.draft.sectionSlug)}` : ''}</span>
+									</span>
+								</button>
+							</li>
+						{/each}
+					</ul>
+					<div class="mt-3 flex flex-wrap justify-end gap-2">
+						<Button variant="outline" disabled={aiBusy || !aiDrafts.some((item) => item.selected)} onclick={previewAi}>Előnézet</Button>
+						<Button busy={aiBusy} disabled={aiBusy || !aiDrafts.some((item) => item.selected)} onclick={() => void insertAi()}>Beszúrás</Button>
+					</div>
+				</div>
+			{/if}
+		</div>
+	</Sheet>
+{/if}
 <div use:portal>
 	<Sheet open={pending !== null} label={pending?.title ?? 'Megerősítés'} title={pending?.title} onClose={() => (pending = null)}>
 		{#if pending}

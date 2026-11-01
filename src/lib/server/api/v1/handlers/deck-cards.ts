@@ -21,8 +21,9 @@ export async function handleDeckCards(ctx: RouteCtx): Promise<Response | null> {
 		const back = String(body.back ?? '').trim();
 		if (!deckId) return err('Hiányzik a deckId.', 400);
 		if (!front || !back) return err('Töltsd ki a kártya mindkét oldalát.', 400);
-		const owner = await db.prepare(`SELECT user_id AS userId FROM decks WHERE id = ?`).bind(deckId).first<{ userId: string }>().catch(() => null);
+		const owner = await db.prepare(`SELECT user_id AS userId, COALESCE(is_lesson, 0) AS isLesson FROM decks WHERE id = ?`).bind(deckId).first<{ userId: string; isLesson: number }>().catch(() => null);
 		if (!owner || owner.userId !== user.id) return err('Nincs ilyen csomag.', 404);
+		if ((owner.isLesson ?? 0) === 1) return err('Ezt a csomagot a lecke szerkesztőben szerkesztheted.', 403);
 		const count = await db.prepare(`SELECT COUNT(*) AS n FROM deck_cards WHERE deck_id = ?`).bind(deckId).first<{ n: number }>().catch(() => ({ n: 0 }));
 		if ((count?.n ?? 0) >= 500) return err('Egy csomagban legfeljebb 500 kártya lehet.', 400);
 		const maxSort = await db.prepare(`SELECT COALESCE(MAX(sort), -1) AS m FROM deck_cards WHERE deck_id = ?`).bind(deckId).first<{ m: number }>().catch(() => ({ m: -1 }));
@@ -35,11 +36,12 @@ export async function handleDeckCards(ctx: RouteCtx): Promise<Response | null> {
 	}
 	if (head === 'deck-cards' && second) {
 		const own = await db
-			.prepare(`SELECT deck_cards.id AS id FROM deck_cards JOIN decks ON decks.id = deck_cards.deck_id WHERE deck_cards.id = ? AND decks.user_id = ?`)
+			.prepare(`SELECT deck_cards.id AS id, COALESCE(decks.is_lesson, 0) AS isLesson FROM deck_cards JOIN decks ON decks.id = deck_cards.deck_id WHERE deck_cards.id = ? AND decks.user_id = ?`)
 			.bind(second, user.id)
-			.first()
+			.first<{ id: string; isLesson: number }>()
 			.catch(() => null);
 		if (!own) return err('Nincs ilyen kártya.', 404);
+		if ((own.isLesson ?? 0) === 1) return err('Ezt a csomagot a lecke szerkesztőben szerkesztheted.', 403);
 		if (method === 'GET') {
 			const row = await db.prepare(`SELECT id, deck_id AS deckId, COALESCE(front, '') AS front, COALESCE(back, '') AS back, COALESCE(section_slug, '') AS sectionSlug FROM deck_cards WHERE id = ?`).bind(second).first();
 			return ok({ card: row });

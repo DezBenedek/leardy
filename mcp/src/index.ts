@@ -223,7 +223,7 @@ function createServer(): McpServer {
 	server.registerTool(
 		'create-quiz',
 		{
-			description: 'Új kvíz egy leckéhez, szerkesztői jog kell',
+			description: 'Új kvíz egy leckéhez, szerkesztői jog kell (leckénként legfeljebb egy kvíz)',
 			inputSchema: z.object({
 				lessonId: z.string(),
 				title: z.string(),
@@ -336,46 +336,6 @@ function createServer(): McpServer {
 	);
 
 	server.registerTool(
-		'create-card-pack',
-		{
-			description: 'Hivatalos csomag létrehozása, szerkesztői jog kell',
-			inputSchema: z.object({
-				lessonId: z.string(),
-				title: z.string(),
-				cardKind: z.string().optional().describe('word vagy study'),
-				sort: z.number().optional(),
-				lessonIds: z.array(z.string()).optional().describe('További csatolt leckék')
-			})
-		},
-		async (args) => done(await send('/api/v1/card-packs', 'POST', args))
-	);
-
-	server.registerTool(
-		'update-card-pack',
-		{
-			description: 'Hivatalos csomag szerkesztése, szerkesztői jog kell',
-			inputSchema: z.object({
-				id: z.string(),
-				title: z.string().optional(),
-				cardKind: z.string().optional(),
-				sort: z.number().optional(),
-				lessonId: z.string().optional(),
-				lessonIds: z.array(z.string()).optional()
-			})
-		},
-		async ({ id, ...rest }) => done(await send(`/api/v1/card-packs/${encodeURIComponent(id)}`, 'PATCH', rest))
-	);
-
-	server.registerTool(
-		'delete-card-pack',
-		{
-			description: 'Hivatalos csomag törlése, szerkesztői jog kell',
-			inputSchema: z.object({ id: z.string() })
-		},
-		async ({ id }) => done(await send(`/api/v1/card-packs/${encodeURIComponent(id)}`, 'DELETE'))
-	);
-
-	server.registerTool(
 		'list-lesson-cards',
 		{
 			description: 'Hivatalos kártyák listázása, lessonId vagy packId kötelező',
@@ -387,46 +347,6 @@ function createServer(): McpServer {
 			})
 		},
 		async (args) => done(await get(`/api/v1/lesson-cards${query(args)}`))
-	);
-
-	server.registerTool(
-		'create-lesson-card',
-		{
-			description: 'Hivatalos kártya létrehozása, szerkesztői jog kell',
-			inputSchema: z.object({
-				lessonId: z.string(),
-				front: z.string().describe('Kártya előlapja'),
-				back: z.string().describe('Kártya hátlapja'),
-				packId: z.string().optional(),
-				sectionSlug: z.string().optional()
-			})
-		},
-		async (args) => done(await send('/api/v1/lesson-cards', 'POST', args))
-	);
-
-	server.registerTool(
-		'update-lesson-card',
-		{
-			description: 'Hivatalos kártya szerkesztése, szerkesztői jog kell',
-			inputSchema: z.object({
-				id: z.string(),
-				front: z.string().optional(),
-				back: z.string().optional(),
-				packId: z.string().optional(),
-				sectionSlug: z.string().optional(),
-				sort: z.number().optional()
-			})
-		},
-		async ({ id, ...rest }) => done(await send(`/api/v1/lesson-cards/${encodeURIComponent(id)}`, 'PATCH', rest))
-	);
-
-	server.registerTool(
-		'delete-lesson-card',
-		{
-			description: 'Hivatalos kártya törlése, szerkesztői jog kell',
-			inputSchema: z.object({ id: z.string() })
-		},
-		async ({ id }) => done(await send(`/api/v1/lesson-cards/${encodeURIComponent(id)}`, 'DELETE'))
 	);
 
 	server.registerTool(
@@ -450,14 +370,12 @@ function createServer(): McpServer {
 	server.registerTool(
 		'create-deck',
 		{
-			description: 'Saját csomag létrehozása, induló kártyákkal is',
+			description: 'Saját csomag létrehozása, induló kártyákkal is (lecke csatolás nélkül)',
 			inputSchema: z.object({
 				title: z.string(),
 				subjectId: z.string().optional(),
 				levelId: z.string().optional(),
 				materialId: z.string().optional(),
-				lessonId: z.string().optional(),
-				lessonIds: z.array(z.string()).optional(),
 				cards: z.array(z.object({ front: z.string(), back: z.string() })).max(200).optional()
 			})
 		},
@@ -467,15 +385,13 @@ function createServer(): McpServer {
 	server.registerTool(
 		'update-deck',
 		{
-			description: 'Saját csomag szerkesztése',
+			description: 'Saját csomag szerkesztése (lecke csatolás nélkül)',
 			inputSchema: z.object({
 				id: z.string(),
 				title: z.string().optional(),
 				subjectId: z.string().optional(),
 				levelId: z.string().optional(),
-				materialId: z.string().optional(),
-				lessonId: z.string().optional(),
-				lessonIds: z.array(z.string()).optional()
+				materialId: z.string().optional()
 			})
 		},
 		async ({ id, ...rest }) => done(await send(`/api/v1/decks/${encodeURIComponent(id)}`, 'PATCH', rest))

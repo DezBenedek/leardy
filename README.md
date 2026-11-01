@@ -83,6 +83,18 @@ wrangler secret put AWS_SECRET_ACCESS_KEY
 
 Helyi fejlesztéshez ugyanezek mehetnek a `.dev.vars` fájlba.
 
+AI generáláshoz (kvíz és kártya piszkozat a lecke szövegéből) külső
+OpenAI-kompatibilis végpont kell:
+
+```bash
+wrangler secret put AI_API_KEY
+wrangler secret put AI_MODEL
+wrangler secret put AI_BASE_URL
+```
+
+Az `AI_MODEL` és az `AI_BASE_URL` opcionális (alapértelmezés: OpenAI).
+Helyi fejlesztéshez ezek is a `.dev.vars` fájlba tehetők.
+
 ## Mappa felépítés
 
 - `src/routes` - az oldalak és az API végpontok,

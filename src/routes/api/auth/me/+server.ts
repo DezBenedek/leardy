@@ -138,6 +138,11 @@ export const DELETE: RequestHandler = async (event) => {
 		if (ids.length > 0) {
 			const ph = ids.map(() => '?').join(',');
 			await db.prepare(`DELETE FROM deck_cards WHERE deck_id IN (${ph})`).bind(...ids).run();
+			try {
+				await db.prepare(`DELETE FROM deck_lessons WHERE deck_id IN (${ph})`).bind(...ids).run();
+			} catch {
+				// kapcsoló még nincs
+			}
 		}
 		await db.prepare(`DELETE FROM decks WHERE user_id = ?`).bind(sessionUser.id).run();
 	} catch {

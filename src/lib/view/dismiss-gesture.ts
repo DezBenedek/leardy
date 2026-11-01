@@ -4,7 +4,8 @@ interface DismissGestureOptions {
 	onDismiss: () => void;
 }
 
-/** A lista tetején a görgetés folyamatosan átadja a mozdulatot a panelnek. */
+/** Csak a lista tetején indított mozdulat zárhat: ha nem a tetején fogtuk meg,
+ *  a gesztus végig görget, a tetején el kell engedni és újra megfogni. */
 export function attachDismissGesture(panel: HTMLElement, options: DismissGestureOptions): () => void {
 	let touchId: number | null = null;
 	let pointerId: number | null = null;
@@ -18,6 +19,7 @@ export function attachDismissGesture(panel: HTMLElement, options: DismissGesture
 	let active = false;
 	let vertical = false;
 	let grip = false;
+	let locked = false;
 	let scrollables: HTMLElement[] = [];
 	let suppressClickUntil = 0;
 	const slop = 6;
@@ -26,6 +28,7 @@ export function attachDismissGesture(panel: HTMLElement, options: DismissGesture
 		touchId = null;
 		pointerId = null;
 		active = false;
+		locked = false;
 		distance = 0;
 		options.onDrag(0, false);
 	}
@@ -41,10 +44,13 @@ export function attachDismissGesture(panel: HTMLElement, options: DismissGesture
 		grip = fromGrip;
 		height = panel.getBoundingClientRect().height;
 		scrollables = [];
+		locked = false;
 		if (!grip) {
 			for (let node: Element | null = target; node && node !== panel; node = node.parentElement) {
 				if (node instanceof HTMLElement && node.scrollHeight > node.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(node).overflowY)) scrollables.push(node);
 			}
+			// Nem a tetején indult: ez a gesztus csak görgethet, zárni nem tud.
+			locked = scrollables.some((node) => node.scrollTop > 1);
 		}
 		return true;
 	}
@@ -56,6 +62,8 @@ export function attachDismissGesture(panel: HTMLElement, options: DismissGesture
 		const elapsed = Math.max(now - lastTime, 1);
 		lastY = y;
 		lastTime = now;
+		// Nem a tetején indult: végig natív görgetés, a panel nem mozdul.
+		if (locked) return;
 		if (!vertical) {
 			if (Math.max(Math.abs(x - startX), Math.abs(y - startY)) < slop) return;
 			if (!grip && Math.abs(x - startX) > Math.abs(y - startY)) { reset(); return; }

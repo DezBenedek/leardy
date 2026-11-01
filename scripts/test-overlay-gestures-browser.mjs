@@ -37,8 +37,9 @@ async (page) => {
   check(await offset()===0, kind+': a lista görgetése közben elmozdult a panel.');
   await page.locator('[data-overlay-scroller]').evaluate(node => node.scrollTop=18);
   await touch('touchmove',400);
-  check(Math.abs(await offset()-42)<1, kind+': ugrás történt a görgetés és a húzás átadásakor.');
+  check(await offset()===0, kind+': a nem a tetején indított mozdulat átadta a húzást a panelnek.');
   await touch('touchcancel',400); await settle();
+  await page.locator('[data-overlay-scroller]').evaluate(node => node.scrollTop=0);
   check(await closed()===0, kind+': a megszakított gesztus bezárt.');
   await touch('touchstart',300); await touch('touchmove',360); await page.waitForTimeout(240);
   await touch('touchmove',420); await page.waitForTimeout(240); await touch('touchmove',480); await page.waitForTimeout(130);
@@ -60,7 +61,7 @@ async (page) => {
   await page.waitForTimeout(35);
  }
  const nativeHandoff = {scroll:await page.locator('[data-overlay-scroller]').evaluate(node=>node.scrollTop),offset:await offset()};
- check(nativeHandoff.scroll===0 && nativeHandoff.offset>20,'A valódi érintéses görgetés nem adta át a mozdulatot a panelnek: '+JSON.stringify(nativeHandoff));
+ check(nativeHandoff.scroll===0 && nativeHandoff.offset===0,'A nem a tetején indított valódi érintés zárta a panelt: '+JSON.stringify(nativeHandoff));
  await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
  await cdp.detach();
  for(const floating of [false,true]) for(const above of [false,true]) {

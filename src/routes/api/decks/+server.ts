@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { D1PreparedStatement } from '@cloudflare/workers-types';
 import { getDb, requireUser } from '$lib/server/infra/db';
-import { canPublishDeck, ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum/curriculum';
+import { canPublishDeck, ensureCurriculumSchema } from '$lib/server/curriculum/curriculum';
 import { cardKindForSubject } from '$lib/deck/sm2';
 
 /* Saját kártyacsomag létrehozása: csak bejelentkezve, csak magának.
@@ -52,6 +52,11 @@ export const POST: RequestHandler = async (event) => {
 	if (cards.length > 200) return json({ error: 'Legfeljebb 200 kártya lehet egy csomagban.' }, { status: 400 });
 	try {
 		await ensureCurriculumSchema(db);
+		// Leckéhez csatolni csak a lecke szerkesztőből lehet: a Kártyák felől
+		// érkező lessonIds/lessonId kérést elutasítjuk.
+		if (body.lessonIds !== undefined || body.lessonId) {
+			return json({ error: 'Leckéhez csak a lecke szerkesztőből csatolhatsz csomagot.' }, { status: 403 });
+		}
 		// Automatikus típus a tantárgy alapján, a kliens választása nem számít.
 		let cardKind: 'word' | 'study' = 'word';
 		try {
@@ -71,19 +76,14 @@ export const POST: RequestHandler = async (event) => {
 		const now = Math.floor(Date.now() / 1000);
 		// Csatolás és publikálás csak tanárnak jár, a diák csomagja privát marad.
 		const mayPublish = canPublishDeck(user);
-		const lessonIds =
-			mayPublish && Array.isArray(body.lessonIds)
-				? [...new Set(body.lessonIds.map((s) => `${s ?? ''}`.trim()).filter(Boolean))].slice(0, 50)
-				: mayPublish && body.lessonId
-					? [body.lessonId]
-					: [];
+		const lessonIds: string[] = [];
 		const isPublic = mayPublish && body.isPublic === true ? 1 : 0;
-		const primaryLesson = lessonIds[0] || null;
+		const primaryLesson = null;
 		const batch: D1PreparedStatement[] = [
 			db
 				.prepare(
-					`INSERT INTO decks (id, user_id, title, kind, card_kind, subject_id, level_id, material_id, lesson_id, is_public, created_at)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+					`INSERT INTO decks (id, user_id, title, kind, card_kind, subject_id, level_id, material_id, lesson_id, is_public, is_lesson, created_by, created_at)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
 				)
 				.bind(
 					deckId,
@@ -96,6 +96,7 @@ export const POST: RequestHandler = async (event) => {
 					body.materialId || null,
 					primaryLesson,
 					isPublic,
+					user.id,
 					now
 				)
 		];
@@ -109,13 +110,6 @@ export const POST: RequestHandler = async (event) => {
 			);
 		});
 		await db.batch(batch);
-		if (lessonIds.length > 0) {
-			try {
-				await setDeckLessons(db, deckId, lessonIds);
-			} catch {
-				// a régi oszlop már beállt, a kapcsoló ráér
-			}
-		}
 		return json({ ok: true, id: deckId });
 	} catch (e) {
 		return json(

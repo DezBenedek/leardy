@@ -20,13 +20,15 @@ export const PATCH: RequestHandler = async (event) => {
 		await ensureCurriculumSchema(db);
 		const row = await db
 			.prepare(
-				`SELECT deck_cards.id AS id
+				`SELECT deck_cards.id AS id, COALESCE(decks.is_lesson, 0) AS isLesson
 				 FROM deck_cards JOIN decks ON decks.id = deck_cards.deck_id
 				 WHERE deck_cards.id = ? AND decks.user_id = ?`
 			)
 			.bind(cardId, user.id)
-			.first<{ id: string }>();
+			.first<{ id: string; isLesson: number }>();
 		if (!row) return json({ error: 'Nincs ilyen kártya.' }, { status: 404 });
+		if (row.isLesson === 1)
+			return json({ error: 'Ezt a csomagot a lecke szerkesztőben szerkesztheted.' }, { status: 403 });
 		const sets: string[] = [];
 		const args: string[] = [];
 		if (body.front !== undefined) {
@@ -70,7 +72,7 @@ export const DELETE: RequestHandler = async (event) => {
 		const res = await db
 			.prepare(
 				`DELETE FROM deck_cards
-				 WHERE id = ? AND deck_id IN (SELECT id FROM decks WHERE user_id = ?)`
+				 WHERE id = ? AND deck_id IN (SELECT id FROM decks WHERE user_id = ? AND COALESCE(is_lesson, 0) = 0)`
 			)
 			.bind(cardId, user.id)
 			.run();

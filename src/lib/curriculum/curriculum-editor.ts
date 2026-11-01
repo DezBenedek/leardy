@@ -24,8 +24,19 @@ export interface EditorLesson {
 	contentRevision?: number;
 	levelId: string;
 	subjectId: string;
+	materialId: string;
 	materialTitle: string;
 	levelTitle: string;
+}
+
+/** Lecke hivatalos kártyacsomagja a szerkesztő Drawer listájához. */
+export interface EditorLessonDeck {
+	id: string;
+	title: string;
+	cardKind: 'word' | 'study';
+	count: number;
+	sort: number;
+	isPublic: boolean;
 }
 
 /** Kvízblokk a lecke szerkesztőhöz: lecke szintű lista eleme. */

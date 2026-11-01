@@ -65,16 +65,33 @@ export const GET: RequestHandler = async (event) => {
 			const need = [...new Set(sharedDeckIds)].filter((id) => !ownIds.has(id)).slice(0, 200);
 			if (need.length > 0) {
 				try {
-					const pubRes = await db
-						.prepare(
-							`SELECT d.id AS id, d.subject_id AS subjectId,
-								COALESCE(s.title, '') AS subjectTitle,
-								COALESCE(s.icon, 'book') AS icon
-							 FROM decks d LEFT JOIN subjects s ON s.id = d.subject_id
-							 WHERE d.id IN (${need.map(() => '?').join(', ')}) AND COALESCE(d.is_public, 0) = 1 LIMIT 200`
-						)
-						.bind(...need)
-						.all<{ id: string; subjectId: string | null; subjectTitle: string; icon: string }>();
+					let pubRes: { results?: { id: string; subjectId: string | null; subjectTitle: string; icon: string }[] };
+					try {
+						pubRes = await db
+							.prepare(
+								`SELECT d.id AS id, d.subject_id AS subjectId,
+									COALESCE(s.title, '') AS subjectTitle,
+									COALESCE(s.icon, 'book') AS icon
+								 FROM decks d LEFT JOIN subjects s ON s.id = d.subject_id
+								 WHERE d.id IN (${need.map(() => '?').join(', ')}) AND COALESCE(d.is_public, 0) = 1
+								 AND (COALESCE(d.is_lesson, 0) = 0 OR NOT EXISTS (
+									SELECT 1 FROM level_settings visibility WHERE visibility.level_id = d.level_id AND visibility.published = 0
+								 )) LIMIT 200`
+							)
+							.bind(...need)
+							.all<{ id: string; subjectId: string | null; subjectTitle: string; icon: string }>();
+					} catch {
+						pubRes = await db
+							.prepare(
+								`SELECT d.id AS id, d.subject_id AS subjectId,
+									COALESCE(s.title, '') AS subjectTitle,
+									COALESCE(s.icon, 'book') AS icon
+								 FROM decks d LEFT JOIN subjects s ON s.id = d.subject_id
+								 WHERE d.id IN (${need.map(() => '?').join(', ')}) AND COALESCE(d.is_public, 0) = 1 LIMIT 200`
+							)
+							.bind(...need)
+							.all<{ id: string; subjectId: string | null; subjectTitle: string; icon: string }>();
+					}
 					const rows = pubRes.results ?? [];
 					for (const r of rows) {
 						deckSubject.set(r.id, {

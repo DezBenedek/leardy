@@ -57,6 +57,24 @@ export async function listSubjects(dbOrEvent: DbOrEvent): Promise<Subject[]> {
 	for (const r of (packCountRes as unknown as { results: { id: string; n: number }[] })
 		.results ?? [])
 		packCounts.set(r.id, r.n ?? 0);
+	// Új hivatalos lecke deckek ugyanide számítanak, de csak publikált szinten.
+	try {
+		const officialRes = await db
+			.prepare(
+				`SELECT l.subject_id AS id, COUNT(DISTINCT d.id) AS n FROM decks d
+				 JOIN levels l ON l.id = d.level_id
+				 WHERE COALESCE(d.is_lesson, 0) = 1 AND COALESCE(d.is_public, 0) = 1
+				 AND NOT EXISTS (SELECT 1 FROM level_settings visibility WHERE visibility.level_id = d.level_id AND visibility.published = 0)
+				 AND EXISTS (SELECT 1 FROM deck_cards c WHERE c.deck_id = d.id)
+				 GROUP BY l.subject_id`
+			)
+			.all<{ id: string; n: number }>();
+		for (const r of officialRes.results ?? []) {
+			packCounts.set(r.id, (packCounts.get(r.id) ?? 0) + (r.n ?? 0));
+		}
+	} catch {
+		// régi adatbázis is_lesson nélkül: csak a régi pack szám marad
+	}
 	return subjects.map((r) => ({
 		id: r.id,
 		title: r.title,
@@ -166,6 +184,21 @@ export async function getSubjectTree(
 			)
 			.bind(subjectId)
 	]);
+	let officialPackCount = 0;
+	try {
+		const officialRes = await db
+			.prepare(
+				`SELECT COUNT(DISTINCT d.id) AS n FROM decks d
+				 JOIN levels l ON l.id = d.level_id AND ${publishedLevelSql('l')}
+				 WHERE l.subject_id = ? AND COALESCE(d.is_lesson, 0) = 1 AND COALESCE(d.is_public, 0) = 1
+				 AND EXISTS (SELECT 1 FROM deck_cards c WHERE c.deck_id = d.id)`
+			)
+			.bind(subjectId)
+			.first<{ n: number }>();
+		officialPackCount = officialRes?.n ?? 0;
+	} catch {
+		// régi adatbázis is_lesson nélkül: csak a régi pack szám marad
+	}
 	const subject = (
 		subjectRes as unknown as {
 			results: { id: string; title: string; icon: string; sort: number; levelLabel: string }[];
@@ -242,7 +275,7 @@ export async function getSubjectTree(
 		levelCount: levelNodes.length,
 		lessonCount,
 		packCount:
-			(packCountRes as unknown as { results: { n: number }[] }).results?.[0]?.n ?? 0,
+			((packCountRes as unknown as { results: { n: number }[] }).results?.[0]?.n ?? 0) + officialPackCount,
 		levels: levelNodes
 	};
 }

@@ -1,9 +1,13 @@
 import { error, json, type RequestHandler } from '@sveltejs/kit';
-import { canEnterEditor, editorContext, getEditorLevels, mutateCurriculum } from '$lib/server/curriculum/curriculum-editor';
+import { canEnterEditor, editorContext, getEditorLessonDecks, getEditorLevels, mutateCurriculum } from '$lib/server/curriculum/curriculum-editor';
 
 export const GET: RequestHandler = async (event) => {
 	const { db, user } = await editorContext(event);
 	if (!await canEnterEditor(db, user)) error(403, 'Nincs szerkesztési jogosultságod.');
+	const lessonDecks = event.url.searchParams.get('lessonDecks') ?? '';
+	if (lessonDecks) {
+		return json({ decks: await getEditorLessonDecks(db, user, lessonDecks) }, { headers: { 'cache-control': 'no-store' } });
+	}
 	const subjectId = event.url.searchParams.get('subject') ?? '';
 	return json({ levels: await getEditorLevels(db, user, subjectId) }, { headers: { 'cache-control': 'no-store' } });
 };

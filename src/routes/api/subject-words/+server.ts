@@ -35,7 +35,7 @@ export const GET: RequestHandler = async (event) => {
 			getCardProgress(db, user.id).catch(() => ({}))
 		]);
 		const saved = new Set(
-			(savedRes.results ?? []).map((r) => r.quizId).filter((id) => id.startsWith('pack:') || id.startsWith('cards:'))
+			(savedRes.results ?? []).map((r) => r.quizId).filter((id) => id.startsWith('pack:') || id.startsWith('cards:') || id.startsWith('deck:'))
 		);
 		// Hivatalos csomagok a tantárgyra, csak a mentettek maradnak.
 		const officialAll = await listOfficialCardPacks(db, subjectId).catch(() => []);
@@ -52,6 +52,24 @@ export const GET: RequestHandler = async (event) => {
 		const official = [...officialAll.filter((p) => officialSavedIds.has(p.quizId))];
 		for (const p of byIdsFiltered) {
 			if (!official.some((o) => o.quizId === p.quizId)) official.push(p);
+		}
+		// Mentett publikált tanári deckek: csak ha még mindig publikus és a tantárgyhoz tartozik.
+		const sharedDeckIds = [...saved]
+			.filter((id) => id.startsWith('deck:'))
+			.map((id) => id.slice(5))
+			.filter((deckId) => !mine.some((p) => p.quizId === `deck:${deckId}`));
+		if (sharedDeckIds.length > 0) {
+			const { getPublishedDeckPackage } = await import('$lib/server/curriculum/curriculum');
+			for (const deckId of [...new Set(sharedDeckIds)].slice(0, 50)) {
+				try {
+					const shared = await getPublishedDeckPackage(db, deckId, user.id);
+					if (shared && (shared.subjectId === subjectId || !shared.subjectId) && !official.some((o) => o.quizId === shared.quizId)) {
+						official.push(shared);
+					}
+				} catch {
+					// egy hibás csomag nem rontja el az egészet
+				}
+			}
 		}
 		// Örökölt cards: forma is kellhet, ha a pack lista nem fedte le.
 		if (legacyIds.length > 0) {

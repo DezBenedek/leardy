@@ -1,9 +1,10 @@
 import type { AnswerFields } from '../../question-types/types';
 import { isQuestionType, loadQuestionOptions, questionType, readQuestionOptions, storedQuestionOptions } from '../../question-types/registry';
+import { cardKindForSubject } from '../../deck/sm2';
 import type { D1Database } from '@cloudflare/workers-types';
 import { error, type RequestEvent } from '@sveltejs/kit';
 import { getDb, requireUser, type PublicUser } from '../infra/db';
-import type { EditorCandidate, EditorLesson, EditorLevel, EditorQuestion, EditorQuiz } from '$lib/curriculum/curriculum-editor';
+import type { EditorCandidate, EditorLesson, EditorLessonDeck, EditorLevel, EditorQuestion, EditorQuiz } from '$lib/curriculum/curriculum-editor';
 import { publishedLevelSql } from './curriculum-publication';
 import { lessonContentMarkdown, readLessonContent, validateLessonContent } from '../../curriculum/lesson-content';
 
@@ -97,7 +98,7 @@ export async function getEditorLevels(db: D1Database, user: PublicUser, subjectI
 
 export async function getEditorLesson(db: D1Database, user: PublicUser, id: string): Promise<EditorLesson> {
 	const lesson = await db.prepare(`SELECT le.id, le.title, le.body_md, le.content_json, le.content_revision AS contentRevision, m.level_id AS levelId,
-		l.subject_id AS subjectId, m.title AS materialTitle, l.title AS levelTitle
+		l.subject_id AS subjectId, m.id AS materialId, m.title AS materialTitle, l.title AS levelTitle
 		FROM lessons le JOIN materials m ON m.id = le.material_id JOIN levels l ON l.id = m.level_id WHERE le.id = ?`)
 		.bind(id).first<EditorLesson & { content_json: string | null }>();
 	if (!lesson) error(404, 'Nincs ilyen lecke.');
@@ -164,6 +165,160 @@ async function ensureQuestionSectionColumn(db: D1Database): Promise<void> {
 		await db.prepare(`ALTER TABLE quiz_questions ADD COLUMN section_slug TEXT NOT NULL DEFAULT ''`).run();
 	} catch {
 		// az oszlop már létezik
+	}
+}
+
+/** Hivatalos deck oszlopok pótlása régi adatbázison (idempotens). */
+async function ensureLessonDeckColumns(db: D1Database): Promise<void> {
+	for (const ddl of [
+		`ALTER TABLE decks ADD COLUMN is_lesson INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE decks ADD COLUMN created_by TEXT REFERENCES users(id) ON DELETE SET NULL`,
+		`ALTER TABLE deck_lessons ADD COLUMN sort INTEGER NOT NULL DEFAULT 0`
+	]) {
+		try {
+			await db.prepare(ddl).run();
+		} catch {
+			// az oszlop már létezik
+		}
+	}
+	try {
+		await db.prepare(`CREATE INDEX IF NOT EXISTS idx_decks_lesson_flag ON decks(is_lesson)`).run();
+	} catch {
+		// az index már létezik
+	}
+	try {
+		await db.prepare(`CREATE INDEX IF NOT EXISTS idx_deck_lessons_lesson_sort ON deck_lessons(lesson_id, sort)`).run();
+	} catch {
+		// az index már létezik
+	}
+	try {
+		await db.prepare(
+			`INSERT OR IGNORE INTO users (id, name, email, pass_hash, salt, created_at, role)
+			 VALUES ('system', 'Leardy tananyag', 'system@local.invalid', 'system', '', 0, 'teacher')`
+		).run();
+	} catch {
+		// a rendszerfelhasználó már létezik vagy a tábla még nem áll készen
+	}
+}
+
+const SYSTEM_USER_ID = 'system';
+const MAX_DECK_CARDS = 200;
+
+function deckTitleField(body: Record<string, unknown>): string {
+	const value = body.title;
+	if (typeof value !== 'string' || !value.trim() || value.trim().length > 80) {
+		error(400, 'A csomag neve kötelező, legfeljebb 80 karakterrel.');
+	}
+	return value.trim();
+}
+
+function cardTextField(value: unknown, label: string): string {
+	if (typeof value !== 'string' || !value.trim() || value.trim().length > 5000) {
+		error(400, `${label} kötelező, legfeljebb 5000 karakterrel.`);
+	}
+	return value.trim();
+}
+
+/** Hivatalos deck lekérése a leckéhez tartozás ellenőrzésével. */
+async function requireLessonDeck(
+	db: D1Database,
+	deckId: string,
+	lessonId: string
+): Promise<{ id: string; title: string }> {
+	await ensureLessonDeckColumns(db);
+	const deck = await db.prepare(
+		`SELECT d.id, d.title FROM decks d
+		 JOIN deck_lessons dl ON dl.deck_id = d.id AND dl.lesson_id = ?
+		 WHERE d.id = ? AND COALESCE(d.is_lesson, 0) = 1`
+	).bind(lessonId, deckId).first<{ id: string; title: string }>();
+	if (!deck) error(404, 'Nincs ilyen lecke csomag.');
+	return deck;
+}
+
+/** Egy lecke hivatalos kártyacsomagjai darabszámmal a szerkesztő Drawer listájához. */
+export async function getEditorLessonDecks(
+	db: D1Database,
+	user: PublicUser,
+	lessonId: string
+): Promise<EditorLessonDeck[]> {
+	const lesson = await getEditorLesson(db, user, lessonId);
+	await ensureLessonDeckColumns(db);
+	let rows: { id: string; title: string; card_kind: string; count: number; sort: number; is_public: number }[] = [];
+	try {
+		const res = await db.prepare(
+			`SELECT d.id, d.title, COALESCE(d.card_kind, 'word') AS card_kind,
+				COALESCE(d.is_public, 1) AS is_public, COALESCE(dl.sort, 0) AS sort,
+				(SELECT COUNT(*) FROM deck_cards c WHERE c.deck_id = d.id) AS count
+			 FROM decks d JOIN deck_lessons dl ON dl.deck_id = d.id AND dl.lesson_id = ?
+			 WHERE COALESCE(d.is_lesson, 0) = 1
+			 ORDER BY dl.sort, d.created_at, d.id`
+		).bind(lesson.id).all<typeof rows[number]>();
+		rows = res.results ?? [];
+	} catch {
+		return [];
+	}
+	return rows.map((row) => ({
+		id: row.id,
+		title: row.title,
+		cardKind: row.card_kind === 'study' ? 'study' : 'word',
+		count: row.count ?? 0,
+		sort: row.sort ?? 0,
+		isPublic: (row.is_public ?? 1) === 1
+	}));
+}
+
+/** Egy hivatalos deck kártyái a lecke alatti pack szerkesztő oldalhoz. */
+export async function getEditorLessonDeckCards(
+	db: D1Database,
+	user: PublicUser,
+	lessonId: string,
+	deckId: string
+): Promise<{ deck: EditorLessonDeck; cards: { id: string; front: string; back: string; sectionSlug: string }[] }> {
+	const lesson = await getEditorLesson(db, user, lessonId);
+	const deck = await requireLessonDeck(db, deckId, lesson.id);
+	const meta = await db.prepare(
+		`SELECT COALESCE(d.card_kind, 'word') AS card_kind, COALESCE(d.is_public, 1) AS is_public, COALESCE(dl.sort, 0) AS sort
+		 FROM decks d JOIN deck_lessons dl ON dl.deck_id = d.id AND dl.lesson_id = ?
+		 WHERE d.id = ?`
+	).bind(lesson.id, deck.id).first<{ card_kind: string; is_public: number; sort: number }>();
+	const cardsRes = await db.prepare(
+		`SELECT id, COALESCE(front, '') AS front, COALESCE(back, '') AS back, COALESCE(section_slug, '') AS section_slug
+		 FROM deck_cards WHERE deck_id = ? ORDER BY sort, id`
+	).bind(deck.id).all<{ id: string; front: string; back: string; section_slug: string }>();
+	return {
+		deck: {
+			id: deck.id,
+			title: deck.title,
+			cardKind: meta?.card_kind === 'study' ? 'study' : 'word',
+			count: (cardsRes.results ?? []).length,
+			sort: meta?.sort ?? 0,
+			isPublic: (meta?.is_public ?? 1) === 1
+		},
+		cards: (cardsRes.results ?? []).map((c) => ({
+			id: c.id,
+			front: c.front,
+			back: c.back,
+			sectionSlug: c.section_slug ?? ''
+		}))
+	};
+}
+
+/** A lecke kvíze, vagy létrehozása ha még nincs (idempotens). */
+export async function ensureLessonQuizRow(db: D1Database, lessonId: string): Promise<{ id: string }> {
+	const existing = await db.prepare(`SELECT id FROM quizzes WHERE lesson_id = ?`)
+		.bind(lessonId).first<{ id: string }>();
+	if (existing) return { id: existing.id };
+	const id = crypto.randomUUID();
+	try {
+		await db.prepare(`INSERT INTO quizzes (id, lesson_id, section_slug, title, sort) VALUES (?, ?, '', ?, 0)`)
+			.bind(id, lessonId, 'Kvíz').run();
+		return { id };
+	} catch {
+		// Versenyhelyzet: közben létrejött a kvíz.
+		const retry = await db.prepare(`SELECT id FROM quizzes WHERE lesson_id = ?`)
+			.bind(lessonId).first<{ id: string }>();
+		if (!retry) error(409, 'A kvíz létrehozása nem sikerült. Próbáld újra.');
+		return { id: retry.id };
 	}
 }
 
@@ -377,8 +532,13 @@ export async function mutateCurriculum(db: D1Database, user: PublicUser, body: R
 			const title = textField(body, 'title');
 			const sectionSlug = slugField(body, 'sectionSlug');
 			const id = crypto.randomUUID();
-			await db.prepare(`INSERT INTO quizzes (id, lesson_id, section_slug, title, sort) VALUES (?, ?, ?, ?, ?)`)
-				.bind(id, lessonId, sectionSlug, title, await nextSort(db, 'quizzes', 'lesson_id', lessonId)).run();
+			try {
+				await db.prepare(`INSERT INTO quizzes (id, lesson_id, section_slug, title, sort) VALUES (?, ?, ?, ?, ?)`)
+					.bind(id, lessonId, sectionSlug, title, await nextSort(db, 'quizzes', 'lesson_id', lessonId)).run();
+			} catch {
+				// Egy leckéhez csak egy kvíz tartozhat: duplikált létrehozás elutasítva.
+				error(409, 'Ehhez a leckéhez már tartozik kvíz.');
+			}
 			return { id };
 		}
 		if (action === 'reorderQuizzes') {
@@ -541,6 +701,187 @@ export async function mutateCurriculum(db: D1Database, user: PublicUser, body: R
 			`UPDATE quiz_questions SET question_text = ?, type = ?, options_json = ?, correct_answer = ?, section_slug = ? WHERE id = ?`
 		).bind(questionText, type, optionsJson, correct, sectionSlug, rawId)]);
 		return { id: rawId };
+	}
+	if (action === 'ensureLessonQuiz') {
+		await ensureQuestionSectionColumn(db);
+		const lessonId = textField(body, 'lessonId');
+		const lesson = await getEditorLesson(db, user, lessonId);
+		if (lesson.levelId !== levelId) error(404, 'Nincs ilyen lecke ezen a tananyagban.');
+		return ensureLessonQuizRow(db, lesson.id);
+	}
+	if (action === 'saveLessonQuestions') {
+		await ensureQuestionSectionColumn(db);
+		const lessonId = textField(body, 'lessonId');
+		const lesson = await getEditorLesson(db, user, lessonId);
+		if (lesson.levelId !== levelId) error(404, 'Nincs ilyen lecke ezen a tananyagban.');
+		const list = Array.isArray(body.questions) ? body.questions : [];
+		if (list.length === 0) error(400, 'Nincs mentendő kérdés.');
+		if (list.length > 20) error(400, 'Egyszerre legfeljebb 20 kérdés menthető.');
+		const rawQuizId = typeof body.quizId === 'string' ? body.quizId.trim() : '';
+		const quizId = rawQuizId || (await ensureLessonQuizRow(db, lesson.id)).id;
+		if (rawQuizId) await requireQuizInLevel(db, rawQuizId, levelId);
+		const cleaned: { type: string; text: string; optionsJson: string; correct: string; sectionSlug: string }[] = [];
+		for (let i = 0; i < list.length; i++) {
+			const item = list[i] as Record<string, unknown>;
+			const type = typeof item.type === 'string' && isQuestionType(item.type) ? item.type : '';
+			if (!type) error(400, `A ${i + 1}. kérdés típusa ismeretlen.`);
+			const text = typeof item.question_text === 'string' ? item.question_text.trim() : '';
+			if (!text || text.length > 1000) error(400, `A ${i + 1}. kérdés szövege kötelező, legfeljebb 1000 karakterrel.`);
+			let parsed: { optionsJson: string } & AnswerFields;
+			try {
+				parsed = parseServerOptions(type, item.options_json) as { optionsJson: string } & AnswerFields;
+			} catch {
+				error(400, `A ${i + 1}. kérdés válaszainak formátuma érvénytelen.`);
+			}
+			const correctRaw = typeof item.correct_answer === 'string' ? item.correct_answer.trim() : '';
+			const correct = questionType(type).correctAnswer({ ...parsed, correct_answer: correctRaw });
+			const problem = validateServerQuestion(type, { ...parsed, correct_answer: correctRaw });
+			if (problem) error(400, `A ${i + 1}. kérdés hibás: ${problem}`);
+			const sectionSlug = typeof item.sectionSlug === 'string' || typeof item.section_slug === 'string'
+				? String(item.sectionSlug ?? item.section_slug).trim().slice(0, 100)
+				: '';
+			cleaned.push({ type, text, optionsJson: parsed.optionsJson, correct, sectionSlug });
+		}
+		const base = await nextSort(db, 'quiz_questions', 'quiz_id', quizId);
+		const ids = cleaned.map(() => crypto.randomUUID());
+		const batch = cleaned.map((c, i) =>
+			db.prepare(
+				`INSERT INTO quiz_questions (id, quiz_id, question_text, type, options_json, correct_answer, section_slug, sort)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+			).bind(ids[i], quizId, c.text, c.type, c.optionsJson, c.correct, c.sectionSlug, base + i)
+		);
+		for (let offset = 0; offset < batch.length; offset += 80) {
+			await db.batch(batch.slice(offset, offset + 80));
+		}
+		return { quizId, ids };
+	}
+	if (action === 'createLessonDeck' || action === 'renameLessonDeck' || action === 'deleteLessonDeck'
+		|| action === 'reorderLessonDecks' || action === 'saveLessonDeckCards') {
+		await ensureLessonDeckColumns(db);
+		const lessonId = textField(body, 'lessonId');
+		const lesson = await getEditorLesson(db, user, lessonId);
+		if (lesson.levelId !== levelId) error(404, 'Nincs ilyen lecke ezen a tananyagban.');
+		if (action === 'createLessonDeck') {
+			const title = deckTitleField(body);
+			const subject = await db.prepare(`SELECT title, COALESCE(icon, 'book') AS icon FROM subjects WHERE id = ?`)
+				.bind(lesson.subjectId).first<{ title: string; icon: string }>();
+			const cardKind = cardKindForSubject(subject?.title ?? '', subject?.icon ?? 'book', lesson.subjectId);
+			const id = crypto.randomUUID();
+			const now = Math.floor(Date.now() / 1000);
+			const maxSort = await db.prepare(`SELECT COALESCE(MAX(sort), -1) AS m FROM deck_lessons WHERE lesson_id = ?`)
+				.bind(lesson.id).first<{ m: number }>();
+			await db.batch([
+				db.prepare(
+					`INSERT INTO decks (id, user_id, title, kind, card_kind, subject_id, level_id, material_id, lesson_id, is_public, is_lesson, created_by, created_at)
+					 VALUES (?, ?, ?, 'cards', ?, ?, ?, ?, ?, 1, 1, ?, ?)`
+				).bind(id, SYSTEM_USER_ID, title, cardKind, lesson.subjectId, lesson.levelId, lesson.materialId, lesson.id, user.id, now),
+				db.prepare(`INSERT OR IGNORE INTO deck_lessons (deck_id, lesson_id, sort) VALUES (?, ?, ?)`)
+					.bind(id, lesson.id, (maxSort?.m ?? -1) + 1)
+			]);
+			return { id };
+		}
+		const deckId = action === 'reorderLessonDecks' ? '' : textField(body, 'deckId');
+		if (action === 'renameLessonDeck') {
+			await requireLessonDeck(db, deckId, lesson.id);
+			const title = deckTitleField(body);
+			await db.prepare(`UPDATE decks SET title = ? WHERE id = ?`).bind(title, deckId).run();
+			return {};
+		}
+		if (action === 'deleteLessonDeck') {
+			await requireLessonDeck(db, deckId, lesson.id);
+			const cardRows = await db.prepare(`SELECT id FROM deck_cards WHERE deck_id = ?`)
+				.bind(deckId).all<{ id: string }>();
+			const cardIds = (cardRows.results ?? []).map((r) => r.id);
+			const batch = [
+				db.prepare(`DELETE FROM deck_lessons WHERE deck_id = ?`).bind(deckId),
+				db.prepare(`DELETE FROM decks WHERE id = ?`).bind(deckId)
+			];
+			if (cardIds.length > 0) {
+				for (let offset = 0; offset < cardIds.length; offset += 80) {
+					const chunk = cardIds.slice(offset, offset + 80);
+					const placeholders = chunk.map(() => '?').join(', ');
+					batch.push(db.prepare(`DELETE FROM card_progress WHERE card_key IN (${placeholders})`).bind(...chunk));
+				}
+				batch.push(db.prepare(`DELETE FROM deck_cards WHERE deck_id = ?`).bind(deckId));
+			}
+			batch.push(db.prepare(`DELETE FROM library WHERE quiz_id = ?`).bind(`deck:${deckId}`));
+			for (let offset = 0; offset < batch.length; offset += 80) {
+				await db.batch(batch.slice(offset, offset + 80));
+			}
+			return {};
+		}
+		if (action === 'reorderLessonDecks') {
+			const ids = body.ids;
+			if (!Array.isArray(ids) || ids.length > 200 || ids.some((id) => typeof id !== 'string') || new Set(ids).size !== ids.length) error(400, 'Érvénytelen sorrend.');
+			const existing = await db.prepare(
+				`SELECT deck_id AS id FROM deck_lessons dl JOIN decks d ON d.id = dl.deck_id
+				 WHERE dl.lesson_id = ? AND COALESCE(d.is_lesson, 0) = 1`
+			).bind(lesson.id).all<{ id: string }>();
+			const current = (existing.results ?? []).map((r) => r.id);
+			if (current.length !== ids.length || current.some((id) => !ids.includes(id))) error(409, 'A lista megváltozott. Frissítsd az oldalt a rendezés előtt.');
+			if (ids.length) {
+				await db.batch(ids.map((id, sort) =>
+					db.prepare(`UPDATE deck_lessons SET sort = ? WHERE deck_id = ? AND lesson_id = ?`).bind(sort, id, lesson.id)
+				));
+			}
+			return {};
+		}
+		// saveLessonDeckCards: teljes listás mentés egy kérésben (törlés plusz módosítás plusz beszúrás).
+		await requireLessonDeck(db, deckId, lesson.id);
+		const list = Array.isArray(body.cards) ? body.cards : [];
+		if (list.length > MAX_DECK_CARDS) error(400, 'Legfeljebb 200 kártya lehet egy csomagban.');
+		const existingRes = await db.prepare(`SELECT id FROM deck_cards WHERE deck_id = ? ORDER BY sort, id`)
+			.bind(deckId).all<{ id: string }>();
+		const existingIds = new Set((existingRes.results ?? []).map((r) => r.id));
+		if (Array.isArray(body.originalIds)) {
+			const original = [...new Set(body.originalIds.map((s: unknown) => String(s ?? '').trim()).filter(Boolean))].sort().join('|');
+			const current = [...existingIds].sort().join('|');
+			if (original !== current) error(409, 'Egy másik szerkesztő már módosította a csomagot. Frissítsd az oldalt a mentés előtt.');
+		}
+		const cleaned: { id: string | null; front: string; back: string; sectionSlug: string }[] = [];
+		for (let i = 0; i < list.length; i++) {
+			const item = list[i] as Record<string, unknown>;
+			const rawId = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : null;
+			if (rawId && !existingIds.has(rawId)) error(404, 'Nincs ilyen kártya ebben a csomagban.');
+			const front = cardTextField(item.front, `A ${i + 1}. kártya előlapja`);
+			const back = cardTextField(item.back, `A ${i + 1}. kártya hátlapja`);
+			const sectionSlug = typeof item.sectionSlug === 'string' || typeof item.section_slug === 'string'
+				? String(item.sectionSlug ?? item.section_slug).trim().slice(0, 100)
+				: '';
+			cleaned.push({ id: rawId, front, back, sectionSlug });
+		}
+		if (cleaned.length === 0) error(400, 'Üres csomag nem menthető. Adj meg legalább egy kártyát.');
+		const wantedIds = new Set(cleaned.map((c) => c.id).filter(Boolean) as string[]);
+		const toDelete = [...existingIds].filter((id) => !wantedIds.has(id));
+		const statements: ReturnType<D1Database['prepare']>[] = [];
+		if (toDelete.length > 0) {
+			for (let offset = 0; offset < toDelete.length; offset += 80) {
+				const chunk = toDelete.slice(offset, offset + 80);
+				const placeholders = chunk.map(() => '?').join(', ');
+				statements.push(db.prepare(`DELETE FROM card_progress WHERE card_key IN (${placeholders})`).bind(...chunk));
+			}
+			statements.push(db.prepare(`DELETE FROM deck_cards WHERE deck_id = ? AND id NOT IN (${[...wantedIds].map(() => '?').join(', ') || 'NULL'})`)
+				.bind(deckId, ...wantedIds));
+		}
+		// A sorrend a lista indexe: meglévők frissítése, újak beszúrása.
+		const newIds = new Map<number, string>();
+		cleaned.forEach((c, index) => {
+			if (c.id) {
+				statements.push(db.prepare(
+					`UPDATE deck_cards SET front = ?, back = ?, section_slug = ?, sort = ? WHERE id = ? AND deck_id = ?`
+				).bind(c.front, c.back, c.sectionSlug, index, c.id, deckId));
+			} else {
+				const id = crypto.randomUUID();
+				newIds.set(index, id);
+				statements.push(db.prepare(
+					`INSERT INTO deck_cards (id, deck_id, front, back, sort, section_slug) VALUES (?, ?, ?, ?, ?, ?)`
+				).bind(id, deckId, c.front, c.back, index, c.sectionSlug));
+			}
+		});
+		for (let offset = 0; offset < statements.length; offset += 80) {
+			await db.batch(statements.slice(offset, offset + 80));
+		}
+		return { ids: cleaned.map((c, index) => c.id ?? newIds.get(index)!) };
 	}
 	error(400, 'Ismeretlen szerkesztési művelet.');
 }

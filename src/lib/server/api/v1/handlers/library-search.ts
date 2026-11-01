@@ -17,7 +17,16 @@ export async function handleLibrarySearch(ctx: RouteCtx): Promise<Response | nul
 			const deckId = quizId.slice(5);
 			const owner = await db.prepare(`SELECT user_id AS userId FROM decks WHERE id = ?`).bind(deckId).first<{ userId: string }>().catch(() => null);
 			if (owner && owner.userId === user.id) return ok({ ok: true, owned: true });
-			const pub = await db.prepare(`SELECT id FROM decks WHERE id = ? AND COALESCE(is_public, 0) = 1`).bind(deckId).first<{ id: string }>().catch(() => null);
+			let pub: { id: string } | null = null;
+			try {
+				pub = await db.prepare(
+					`SELECT id FROM decks WHERE id = ? AND COALESCE(is_public, 0) = 1 AND (COALESCE(is_lesson, 0) = 0 OR NOT EXISTS (
+						SELECT 1 FROM level_settings visibility WHERE visibility.level_id = decks.level_id AND visibility.published = 0
+					))`
+				).bind(deckId).first<{ id: string }>().catch(() => null);
+			} catch {
+				pub = await db.prepare(`SELECT id FROM decks WHERE id = ? AND COALESCE(is_public, 0) = 1`).bind(deckId).first<{ id: string }>().catch(() => null);
+			}
 			if (!pub) return err('Nincs ilyen csomag.', 404);
 			await db.prepare(`INSERT OR IGNORE INTO library (user_id, quiz_id, added_at) VALUES (?, ?, ?)`).bind(user.id, quizId, Math.floor(Date.now() / 1000)).run();
 			return ok({ ok: true });

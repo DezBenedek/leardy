@@ -322,4 +322,37 @@ export async function ensureCurriculumSchema(db: D1Database): Promise<void> {
 	} catch {
 		// tábla még nincs vagy nincs mit menteni
 	}
+	// Hivatalos lecke deckek jelölése és létrehozója (0013 migráció önhelyreállítása).
+	for (const ddl of [
+		`ALTER TABLE decks ADD COLUMN is_lesson INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE decks ADD COLUMN created_by TEXT REFERENCES users(id) ON DELETE SET NULL`,
+		`ALTER TABLE deck_lessons ADD COLUMN sort INTEGER NOT NULL DEFAULT 0`
+	]) {
+		try {
+			await db.prepare(ddl).run();
+		} catch {
+			// az oszlop már létezik
+		}
+	}
+	for (const ddl of [
+		`CREATE INDEX IF NOT EXISTS idx_decks_lesson_flag ON decks(is_lesson)`,
+		`CREATE INDEX IF NOT EXISTS idx_deck_lessons_lesson_sort ON deck_lessons(lesson_id, sort)`
+	]) {
+		try {
+			await db.prepare(ddl).run();
+		} catch {
+			// az index már létezik
+		}
+	}
+	// Rendszerfelhasználó a hivatalos deckek tulajdonosának (soha nem jelentkezik be).
+	try {
+		await db
+			.prepare(
+				`INSERT OR IGNORE INTO users (id, name, email, pass_hash, salt, created_at, role)
+				 VALUES ('system', 'Leardy tananyag', 'system@local.invalid', 'system', '', 0, 'teacher')`
+			)
+			.run();
+	} catch {
+		// a users tábla még nem áll készen
+	}
 }

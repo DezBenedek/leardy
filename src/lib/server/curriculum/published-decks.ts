@@ -112,6 +112,14 @@ const PUBLISHED_DECK_FROM = `FROM decks d
 	 LEFT JOIN lessons le ON le.id = d.lesson_id
 	 LEFT JOIN users u ON u.id = d.user_id`;
 
+/** Hivatalos lecke deck (is_lesson = 1) csak publikált szinten látszik.
+	Régi adatbázison (is_lesson oszlop nélkül) a feltétel hibát dob,
+	ilyenkor a hívó a jelölés nélküli lekérdezésre esik vissza. */
+const LESSON_DECK_PUBLISHED_CHECK = `(COALESCE(d.is_lesson, 0) = 0 OR NOT EXISTS (
+	SELECT 1 FROM level_settings visibility
+	WHERE visibility.level_id = d.level_id AND visibility.published = 0
+))`;
+
 /** Minden publikált csomag (Felfedezés): tanári, nem üres csomagok. */
 export async function listPublishedDecks(
 	dbOrEvent: DbOrEvent,
@@ -120,17 +128,18 @@ export async function listPublishedDecks(
 	viewerId?: string | number | null
 ): Promise<Package[]> {
 	const db = resolveDb(dbOrEvent);
+	const base = `COALESCE(d.is_public, 0) = 1`;
+	const conds = [base, LESSON_DECK_PUBLISHED_CHECK];
+	const args: (string | number)[] = [];
+	if (subjectId) {
+		conds.push('d.subject_id = ?');
+		args.push(subjectId);
+	}
+	if (levelId) {
+		conds.push('d.level_id = ?');
+		args.push(levelId);
+	}
 	try {
-		const conds = [`COALESCE(d.is_public, 0) = 1`];
-		const args: (string | number)[] = [];
-		if (subjectId) {
-			conds.push('d.subject_id = ?');
-			args.push(subjectId);
-		}
-		if (levelId) {
-			conds.push('d.level_id = ?');
-			args.push(levelId);
-		}
 		const res = await db
 			.prepare(
 				`SELECT d.id AS id, d.title AS title,
@@ -152,8 +161,31 @@ export async function listPublishedDecks(
 			.all<PublishedDeckRow>();
 		return mapPublishedDecks(db, res.results ?? [], viewerId);
 	} catch {
-		// régi DB is_public nélkül: nincs publikált csomag
-		return [];
+		try {
+			const retry = await db
+				.prepare(
+					`SELECT d.id AS id, d.title AS title,
+						COALESCE(d.kind, 'cards') AS kind,
+						COALESCE(d.card_kind, 'word') AS cardKind,
+						COALESCE(s.title, 'Saját') AS subjectTitle,
+						COALESCE(l.title, '') AS levelTitle,
+						COALESCE(m.title, '') AS materialTitle,
+						d.subject_id AS subjectId,
+						d.level_id AS levelId,
+						d.lesson_id AS attachedLessonId,
+						COALESCE(le.title, '') AS attachedLessonTitle,
+						COALESCE(u.name, '') AS ownerName
+					 ${PUBLISHED_DECK_FROM}
+					 WHERE ${[base, ...conds.slice(2)].join(' AND ')}
+					 ORDER BY d.created_at DESC LIMIT 500`
+				)
+				.bind(...args)
+				.all<PublishedDeckRow>();
+			return mapPublishedDecks(db, retry.results ?? [], viewerId);
+		} catch {
+			// régi DB is_public nélkül: nincs publikált csomag
+			return [];
+		}
 	}
 }
 
@@ -175,9 +207,10 @@ export async function listPublishedDecksForLesson(
 		} catch {
 			extraIds = [];
 		}
-		const res = await db
-			.prepare(
-				`SELECT d.id AS id, d.title AS title,
+		const lessonClause = extraIds.length > 0
+			? `d.lesson_id = ? OR d.id IN (${extraIds.map(() => '?').join(', ')})`
+			: `d.lesson_id = ?`;
+		const selectList = `d.id AS id, d.title AS title,
 					COALESCE(d.kind, 'cards') AS kind,
 					COALESCE(d.card_kind, 'word') AS cardKind,
 					COALESCE(s.title, 'Saját') AS subjectTitle,
@@ -187,18 +220,32 @@ export async function listPublishedDecksForLesson(
 					d.level_id AS levelId,
 					d.lesson_id AS attachedLessonId,
 					COALESCE(le.title, '') AS attachedLessonTitle,
-					COALESCE(u.name, '') AS ownerName
-				 ${PUBLISHED_DECK_FROM}
-				 WHERE COALESCE(d.is_public, 0) = 1 AND (${
-					 extraIds.length > 0
-						 ? `d.lesson_id = ? OR d.id IN (${extraIds.map(() => '?').join(', ')})`
-						 : `d.lesson_id = ?`
-				 })
-				 ORDER BY d.created_at DESC LIMIT 100`
-			)
-			.bind(lessonId, ...extraIds)
-			.all<PublishedDeckRow>();
-		return mapPublishedDecks(db, res.results ?? [], viewerId);
+					COALESCE(u.name, '') AS ownerName`;
+		try {
+			const res = await db
+				.prepare(
+					`SELECT ${selectList}
+					 ${PUBLISHED_DECK_FROM}
+					 LEFT JOIN deck_lessons dl ON dl.deck_id = d.id AND dl.lesson_id = ?
+					 WHERE COALESCE(d.is_public, 0) = 1 AND ${LESSON_DECK_PUBLISHED_CHECK} AND (${lessonClause})
+					 ORDER BY COALESCE(dl.sort, 0), d.created_at DESC LIMIT 100`
+				)
+				.bind(lessonId, lessonId, ...extraIds)
+				.all<PublishedDeckRow>();
+			return mapPublishedDecks(db, res.results ?? [], viewerId);
+		} catch {
+			// Régi adatbázis is_lesson vagy deck_lessons.sort nélkül.
+			const res = await db
+				.prepare(
+					`SELECT ${selectList}
+					 ${PUBLISHED_DECK_FROM}
+					 WHERE COALESCE(d.is_public, 0) = 1 AND (${lessonClause})
+					 ORDER BY d.created_at DESC LIMIT 100`
+				)
+				.bind(lessonId, ...extraIds)
+				.all<PublishedDeckRow>();
+			return mapPublishedDecks(db, res.results ?? [], viewerId);
+		}
 	} catch {
 		return [];
 	}
@@ -212,9 +259,7 @@ export async function getPublishedDeckPackage(
 ): Promise<Package | null> {
 	const db = resolveDb(dbOrEvent);
 	try {
-		const row = await db
-			.prepare(
-				`SELECT d.id AS id, d.title AS title,
+		const selectOne = `d.id AS id, d.title AS title,
 					COALESCE(d.kind, 'cards') AS kind,
 					COALESCE(d.card_kind, 'word') AS cardKind,
 					COALESCE(s.title, 'Saját') AS subjectTitle,
@@ -224,12 +269,27 @@ export async function getPublishedDeckPackage(
 					d.level_id AS levelId,
 					d.lesson_id AS attachedLessonId,
 					COALESCE(le.title, '') AS attachedLessonTitle,
-					COALESCE(u.name, '') AS ownerName
-				 ${PUBLISHED_DECK_FROM}
-				 WHERE d.id = ? AND COALESCE(d.is_public, 0) = 1`
-			)
-			.bind(deckId)
-			.first<PublishedDeckRow>();
+					COALESCE(u.name, '') AS ownerName`;
+			let row: PublishedDeckRow | null;
+			try {
+				row = await db
+					.prepare(
+						`SELECT ${selectOne}
+						 ${PUBLISHED_DECK_FROM}
+						 WHERE d.id = ? AND COALESCE(d.is_public, 0) = 1 AND ${LESSON_DECK_PUBLISHED_CHECK}`
+					)
+					.bind(deckId)
+					.first<PublishedDeckRow>();
+			} catch {
+				row = await db
+					.prepare(
+						`SELECT ${selectOne}
+						 ${PUBLISHED_DECK_FROM}
+						 WHERE d.id = ? AND COALESCE(d.is_public, 0) = 1`
+					)
+					.bind(deckId)
+					.first<PublishedDeckRow>();
+			}
 		if (!row) return null;
 		const list = await mapPublishedDecks(db, [row], viewerId);
 		return list[0] ?? null;

@@ -37,11 +37,10 @@
 	let saved = $state('');
 	let changed = $state(0);
 	const adapter: QuizAdapter = {
-		createQuiz: async () => ({ id: 'teszt' }), renameQuiz: async () => {}, deleteQuiz: async () => {},
-		duplicateQuiz: async () => ({ id: 'masolat' }), reorderQuizzes: async () => {},
+		ensureQuiz: async () => ({ id: 'teszt' }),
 		saveQuestion: async (_, value) => { saved = JSON.stringify(value); return { id: value.id || 'uj' }; },
-		deleteQuestion: async () => {}, duplicateQuestion: async () => ({ id: 'masolat' }), reorderQuestions: async () => {},
-		reorderLessonQuestions: async () => ({ assignments: [] }), moveQuestion: async () => {}
+		saveQuestions: async (drafts) => ({ quizId: 'teszt', ids: drafts.map((d) => d.id || 'uj') }),
+		deleteQuestion: async () => {}, duplicateQuestion: async () => ({ id: 'masolat' }), reorderQuestions: async () => {}
 	};
 </script>
 
