@@ -2,7 +2,7 @@
 	import { Check, ChevronDown, ListFilter } from '@lucide/svelte';
 	import Sheet from './Sheet.svelte';
 	import { portal } from '$lib/components/SubjectPicker.svelte';
-	import { motionOK } from '$lib/overlay';
+	import { motionOK } from '$lib/view/overlay';
 
 	interface Option {
 		value: string;

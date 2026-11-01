@@ -1,4 +1,4 @@
-import type { QuizQuestion } from '../curriculum';
+import type { QuizQuestion } from '../curriculum/curriculum';
 import { choice } from './choice/definition';
 import { trueFalse } from './true-false/definition';
 import { text } from './text/definition';
@@ -8,7 +8,7 @@ import { gap } from './gap/definition';
 import { map } from './map/definition';
 import { readSettings } from './settings';
 import type { AnswerFields, QuestionTypeDefinition, QuestionTypeId } from './types';
-import { normalizeQuestionImageUrl } from '../question-image';
+import { normalizeQuestionImageUrl } from '../content/question-image';
 
 export const QUESTION_TYPES: QuestionTypeDefinition[] = [choice, trueFalse, text, gap, match, order, map];
 

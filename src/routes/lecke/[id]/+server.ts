@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { lessonPath } from '$lib/lesson-paths';
+import { lessonPath } from '$lib/curriculum/lesson-paths';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ params, url }) => {

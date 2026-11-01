@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
+import { getDb, requireUser } from '$lib/server/infra/db';
 import {
 	canUsePublicApi,
 	ensureApiKeysSchema,
@@ -7,7 +7,7 @@ import {
 	newApiKeyId,
 	newApiKeySecret,
 	publicKeyInfo
-} from '$lib/server/api-keys';
+} from '$lib/server/auth/api-keys';
 
 /* Saját API kulcsok kezelése (munkamenet + tanári szerep).
    GET → listázás, POST { name? } → létrehozás (a titok csak egyszer látszik). */

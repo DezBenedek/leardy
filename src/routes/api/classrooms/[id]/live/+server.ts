@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { ensureLiveSchema, getClassRole } from '$lib/server/live';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { ensureLiveSchema, getClassRole } from '$lib/server/live/live';
 
 /* Élő dolgozatok a tanterem falára: a tanár az összes eddigit látja
    (aktív elöl, piszkozatok, lezártak dátummal), a diák csak az éppen élőt.

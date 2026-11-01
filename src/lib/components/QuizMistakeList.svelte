@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { CircleCheck, CircleX } from '@lucide/svelte';
-	import type { QuizMiss } from '$lib/quiz-review';
+	import type { QuizMiss } from '$lib/quiz/quiz-review';
 
 	let { missed }: { missed: QuizMiss[] } = $props();
 </script>

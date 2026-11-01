@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { getTutorial } from '$lib/tutorial/controller.svelte';
 	import type { PageData } from './$types';
-	import type { LessonDocument } from '$lib/content-protocol';
-	import { Query } from '$lib/query.svelte';
-	import { contentFetch, subscribeContent } from '$lib/content-client';
+	import type { LessonDocument } from '$lib/content/content-protocol';
+	import { Query } from '$lib/state/query.svelte';
+	import { contentFetch, subscribeContent } from '$lib/content/content-client';
 	import LessonReader from '$lib/components/LessonReader.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import Skeleton from '$lib/ui/Skeleton.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import { ArrowLeft } from '@lucide/svelte';
-	import { createBackNavigation } from '$lib/back-navigation';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
 	import { resolve } from '$app/paths';
 	let { data }: { data: PageData } = $props();
 	const lessonQ = new Query<LessonDocument>();

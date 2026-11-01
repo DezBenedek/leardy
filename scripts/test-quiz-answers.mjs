@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { typescriptModuleUrl } from './typescript-module.mjs';
 
-const { correctQuizAnswer, isQuizAnswerCorrect, formatQuizAnswer } = await import(await typescriptModuleUrl(new URL('../src/lib/quiz-answers.ts', import.meta.url)));
+const { correctQuizAnswer, isQuizAnswerCorrect, formatQuizAnswer } = await import(await typescriptModuleUrl(new URL('../src/lib/quiz/quiz-answers.ts', import.meta.url)));
 const question = { type: 'match', correct_answer: 'régi első válasz', pairs: [{ left: 'Magyarország', right: 'Budapest' }, { left: 'Ausztria', right: 'Bécs' }, { left: 'Franciaország', right: 'Párizs' }] };
 
 test('A párosítás minden párt értékel, a régi helyesválasz-mezőtől függetlenül', () => {

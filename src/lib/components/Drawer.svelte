@@ -3,10 +3,10 @@
 	import { ArrowLeft, Pencil, X } from '@lucide/svelte';
 	import { tick } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { isTopOverlay, lockBody, motionOK } from '$lib/overlay';
+	import { isTopOverlay, lockBody, motionOK } from '$lib/view/overlay';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
-	import { fitOverlayViewport } from '$lib/overlay-viewport';
-	import { attachDismissGesture } from '$lib/dismiss-gesture';
+	import { fitOverlayViewport } from '$lib/view/overlay-viewport';
+	import { attachDismissGesture } from '$lib/view/dismiss-gesture';
 
 	interface Props {
 		open: boolean;

@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { getHomeStats, getSuggestions } from '$lib/server/curriculum';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { getHomeStats, getSuggestions } from '$lib/server/curriculum/curriculum';
 
 /** Home-statok bejelentkezett usernek. Nincs user → 401 (a kliens üres állapotot mutat). */
 export const GET: RequestHandler = async (event) => {

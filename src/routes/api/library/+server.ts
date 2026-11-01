@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
+import { getDb, requireUser } from '$lib/server/infra/db';
 import {
 	getOfficialCardPack,
 	getOfficialCardPackById,
@@ -7,7 +7,7 @@ import {
 	getUserDeckPackage,
 	listOfficialCardPacksByIds,
 	listUserDecks
-} from '$lib/server/curriculum';
+} from '$lib/server/curriculum/curriculum';
 
 /* Könyvtár: a saját kártyacsomagok (automatikusan) + a Felfedezésben elmentett
    hivatalos kártyacsomagok. A tananyagi kvízek nem részei a Kártyák területnek:

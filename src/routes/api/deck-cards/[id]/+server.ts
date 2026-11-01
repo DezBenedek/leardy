@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { ensureCurriculumSchema } from '$lib/server/curriculum';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { ensureCurriculumSchema } from '$lib/server/curriculum/curriculum';
 
 /* Saját kártya módosítása és törlése ownership join-nal. */
 

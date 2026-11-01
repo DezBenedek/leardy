@@ -19,10 +19,10 @@
 		blankQuestion, deleteCustomTemplate, draftToPreview, effectiveSectionSlug, loadCustomTemplates,
 		questionTypeTitle, saveCustomTemplate, seedToDraft, validateQuestion,
 		type CustomTemplate, type QuestionDraft, type QuestionTypeId, type SectionOption, type TemplateSeed
-	} from '$lib/quiz-editor';
-	import type { EditorQuiz } from '$lib/curriculum-editor';
-	import type { QuizQuestion } from '$lib/curriculum';
-	import { toast } from '$lib/toast.svelte';
+	} from '$lib/quiz/quiz-editor';
+	import type { EditorQuiz } from '$lib/curriculum/curriculum-editor';
+	import type { QuizQuestion } from '$lib/curriculum/curriculum';
+	import { toast } from '$lib/state/toast.svelte';
 
 	interface Props {
 		adapter: QuizAdapter;

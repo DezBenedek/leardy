@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureClassContentSchema } from '$lib/server/classroom';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { ensureClassContentSchema } from '$lib/server/classroom/classroom';
 
 /* Diák saját beküldés-állapota minden feladathoz (falon a kész jelöléshez).
    Tanárnak üres map (tanár nem tölt ki). */

@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb } from '$lib/server/db';
-import { getVapidPublicKey } from '$lib/server/push';
+import { ensureAuthSchema, getDb } from '$lib/server/infra/db';
+import { getVapidPublicKey } from '$lib/server/messaging/push';
 
 /* Nyilvanos VAPID kulcs a bongeszos feliratkozashoz. Bejelentkezes sem kell hozza. */
 export const GET: RequestHandler = async (event) => {

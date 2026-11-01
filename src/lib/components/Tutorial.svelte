@@ -5,7 +5,7 @@
 	import { page } from '$app/state';
 	import { ArrowLeft, ArrowRight, BookOpen, Check, Compass, Layers, Play, RotateCcw, Users, X } from '@lucide/svelte';
 	import Drawer from './Drawer.svelte';
-	import { lockBody, motionOK } from '$lib/overlay';
+	import { lockBody, motionOK } from '$lib/view/overlay';
 	import { TOURS, TOUR_IDS, tourPath, type TourId, type TourStep } from '$lib/tutorial/definition';
 	import type { TutorialController } from '$lib/tutorial/controller.svelte';
 	let { tutorial }: { tutorial: TutorialController } = $props();

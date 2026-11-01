@@ -4,7 +4,7 @@
 	import Button from '$lib/ui/Button.svelte';
 	import { portal } from '$lib/components/SubjectPicker.svelte';
 	import { typeComponents } from '$lib/question-types/components';
-	import { questionTypeTitle, type CustomTemplate, type TemplateSeed } from '$lib/quiz-editor';
+	import { questionTypeTitle, type CustomTemplate, type TemplateSeed } from '$lib/quiz/quiz-editor';
 
 	interface Props {
 		open: boolean;

@@ -1,9 +1,9 @@
 import { loadQuestionOptions } from '$lib/question-types/registry';
 import { error, json, type RequestEvent, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { ensureQuizTemplateSchema, listQuizTemplates } from '$lib/server/quiz-templates';
-import { draftOptionsJson, draftCorrectAnswer, isTemplateSeed, questionTypeTitle, validateQuestion } from '$lib/quiz-editor';
-import { normalizeQuestionImageUrl } from '$lib/question-image';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { ensureQuizTemplateSchema, listQuizTemplates } from '$lib/server/infra/quiz-templates';
+import { draftOptionsJson, draftCorrectAnswer, isTemplateSeed, questionTypeTitle, validateQuestion } from '$lib/quiz/quiz-editor';
+import { normalizeQuestionImageUrl } from '$lib/content/question-image';
 
 async function context(event: RequestEvent) {
 	event.setHeaders({ 'cache-control': 'private, no-store' });

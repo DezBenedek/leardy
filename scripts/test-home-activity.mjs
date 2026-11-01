@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import ts from 'typescript';
-import { learningDay, relativeDeadline, shiftDay, summarizeActivity } from '../src/lib/learning-activity.ts';
+import { learningDay, relativeDeadline, shiftDay, summarizeActivity } from '../src/lib/deck/learning-activity.ts';
 
 const friday = Date.parse('2026-10-09T10:00:00Z');
 
@@ -54,11 +54,12 @@ test('A határidő naptári nap szerint relatív, a lejárat percre pontos', () 
 	assert.equal(relativeDeadline(Date.parse('2026-03-29T10:00:00Z'), Date.parse('2026-03-28T10:00:00Z')), 'Holnap, 12:00');
 });
 
-const source = await readFile(new URL('../src/lib/server/curriculum.ts', import.meta.url), 'utf8');
-const activityUrl = new URL('../src/lib/learning-activity.ts', import.meta.url).href;
-const sm2Url = new URL('../src/lib/sm2.ts', import.meta.url).href;
-const functions = source.slice(source.indexOf('export async function saveLessonProgress('), source.indexOf('export async function getSuggestions('))
-	+ source.slice(source.indexOf('export async function saveCardProgress('));
+const lessonsSource = await readFile(new URL('../src/lib/server/curriculum/lessons.ts', import.meta.url), 'utf8');
+const cardSource = await readFile(new URL('../src/lib/server/curriculum/card-progress.ts', import.meta.url), 'utf8');
+const activityUrl = new URL('../src/lib/deck/learning-activity.ts', import.meta.url).href;
+const sm2Url = new URL('../src/lib/deck/sm2.ts', import.meta.url).href;
+const functions = lessonsSource.slice(lessonsSource.indexOf('export async function saveLessonProgress('), lessonsSource.indexOf('export async function getSuggestions('))
+	+ cardSource.slice(cardSource.indexOf('export async function saveCardProgress('));
 const compiled = ts.transpileModule(`import { learningDay, summarizeActivity } from '${activityUrl}'; import { gradeSM2, todayDay } from '${sm2Url}'; const resolveDb = (db) => db; ${functions}`, {
 	compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
 }).outputText;

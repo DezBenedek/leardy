@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { BookOpenText, Check, ChevronDown, Landmark, Languages, Layers, Leaf, Shapes } from '@lucide/svelte';
-	import type { LevelNode, Subject } from '$lib/curriculum';
+	import type { LevelNode, Subject } from '$lib/curriculum/curriculum';
 	import Sheet from '$lib/ui/Sheet.svelte';
 
 	/* Tantárgy + Tananyag választó: két vékony kártya egymás mellett,

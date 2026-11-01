@@ -9,9 +9,9 @@
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import Segmented from '$lib/ui/Segmented.svelte';
 	import Switch from '$lib/ui/Switch.svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { createBackNavigation } from '$lib/back-navigation';
-	import type { Subject } from '$lib/curriculum';
+	import { toast } from '$lib/state/toast.svelte';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
+	import type { Subject } from '$lib/curriculum/curriculum';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();

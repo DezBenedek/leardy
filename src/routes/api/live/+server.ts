@@ -1,8 +1,8 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { DurableObjectNamespace } from '@cloudflare/workers-types';
-import { getDb, requireUser } from '$lib/server/db';
-import { ensureLiveSchema, buildLiveQuestions, feasibility, getClassRole, callLiveRoom, type LiveConfig } from '$lib/server/live';
-import { fireNotify, notifyClassroom } from '$lib/server/push';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { ensureLiveSchema, buildLiveQuestions, feasibility, getClassRole, callLiveRoom, type LiveConfig } from '$lib/server/live/live';
+import { fireNotify, notifyClassroom } from '$lib/server/messaging/push';
 
 /* Név nélkül is indítható: ilyenkor az alapértelmezett címet kapja.
    Dátumot szándékosan nem teszünk bele: a fal és a push úgyis mutatja. */

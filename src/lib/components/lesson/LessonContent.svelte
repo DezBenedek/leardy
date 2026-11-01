@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { LessonNode } from '$lib/lesson-content';
-	import { renderLessonDoc } from '$lib/lesson-render';
-	import { renderMarkdown } from '$lib/markdown';
+	import type { LessonNode } from '$lib/curriculum/lesson-content';
+	import { renderLessonDoc } from '$lib/curriculum/lesson-render';
+	import { renderMarkdown } from '$lib/curriculum/markdown';
 	import 'katex/dist/katex.min.css';
 	import './lesson-content.css';
 	let { doc, md = '' }: { doc?: LessonNode; md?: string } = $props();

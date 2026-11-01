@@ -7,8 +7,8 @@ import { TableKit } from '@tiptap/extension-table';
 import { Mathematics } from '@tiptap/extension-mathematics';
 import { Plugin, TextSelection, NodeSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { safeLessonLink } from '$lib/lesson-content';
-import { normalizeQuestionImageUrl } from '$lib/question-image';
+import { safeLessonLink } from '$lib/curriculum/lesson-content';
+import { normalizeQuestionImageUrl } from '$lib/content/question-image';
 
 export function lessonEditorExtensions(onMath: (pos: number, latex: string, block: boolean) => void, onFigure: (pos: number) => void, onSolution: (pos: number, title: string) => void, ownsControlFocus: () => boolean = () => false) {
 	const PersistentSelection = Extension.create({

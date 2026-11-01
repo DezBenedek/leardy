@@ -2,7 +2,7 @@
 	import { ChevronLeft, ChevronRight, Sparkles } from '@lucide/svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import SwipePager from '$lib/components/SwipePager.svelte';
-	import { CHANGES, LATEST_CHANGE, markWhatsNewSeen } from '$lib/changelog';
+	import { CHANGES, LATEST_CHANGE, markWhatsNewSeen } from '$lib/app/changelog';
 
 	/* Újdonság-drawer: a changelog-bejegyzések között jobbra-balra
 	   legyintve (vagy a nyilakkal, pöttyökkel) lehet váltani.

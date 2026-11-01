@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { privateFetch } from '$lib/offline-api';
-	import { mutationFetch } from '$lib/mutation-fetch';
+	import { privateFetch } from '$lib/content/offline-api';
+	import { mutationFetch } from '$lib/platform/mutation-fetch';
 	import { CalendarDays, Check, ChevronRight, FileText, Paperclip, Plus, Send, Undo2, X } from '@lucide/svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
@@ -8,7 +8,7 @@
 	import AssignmentImageEditor from '$lib/components/AssignmentImageEditor.svelte';
 	import AssignmentAudioRecorder from '$lib/components/AssignmentAudioRecorder.svelte';
 	import AssignmentGrading from '$lib/components/AssignmentGrading.svelte';
-	import { toast } from '$lib/toast.svelte';
+	import { toast } from '$lib/state/toast.svelte';
 
 	/* Beadandó-részletező a kezdőlapról: szöveg + egységes Csatolmányok
 	   (+ választóval) + beküldés diáknak, eredménylista tanárnak. */

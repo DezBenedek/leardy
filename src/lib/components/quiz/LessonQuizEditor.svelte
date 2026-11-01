@@ -2,9 +2,9 @@
 	import { beforeNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { ArrowLeft } from '@lucide/svelte';
-	import { createBackNavigation } from '$lib/back-navigation';
-	import { type EditorLesson, type EditorQuiz } from '$lib/curriculum-editor';
-	import { lessonSections } from '$lib/lesson-content';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
+	import { type EditorLesson, type EditorQuiz } from '$lib/curriculum/curriculum-editor';
+	import { lessonSections } from '$lib/curriculum/lesson-content';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import QuizEditorCore from './QuizEditorCore.svelte';
 	import { createLessonQuizAdapter } from './quiz-adapter';

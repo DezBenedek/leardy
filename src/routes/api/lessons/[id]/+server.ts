@@ -1,6 +1,6 @@
 import { error, type RequestHandler } from '@sveltejs/kit';
-import { getLessonPage } from '$lib/server/curriculum';
-import { contentResponse, fingerprint, publicContent } from '$lib/server/content-cache';
+import { getLessonPage } from '$lib/server/curriculum/curriculum';
+import { contentResponse, fingerprint, publicContent } from '$lib/server/infra/content-cache';
 
 export const GET: RequestHandler = async (event) => {
 	const resource = await publicContent(event, `lesson:${event.params.id}`, null, async () => {

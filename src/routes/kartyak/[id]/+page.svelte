@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { mutationFetch } from '$lib/mutation-fetch';
-	import { contentFetch } from '$lib/content-client';
-	import { lessonPath } from '$lib/lesson-paths';
+	import { mutationFetch } from '$lib/platform/mutation-fetch';
+	import { contentFetch } from '$lib/content/content-client';
+	import { lessonPath } from '$lib/curriculum/lesson-paths';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -10,13 +10,13 @@
 	import FlipCards from '$lib/components/FlipCards.svelte';
 	import QuizModal from '$lib/components/QuizModal.svelte';
 	import WordPractice from '$lib/components/WordPractice.svelte';
-	import type { Package, QuizQuestion } from '$lib/curriculum';
-	import { deckCardKindLabel, isStudyDeck } from '$lib/curriculum';
-	import { summarizeSM2, todayDay } from '$lib/sm2';
-	import { CardReviewSession } from '$lib/card-review.svelte';
-	import { markDeckOpened } from '$lib/deck-history';
-	import { Query, markLessonDone } from '$lib/query.svelte';
-	import { toast } from '$lib/toast.svelte';
+	import type { Package, QuizQuestion } from '$lib/curriculum/curriculum';
+	import { deckCardKindLabel, isStudyDeck } from '$lib/curriculum/curriculum';
+	import { summarizeSM2, todayDay } from '$lib/deck/sm2';
+	import { CardReviewSession } from '$lib/deck/card-review.svelte';
+	import { markDeckOpened } from '$lib/deck/deck-history';
+	import { Query, markLessonDone } from '$lib/state/query.svelte';
+	import { toast } from '$lib/state/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';

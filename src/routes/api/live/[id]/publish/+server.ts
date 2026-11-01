@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { ensureLiveSchema, getClassRole, callLiveRoom, type LiveConfig, type LiveQuestion } from '$lib/server/live';
-import { fireNotify, notifyClassroom } from '$lib/server/push';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { ensureLiveSchema, getClassRole, callLiveRoom, type LiveConfig, type LiveQuestion } from '$lib/server/live/live';
+import { fireNotify, notifyClassroom } from '$lib/server/messaging/push';
 import type { DurableObjectNamespace } from '@cloudflare/workers-types';
 
 /* Piszkozat meghirdetése: csak az osztály tanára, csak draft állapotból.

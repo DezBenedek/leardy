@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { deletePushSubscription, ensureVapidKeys, savePushSubscription } from '$lib/server/push';
-import { ensureSecuritySchema } from '$lib/server/classroom';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { deletePushSubscription, ensureVapidKeys, savePushSubscription } from '$lib/server/messaging/push';
+import { ensureSecuritySchema } from '$lib/server/classroom/classroom';
 
 function validSubscription(b: { endpoint?: unknown; p256dh?: unknown; auth?: unknown }): boolean {
 	const endpoint = String(b.endpoint ?? '');

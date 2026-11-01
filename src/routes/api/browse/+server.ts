@@ -1,7 +1,7 @@
 import { error, json, isHttpError, type RequestHandler } from '@sveltejs/kit';
-import { getDb, getSessionUser } from '$lib/server/db';
-import { countQuizzesByLesson, countQuizzesBySubject, getSubjectTree, listSubjects } from '$lib/server/curriculum';
-import { contentResponse, publicContent } from '$lib/server/content-cache';
+import { getDb, getSessionUser } from '$lib/server/infra/db';
+import { countQuizzesByLesson, countQuizzesBySubject, getSubjectTree, listSubjects } from '$lib/server/curriculum/curriculum';
+import { contentResponse, publicContent } from '$lib/server/infra/content-cache';
 
 export const GET: RequestHandler = async (event) => {
 	const subjectId = event.url.searchParams.get('subject') ?? '';

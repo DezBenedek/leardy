@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { destroySession, getDb } from '$lib/server/db';
+import { destroySession, getDb } from '$lib/server/infra/db';
 
 export const POST: RequestHandler = async (event) => {
 	const db = getDb(event);

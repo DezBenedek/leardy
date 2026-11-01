@@ -1,8 +1,8 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { getCardProgress } from '$lib/server/curriculum';
-import { publishedLevelSql } from '$lib/server/curriculum-publication';
-import { isLanguageSubject, todayDay } from '$lib/sm2';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { getCardProgress } from '$lib/server/curriculum/curriculum';
+import { publishedLevelSql } from '$lib/server/curriculum/curriculum-publication';
+import { isLanguageSubject, todayDay } from '$lib/deck/sm2';
 
 /** SM-2 esedékesség nyelvenként a főoldalhoz.
  *  Csak a könyvtárban lévő csomagok számítanak (saját + mentett hivatalos).

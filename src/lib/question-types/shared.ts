@@ -1,4 +1,4 @@
-import type { QuizQuestion } from '../curriculum';
+import type { QuizQuestion } from '../curriculum/curriculum';
 import type { GameQuestion } from '../games/types';
 import type { RandomSource } from './types';
 

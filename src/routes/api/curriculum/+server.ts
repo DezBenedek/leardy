@@ -1,5 +1,5 @@
 import { error, json, type RequestHandler } from '@sveltejs/kit';
-import { canEnterEditor, editorContext, getEditorLevels, mutateCurriculum } from '$lib/server/curriculum-editor';
+import { canEnterEditor, editorContext, getEditorLevels, mutateCurriculum } from '$lib/server/curriculum/curriculum-editor';
 
 export const GET: RequestHandler = async (event) => {
 	const { db, user } = await editorContext(event);

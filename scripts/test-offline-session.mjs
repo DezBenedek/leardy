@@ -5,9 +5,9 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 const transpile = (source) => ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace(/^import .*\n/gm, '').replaceAll('export ', '');
-const apiSource = transpile(await readFile(new URL('../src/lib/offline-api.ts', import.meta.url), 'utf8'));
-const sessionSource = transpile(await readFile(new URL('../src/lib/session-client.ts', import.meta.url), 'utf8'));
-const authSource = transpile(await readFile(new URL('../src/lib/auth.svelte.ts', import.meta.url), 'utf8'));
+const apiSource = transpile(await readFile(new URL('../src/lib/content/offline-api.ts', import.meta.url), 'utf8'));
+const sessionSource = transpile(await readFile(new URL('../src/lib/platform/session-client.ts', import.meta.url), 'utf8'));
+const authSource = transpile(await readFile(new URL('../src/lib/state/auth.svelte.ts', import.meta.url), 'utf8'));
 const user = { id: 'owner', name: 'Tanuló', email: 'tanulo@example.invalid', role: 'teacher', isEditor: true };
 const json = (data, owner = 'owner', status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', 'x-content-owner': owner } });
 

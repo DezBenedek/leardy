@@ -1,5 +1,5 @@
-import { loadPrivatePage } from '$lib/private-page';
-import type { loadClassroomPage } from '$lib/server/classroom-page';
+import { loadPrivatePage } from '$lib/platform/private-page';
+import type { loadClassroomPage } from '$lib/server/classroom/classroom-page';
 import type { PageLoad } from './$types';
 
 export const ssr = false;

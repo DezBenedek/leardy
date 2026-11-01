@@ -1,21 +1,21 @@
 <script lang="ts">
 	import { getTutorial } from '$lib/tutorial/controller.svelte';
-	import { createBackNavigation } from '$lib/back-navigation';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { Query } from '$lib/query.svelte';
-	import { contentFetch } from '$lib/content-client';
-	import { queueProgress } from '$lib/progress-outbox.svelte';
-	import { loadSettings } from '$lib/settings';
-	import { loadLessonSections, saveLessonSections } from '$lib/lesson-sections';
+	import { Query } from '$lib/state/query.svelte';
+	import { contentFetch } from '$lib/content/content-client';
+	import { queueProgress } from '$lib/state/progress-outbox.svelte';
+	import { loadSettings } from '$lib/state/settings';
+	import { loadLessonSections, saveLessonSections } from '$lib/curriculum/lesson-sections';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
 	import { ArrowLeft, ChevronDown, ChevronRight, Dices, Layers } from '@lucide/svelte';
 	import QuizModal from '$lib/components/QuizModal.svelte';
 	import QuizRunner from '$lib/components/QuizRunner.svelte';
-	import type { LessonPage, Package, QuizQuestion } from '$lib/curriculum';
-	import { markLessonOpened } from '$lib/lesson-history';
+	import type { LessonPage, Package, QuizQuestion } from '$lib/curriculum/curriculum';
+	import { markLessonOpened } from '$lib/curriculum/lesson-history';
 	import IconButton from '$lib/ui/IconButton.svelte';
-	import { lessonSections } from '$lib/lesson-content';
+	import { lessonSections } from '$lib/curriculum/lesson-content';
 	import LessonContent from './lesson/LessonContent.svelte';
 
 	const tutorial = getTutorial();	let { lessonPage, quizVersion, offline = false, onBusyChange, onBack }: { lessonPage: LessonPage; quizVersion: string; offline?: boolean; onBusyChange?: (busy: boolean) => void; onBack?: () => void } = $props();

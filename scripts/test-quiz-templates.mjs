@@ -5,14 +5,14 @@ import test from 'node:test';
 import ts from 'typescript';
 import { typescriptModuleUrl } from './typescript-module.mjs';
 
-const editorUrl = await typescriptModuleUrl(new URL('../src/lib/quiz-editor.ts', import.meta.url));
+const editorUrl = await typescriptModuleUrl(new URL('../src/lib/quiz/quiz-editor.ts', import.meta.url));
 const replacements = {
 	'@sveltejs/kit': import.meta.resolve('@sveltejs/kit'),
-	'$lib/server/db': await typescriptModuleUrl(new URL('../src/lib/server/db.ts', import.meta.url)),
-	'$lib/server/quiz-templates': await typescriptModuleUrl(new URL('../src/lib/server/quiz-templates.ts', import.meta.url)),
-	'$lib/quiz-editor': editorUrl,
+	'$lib/server/infra/db': await typescriptModuleUrl(new URL('../src/lib/server/infra/db.ts', import.meta.url)),
+	'$lib/server/infra/quiz-templates': await typescriptModuleUrl(new URL('../src/lib/server/infra/quiz-templates.ts', import.meta.url)),
+	'$lib/quiz/quiz-editor': editorUrl,
 	'$lib/question-types/registry': await typescriptModuleUrl(new URL('../src/lib/question-types/registry.ts', import.meta.url)),
-	'$lib/question-image': await typescriptModuleUrl(new URL('../src/lib/question-image.ts', import.meta.url))
+	'$lib/content/question-image': await typescriptModuleUrl(new URL('../src/lib/content/question-image.ts', import.meta.url))
 };
 let source = await readFile(new URL('../src/routes/api/quiz-templates/+server.ts', import.meta.url), 'utf8');
 for (const [name, url] of Object.entries(replacements)) source = source.replaceAll(`from '${name}'`, `from '${url}'`);

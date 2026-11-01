@@ -1,8 +1,8 @@
 // Kizárólag a helyi böngészős teszt Vite által fordított belépési pontja.
 import { mount, unmount } from 'svelte';
 import LessonEditor from '../../LessonEditor.svelte';
-import { auth } from '$lib/auth.svelte';
-import type { EditorLesson } from '$lib/curriculum-editor';
+import { auth } from '$lib/state/auth.svelte';
+import type { EditorLesson } from '$lib/curriculum/curriculum-editor';
 
 let fixture: ReturnType<typeof mount> | undefined;
 let target: HTMLElement | undefined;

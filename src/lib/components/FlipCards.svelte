@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { browser } from '$app/environment';
 	import { Check, Lightbulb, RotateCcw, Shuffle, X } from '@lucide/svelte';
-	import { isCardable, type QuizQuestion } from '$lib/curriculum';
+	import { isCardable, type QuizQuestion } from '$lib/curriculum/curriculum';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 

@@ -1,6 +1,6 @@
 import { error, redirect } from '@sveltejs/kit';
-import { listSubjects } from '$lib/server/curriculum';
-import { canCreateLevel, canEnterEditor, countEditorLevelsBySubject, editorContext, getEditorLevels } from '$lib/server/curriculum-editor';
+import { listSubjects } from '$lib/server/curriculum/curriculum';
+import { canCreateLevel, canEnterEditor, countEditorLevelsBySubject, editorContext, getEditorLevels } from '$lib/server/curriculum/curriculum-editor';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {

@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { parseMessageAttachments } from '$lib/message-attachments';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { parseMessageAttachments } from '$lib/content/message-attachments';
 
 /** Az osztály tanára az üzenetet a csatolmányhivatkozásokkal együtt törölheti. */
 export const DELETE: RequestHandler = async (event) => {

@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { DurableObjectNamespace } from '@cloudflare/workers-types';
-import { getDb, requireUser } from '$lib/server/db';
-import { ensureLiveSchema, getClassRole, callLiveRoom } from '$lib/server/live';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { ensureLiveSchema, getClassRole, callLiveRoom } from '$lib/server/live/live';
 
 /* Csatlakozás: diák vagy tanár a teremből. Csak DO join esemény, D1 írás nincs. */
 export const POST: RequestHandler = async (event) => {

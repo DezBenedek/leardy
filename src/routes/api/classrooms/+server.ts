@@ -1,11 +1,11 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
 import {
 	ensureClassroomSchema,
 	generateClassCode,
 	isTeacher,
 	type Classroom
-} from '$lib/server/classroom';
+} from '$lib/server/classroom/classroom';
 
 /* Tantermek listája: tanárnak a sajátjai, diáknak a csatlakozottak. */
 export const GET: RequestHandler = async (event) => {

@@ -5,13 +5,13 @@ import test from 'node:test';
 import ts from 'typescript';
 import { typescriptModuleUrl } from './typescript-module.mjs';
 
-const attachmentsUrl = await typescriptModuleUrl(new URL('../src/lib/message-attachments.ts', import.meta.url));
+const attachmentsUrl = await typescriptModuleUrl(new URL('../src/lib/content/message-attachments.ts', import.meta.url));
 const { attachmentTitle, parseMessageAttachments } = await import(attachmentsUrl);
 async function handler(path, method) {
  let source = await readFile(new URL('../src/routes/api/classrooms/[id]/' + path + '/+server.ts', import.meta.url), 'utf8');
  source = source.replace("import { json, type RequestHandler } from '@sveltejs/kit';", 'const json = (value, init = {}) => new Response(JSON.stringify(value), init);');
- source = source.replace("import { getDb, requireUser } from '$lib/server/db';", 'const getDb = event => event.db; const requireUser = async event => event.user;');
- source = source.replace("from '$lib/message-attachments'", `from '${attachmentsUrl}'`);
+ source = source.replace("import { getDb, requireUser } from '$lib/server/infra/db';", 'const getDb = event => event.db; const requireUser = async event => event.user;');
+ source = source.replace("from '$lib/content/message-attachments'", `from '${attachmentsUrl}'`);
  const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
  return (await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`))[method];
 }

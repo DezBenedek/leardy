@@ -5,7 +5,7 @@ import {
 	getGoogleEnv,
 	randomState,
 	type GoogleEnv
-} from '$lib/server/google-auth';
+} from '$lib/server/auth/google-auth';
 
 const STATE_COOKIE = 'leardy_oauth_state';
 

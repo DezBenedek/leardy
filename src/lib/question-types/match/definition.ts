@@ -1,4 +1,4 @@
-import type { QuizPair } from '../../curriculum';
+import type { QuizPair } from '../../curriculum/curriculum';
 import { answerItems, baseGameQuestion, sameItems, shuffle } from '../shared';
 import type { QuestionTypeDefinition } from '../types';
 

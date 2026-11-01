@@ -1,11 +1,11 @@
 import { error, json, isHttpError, type RequestHandler } from '@sveltejs/kit';
-import { getDb, getSessionUser } from '$lib/server/db';
-import { contentResponse, publicContent } from '$lib/server/content-cache';
+import { getDb, getSessionUser } from '$lib/server/infra/db';
+import { contentResponse, publicContent } from '$lib/server/infra/content-cache';
 import {
 	getCardProgress, getOfficialCardPack, getOfficialCardPackById, getPublishedDeckPackage, getScopedQuizPackage,
 	getUserDeckPackage, listDecksForLesson, listOfficialCardPacks,
 	listOfficialCardPacksForLesson, listPublishedDecks, listPublishedDecksForLesson, listScopedPackages, listUserDecks
-} from '$lib/server/curriculum';
+} from '$lib/server/curriculum/curriculum';
 
 export const GET: RequestHandler = async (event) => {
 	try {

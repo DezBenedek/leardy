@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureClassContentSchema } from '$lib/server/classroom';
-import { extFor, getUploadsBucket, MAX_AUDIO_BYTES, MAX_UPLOAD_BYTES, safeFileName } from '$lib/server/uploads';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { ensureClassContentSchema } from '$lib/server/classroom/classroom';
+import { extFor, getUploadsBucket, MAX_AUDIO_BYTES, MAX_UPLOAD_BYTES, safeFileName } from '$lib/server/infra/uploads';
 
 /* Kép / hang / fájl feltöltése R2-be. Multipart form: { kind: 'image' | 'audio' | 'file', file: File, width?, height? }
    A képet és a hangot a kliens már optimalizálja (tömörít, vág), a szerver csak ellenőriz és tárol.

@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { getTutorial } from '$lib/tutorial/controller.svelte';
-	import { contentFetch, offlineIdentity, subscribeContent } from '$lib/content-client';
-	import { buildOfflineCatalog, readOfflineCatalog } from '$lib/offline-content';
-	import { pendingProgress, outbox } from '$lib/progress-outbox.svelte';
-	import { lessonPath } from '$lib/lesson-paths';
+	import { contentFetch, offlineIdentity, subscribeContent } from '$lib/content/content-client';
+	import { buildOfflineCatalog, readOfflineCatalog } from '$lib/content/offline-content';
+	import { pendingProgress, outbox } from '$lib/state/progress-outbox.svelte';
+	import { lessonPath } from '$lib/curriculum/lesson-paths';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
@@ -28,15 +28,15 @@
 	} from '@lucide/svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import ContentPicker, { type ContentPick } from '$lib/components/ContentPicker.svelte';
-	import { auth } from '$lib/auth.svelte';
+	import { auth } from '$lib/state/auth.svelte';
 	import QuickPractice from '$lib/components/QuickPractice.svelte';
-	import type { Package, QuizQuestion, Subject, SubjectTree } from '$lib/curriculum';
-	import { normHu } from '$lib/deck-history';
-	import { loadLastLesson } from '$lib/lesson-history';
-	import { Query, getOrFetch, peek } from '$lib/query.svelte';
-	import { loadScope, saveScope } from '$lib/scope';
-	import { loadSettings } from '$lib/settings';
-	import { toast } from '$lib/toast.svelte';
+	import type { Package, QuizQuestion, Subject, SubjectTree } from '$lib/curriculum/curriculum';
+	import { normHu } from '$lib/deck/deck-history';
+	import { loadLastLesson } from '$lib/curriculum/lesson-history';
+	import { Query, getOrFetch, peek } from '$lib/state/query.svelte';
+	import { loadScope, saveScope } from '$lib/platform/scope';
+	import { loadSettings } from '$lib/state/settings';
+	import { toast } from '$lib/state/toast.svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';

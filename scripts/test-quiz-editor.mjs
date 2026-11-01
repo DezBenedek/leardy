@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { typescriptModuleUrl } from './typescript-module.mjs';
 
-const { QUESTION_TYPES, blankQuestion, seedToDraft, draftToPreview, draftOptionsJson, draftCorrectAnswer, parseOptionsJson, loadLegacyCustomTemplates, loadCustomTemplates, saveCustomTemplate, deleteCustomTemplate, importLegacyCustomTemplates, validateQuestion } = await import(await typescriptModuleUrl(new URL('../src/lib/quiz-editor.ts', import.meta.url)));
+const { QUESTION_TYPES, blankQuestion, seedToDraft, draftToPreview, draftOptionsJson, draftCorrectAnswer, parseOptionsJson, loadLegacyCustomTemplates, loadCustomTemplates, saveCustomTemplate, deleteCustomTemplate, importLegacyCustomTemplates, validateQuestion } = await import(await typescriptModuleUrl(new URL('../src/lib/quiz/quiz-editor.ts', import.meta.url)));
 
 const templateFixtures = QUESTION_TYPES.map(({ id: type }) => ({
 	...blankQuestion('teszt', type), type, title: 'Saját tesztsablon', subtitle: '', question_text: 'Tesztkérdés',

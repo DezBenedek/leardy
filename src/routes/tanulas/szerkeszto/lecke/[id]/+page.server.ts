@@ -1,4 +1,4 @@
-import { editorContext, getEditorLesson, getEditorQuizzes } from '$lib/server/curriculum-editor';
+import { editorContext, getEditorLesson, getEditorQuizzes } from '$lib/server/curriculum/curriculum-editor';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {

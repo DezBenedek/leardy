@@ -1,51 +1,24 @@
 <script lang="ts">
-	import { privateFetch } from '$lib/offline-api';
-	import { mutationFetch } from '$lib/mutation-fetch';
-	import { createBackNavigation } from '$lib/back-navigation';
-	import { attachmentTitle } from '$lib/message-attachments';
-	import { lessonPath } from '$lib/lesson-paths';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
+	import { attachmentTitle } from '$lib/content/message-attachments';
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
-import {
-	ArrowLeft,
-	BookMarked,
-	BookOpen,
-	CalendarDays,
-	Check,
-	ChevronRight,
-	ClipboardList,
-	Copy,
-	FileText,
-	FileUp,
-	GraduationCap,
-	Image as ImageIcon,
-	Layers,
-	ListChecks,
-	LogOut,
-	Megaphone,
-	Mic,
-	Paperclip,
-	Plus,
-	RefreshCw,
-	RotateCcw,
-	Send,
-	Save,
-	Settings,
-	Shuffle,
-	Target,
-	Radio,
-	Trash2,
-	TrendingUp,
-	Undo2,
-	UserMinus,
-	Users,
-	X
+	import {
+		ArrowLeft,
+		ChevronRight,
+		ClipboardList,
+		FileText,
+		Megaphone,
+		Plus,
+		Radio,
+		Save,
+		Settings,
+		Trash2
 	} from '@lucide/svelte';
 	import AssignmentImageEditor from '$lib/components/AssignmentImageEditor.svelte';
 	import AssignmentAudioRecorder from '$lib/components/AssignmentAudioRecorder.svelte';
-	import AssignmentGrading from '$lib/components/AssignmentGrading.svelte';
 	import ClassStats from '$lib/components/ClassStats.svelte';
 	import AttachSheet, { type AttachPick } from '$lib/components/AttachSheet.svelte';
 	import AttachPickSheet, { type AttachKind } from '$lib/components/AttachPickSheet.svelte';
@@ -54,93 +27,80 @@ import {
 	import Drawer from '$lib/components/Drawer.svelte';
 	import QuizModal from '$lib/components/QuizModal.svelte';
 	import QuizRunner, { type QuizMiss } from '$lib/components/QuizRunner.svelte';
-	import QuizReviewList from '$lib/components/QuizReviewList.svelte';
-	import { loadQuizReview, saveQuizReview, type QuizReview } from '$lib/quiz-review';
-	import SubjectPicker from '$lib/components/SubjectPicker.svelte';
-	import { loadSettings, saveSettings as saveAppSettings, toggleClassroomMuted } from '$lib/settings';
-	import type { Subject } from '$lib/curriculum';
-	import type { QuizQuestion } from '$lib/curriculum';
-	import { toast } from '$lib/toast.svelte';
+	import { loadQuizReview, saveQuizReview, type QuizReview } from '$lib/quiz/quiz-review';
+	import { loadSettings, saveSettings as saveAppSettings, toggleClassroomMuted } from '$lib/state/settings';
+	import type { Subject } from '$lib/curriculum/curriculum';
+	import type { QuizQuestion } from '$lib/curriculum/curriculum';
+	import { toast } from '$lib/state/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Card from '$lib/ui/Card.svelte';
-	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
-	import Input from '$lib/ui/Input.svelte';
-	import Segmented from '$lib/ui/Segmented.svelte';
-	import Switch from '$lib/ui/Switch.svelte';
 	import type { PageData } from './$types';
+	import { fmtDate, fmtDuration, fmtTime, toDueInput } from './classroom-format';
+	import {
+		audioFileName,
+		draftSummary,
+		messageChips,
+		parseTaskLessons,
+		taskLessonTitle,
+		type AssignmentMine,
+		type AssignmentRow,
+		type FeedAssignment,
+		type FeedItem,
+		type FeedMessage,
+		type FeedTask,
+		type LiveRow,
+		type Member,
+		type UploadItem
+	} from './classroom-task-utils';
+	import {
+		apiAssignmentSubmissions,
+		apiBrowse,
+		apiContent,
+		apiCreateAssignment,
+		apiCreateMessage,
+		apiCreateTask,
+		apiDeleteAssignment,
+		apiDeleteClassroom,
+		apiDeleteLive,
+		apiDeleteMessage,
+		apiDeleteUpload,
+		apiKick,
+		apiLeave,
+		apiLibrary,
+		apiLoadLive,
+		apiMineMap,
+		apiPatchAssignment,
+		apiPatchClassroom,
+		apiPatchMessage,
+		apiPatchTask,
+		apiPostAssignmentSubmission,
+		apiPostTaskSubmission,
+		apiPublishLive,
+		apiRegenCode,
+		apiTaskQuiz,
+		apiTaskSubmissions,
+		apiUploadAssignment
+	} from './classroom-api';
+	import FeedList from './FeedList.svelte';
+	import MessageDetail from './MessageDetail.svelte';
+	import TaskDetail from './TaskDetail.svelte';
+	import AssignmentDetail from './AssignmentDetail.svelte';
+	import CreateMessageForm from './CreateMessageForm.svelte';
+	import CreateTaskForm from './CreateTaskForm.svelte';
+	import CreateAssignmentForm from './CreateAssignmentForm.svelte';
+	import ClassroomSettingsDrawer from './ClassroomSettingsDrawer.svelte';
+	import MembersDrawer from './MembersDrawer.svelte';
+	import GradingDrawer from './GradingDrawer.svelte';
+	import ImagePreviewOverlay from './ImagePreviewOverlay.svelte';
 
 	let { data }: { data: PageData } = $props();
 	let room = $derived(data.room);
-
-	interface FeedMessage {
-		id: string;
-		title: string;
-		body: string;
-		teacher_name?: string;
-		ref_type: string | null;
-		ref_id: string | null;
-		ref_title: string | null;
-		refs: { ref_type: string; ref_id: string; ref_title: string }[];
-		created_at: number;
-	}
-	interface FeedTask {
-		id: string;
-		title: string;
-		lesson_ids_json: string;
-		question_count: number;
-		target_pct: number;
-		shuffle: number;
-		due_date: number | null;
-		created_at: number;
-	}
-	interface FeedAssignment {
-		id: string;
-		title: string;
-		description: string;
-		due_date: number | null;
-		require_text: number;
-		min_chars: number;
-		require_images: number;
-		max_images: number;
-		require_files: number;
-		max_files: number;
-		require_audio: number;
-		created_at: number;
-	}
-	interface UploadItem {
-		id: string;
-		kind: string;
-		file_name: string;
-		mime: string;
-		size: number;
-		width: number | null;
-		height: number | null;
-		created_at: number;
-	}
-	interface Member {
-		id: string;
-		name: string;
-		joined_at: number;
-	}
 
 	let messages = $state<FeedMessage[]>([]);
 	let tasks = $state<FeedTask[]>([]);
 	let assignments = $state<FeedAssignment[]>([]);
 	let members = $state<Member[]>([]);
-	/** Élő dolgozatok a fal tetejére: tanárnak az összes eddigi, diáknak csak az élő. */
-	interface LiveRow {
-		id: string;
-		title: string;
-		status: string;
-		created_at: number;
-		total: number;
-		done: number;
-		source?: string;
-		pacing?: string;
-		orderMode?: string;
-		playMode?: string;
-	}
 	let liveSessions = $state<LiveRow[]>([]);
 	let activeLive = $derived(liveSessions.filter((s) => s.status === 'live' || s.status === 'lobby'));
 	let draftLive = $derived(liveSessions.filter((s) => s.status === 'draft'));
@@ -149,21 +109,11 @@ import {
 	let deletingDraftId = $state<string | null>(null);
 	let deletingDraft = $state(false);
 
-	function draftSummary(s: LiveRow): string {
-		const parts: string[] = [];
-		if (s.total > 0) parts.push(`${s.total} kérdés`);
-		parts.push(s.source === 'deck' ? 'Kártyák' : 'Lecke kvízek');
-		parts.push(s.pacing === 'synced' ? 'Együtt' : 'Saját tempó');
-		if (s.orderMode === 'shuffled') parts.push('Kevert');
-		if (s.playMode === 'stage') parts.push('Tantermi');
-		return parts.join(' · ');
-	}
-
 	async function publishDraft(id: string) {
 		if (publishingId) return;
 		publishingId = id;
 		try {
-			const res = await mutationFetch(`/api/live/${encodeURIComponent(id)}/publish`, { method: 'POST' });
+			const res = await apiPublishLive(id);
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				toast.error('Nem sikerült meghirdetni', j.error ?? 'Próbáld újra!');
@@ -181,7 +131,7 @@ import {
 		if (!id || deletingDraft) return;
 		deletingDraft = true;
 		try {
-			const res = await mutationFetch(`/api/live/${encodeURIComponent(id)}`, { method: 'DELETE' });
+			const res = await apiDeleteLive(id);
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				toast.error('Nem sikerült törölni', j.error ?? 'Próbáld újra!');
@@ -199,11 +149,6 @@ import {
 	let displayCode = $state('');
 	let seeded = $state(false);
 	let seededData: PageData | undefined;
-
-	type FeedItem =
-		| { kind: 'message'; ts: number; msg: FeedMessage }
-		| { kind: 'task'; ts: number; task: FeedTask }
-		| { kind: 'assignment'; ts: number; assignment: FeedAssignment };
 
 	let feed = $derived<FeedItem[]>(
 		[
@@ -304,7 +249,7 @@ import {
 	async function loadMineMap() {
 		if (data.own) return;
 		try {
-			const res = await privateFetch(`/api/classrooms/${room.id}/submissions/mine`);
+			const res = await apiMineMap(room.id);
 			const j = await res.json().catch(() => ({}));
 			if (res.ok && j.mine) myMap = j.mine;
 			if (res.ok && j.assignments) assignmentMap = j.assignments;
@@ -316,7 +261,7 @@ import {
 	async function loadTaskResults(taskId: string) {
 		resultsLoading = true;
 		try {
-			const res = await privateFetch(`/api/classrooms/${room.id}/tasks/${taskId}/submissions`);
+			const res = await apiTaskSubmissions(room.id, taskId);
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) return;
 			if (data.own && Array.isArray(j.results)) taskResults = j.results;
@@ -341,11 +286,7 @@ import {
 		if (submitBusy) return;
 		submitBusy = true;
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/tasks/${task.id}/submissions`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ submitted: want })
-			});
+			const res = await apiPostTaskSubmission(room.id, task.id, { submitted: want });
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				toast.error('Nem sikerült', j.error ?? 'Próbáld újra!');
@@ -377,7 +318,7 @@ import {
 		const id = detailMsg.id;
 		deletingMessage = true;
 		try {
-			const response = await mutationFetch(`/api/classrooms/${room.id}/messages/${id}`, { method: 'DELETE' });
+			const response = await apiDeleteMessage(room.id, id);
 			if (!response.ok) {
 				const result = await response.json().catch(() => ({}));
 				throw new Error(result.error ?? 'Nem sikerült törölni az üzenetet.');
@@ -407,13 +348,6 @@ import {
 	let editTaskTarget = $state(80);
 	let editTaskDue = $state('');
 
-	function toDueInput(ts: number | null): string {
-		if (!ts) return '';
-		const d = new Date(ts);
-		const p = (n: number) => String(n).padStart(2, '0');
-		return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-	}
-
 	async function openEdit() {
 		if (detailTask) await ensureSubjects();
 		editError = null;
@@ -441,12 +375,8 @@ import {
 		savingEdit = true;
 		editError = null;
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/messages/${detailMsg.id}`, {
-				method: 'PATCH',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ title: editMsgTitle, body: editMsgBody,
-					refs: editAttaches.map((a) => ({ ref_type: a.type, ref_id: a.id, ref_title: a.crumb })) })
-			});
+			const res = await apiPatchMessage(room.id, detailMsg.id, { title: editMsgTitle, body: editMsgBody,
+				refs: editAttaches.map((a) => ({ ref_type: a.type, ref_id: a.id, ref_title: a.crumb })) });
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				editError = j.error ?? 'Nem sikerült menteni.';
@@ -481,16 +411,12 @@ import {
 			due = t;
 		}
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/tasks/${detailTask.id}`, {
-				method: 'PATCH',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					title: editTaskTitle,
-					lessons: editTaskLessons.map((p) => ({ id: p.lessonId, title: taskLessonTitle(p) })),
-					question_count: editTaskCount,
-					target_pct: editTaskTarget,
-					due_date: due
-				})
+			const res = await apiPatchTask(room.id, detailTask.id, {
+				title: editTaskTitle,
+				lessons: editTaskLessons.map((p) => ({ id: p.lessonId, title: taskLessonTitle(p) })),
+				question_count: editTaskCount,
+				target_pct: editTaskTarget,
+				due_date: due
 			});
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
@@ -530,7 +456,7 @@ import {
 		if (quizLoading) return;
 		quizLoading = true;
 		try {
-			const res = await privateFetch(`/api/classrooms/${room.id}/tasks/${task.id}/quiz`);
+			const res = await apiTaskQuiz(room.id, task.id);
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				toast.error('Nem sikerült összeállítani', j.error ?? 'Próbáld újra!');
@@ -558,11 +484,7 @@ import {
 		lastReview = r;
 		saveQuizReview(room.id, task.id, r);
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/tasks/${task.id}/submissions`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ score, total })
-			});
+			const res = await apiPostTaskSubmission(room.id, task.id, { score, total });
 			const j = await res.json().catch(() => ({}));
 			if (res.ok && j.mine) {
 				myResult = j.mine;
@@ -578,7 +500,7 @@ import {
 
 	async function loadLive() {
 		try {
-			const res = await privateFetch(`/api/classrooms/${room.id}/live`);
+			const res = await apiLoadLive(room.id);
 			const j = await res.json().catch(() => ({}));
 			if (res.ok && Array.isArray(j.sessions)) liveSessions = j.sessions;
 		} catch {
@@ -659,7 +581,7 @@ import {
 		if (leaving) return;
 		leaving = true;
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/leave`, { method: 'DELETE' });
+			const res = await apiLeave(room.id);
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				toast.error('Nem sikerült kilépni', j.error ?? 'Próbáld újra!');
@@ -671,45 +593,6 @@ import {
 			toast.error('Hálózati hiba. Próbáld újra!');
 		} finally {
 			leaving = false;
-		}
-	}
-
-	function fmtTime(ts: number): string {
-		try {
-			return new Date(ts).toLocaleString('hu-HU', {
-				month: 'short',
-				day: 'numeric',
-				hour: '2-digit',
-				minute: '2-digit'
-			});
-		} catch {
-			return '';
-		}
-	}
-
-	function fmtDate(ts: number): string {
-		try {
-			return new Date(ts).toLocaleString('hu-HU', {
-				year: 'numeric',
-				month: 'short',
-				day: 'numeric',
-				hour: '2-digit',
-				minute: '2-digit'
-			});
-		} catch {
-			return '';
-		}
-	}
-
-	function fmtDateOnly(ts: number): string {
-		try {
-			return new Date(ts).toLocaleDateString('hu-HU', {
-				year: 'numeric',
-				month: 'short',
-				day: 'numeric'
-			});
-		} catch {
-			return '';
 		}
 	}
 
@@ -739,7 +622,7 @@ import {
 	async function ensureSubjects() {
 		if (subjectsLoaded) return;
 		try {
-			const res = await fetch('/api/browse');
+			const res = await apiBrowse();
 			const j = await res.json().catch(() => ({}));
 			if (res.ok && Array.isArray(j.subjects)) {
 				subjects = j.subjects as Subject[];
@@ -753,7 +636,7 @@ import {
 	async function ensureDecks() {
 		if (decksLoaded) return;
 		try {
-			const res = await fetch('/api/library');
+			const res = await apiLibrary();
 			const j = await res.json().catch(() => ({}));
 			if (res.ok && Array.isArray(j.packages)) {
 				decks = j.packages.map((p: { quizId: string; title: string }) => ({
@@ -791,39 +674,27 @@ import {
 		attachOpen = true;
 	}
 
-	const attachIcons: Record<string, typeof BookOpen> = {
-		subject: GraduationCap,
-		lesson: BookOpen,
-		quiz: Target,
-		deck: Layers,
-		topic: BookMarked
-	};
-
 	async function sendMessage(e: SubmitEvent) {
 		e.preventDefault();
 		if (sendingMsg) return;
 		msgError = null;
 		sendingMsg = true;
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/messages`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					title: msgTitle,
-					body: msgBody,
-					refs: attaches.map((a) => ({
-						ref_type: a.type,
-						ref_id: a.id,
-						ref_title: a.crumb
-					}))
-				})
+			const res = await apiCreateMessage(room.id, {
+				title: msgTitle,
+				body: msgBody,
+				refs: attaches.map((a) => ({
+					ref_type: a.type,
+					ref_id: a.id,
+					ref_title: a.crumb
+				}))
 			});
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				msgError = j.error ?? 'Nem sikerült elküldeni.';
 				return;
 			}
-			const list = await privateFetch(`/api/classrooms/${room.id}/content`).then((r) =>
+			const list = await apiContent(room.id).then((r) =>
 				r.json().catch(() => ({}))
 			);
 			if (Array.isArray(list.messages)) messages = list.messages;
@@ -837,25 +708,6 @@ import {
 		} finally {
 			sendingMsg = false;
 		}
-	}
-
-	function attachHrefFor(t: string | null, id: string | null): string | null {
-		if (!t || !id) return null;
-		if (t === 'subject') return '/tanulas';
-		if (t === 'lesson' || t === 'quiz') return lessonPath(id);
-		if (t === 'deck') {
-			if (id.startsWith('deck:')) return `/kartyak/${id.slice(5)}`;
-			return '/kartyak/felfedezes';
-		}
-		return null;
-	}
-
-	function messageChips(m: FeedMessage): { ref_type: string; ref_id: string; ref_title: string }[] {
-		if (m.refs && m.refs.length > 0) return m.refs;
-		if (m.ref_type && m.ref_id) {
-			return [{ ref_type: m.ref_type, ref_id: m.ref_id, ref_title: m.ref_title ?? '' }];
-		}
-		return [];
 	}
 
 	// ---------- Feladat ----------
@@ -873,10 +725,6 @@ import {
 	function openTask() {
 		sheet = 'task';
 		ensureSubjects();
-	}
-
-	function step(value: number, delta: number, min: number, max: number): number {
-		return Math.min(max, Math.max(min, value + delta));
 	}
 
 	async function createTask(e: SubmitEvent) {
@@ -898,24 +746,20 @@ import {
 		}
 		creatingTask = true;
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/tasks`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					title: taskTitle,
-					lessons: taskLessons.map((p) => ({ id: p.lessonId, title: taskLessonTitle(p) })),
-					question_count: questionCount,
-					target_pct: targetPct,
-					shuffle: shuffleMode === 'mixed' ? 1 : 0,
-					due_date: due
-				})
+			const res = await apiCreateTask(room.id, {
+				title: taskTitle,
+				lessons: taskLessons.map((p) => ({ id: p.lessonId, title: taskLessonTitle(p) })),
+				question_count: questionCount,
+				target_pct: targetPct,
+				shuffle: shuffleMode === 'mixed' ? 1 : 0,
+				due_date: due
 			});
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				taskError = j.error ?? 'Nem sikerült létrehozni.';
 				return;
 			}
-			const list = await privateFetch(`/api/classrooms/${room.id}/content`).then((r) =>
+			const list = await apiContent(room.id).then((r) =>
 				r.json().catch(() => ({}))
 			);
 			if (Array.isArray(list.tasks)) tasks = list.tasks;
@@ -951,29 +795,6 @@ import {
 	let editAssignmentRequireImages = $state(false);
 	let editAssignmentRequireFiles = $state(false);
 	let editAssignmentRequireAudio = $state(false);
-
-	interface AssignmentMine {
-		text_body: string;
-		submitted: number;
-		submitted_at: number | null;
-		updated_at: number;
-		grade: number | null;
-		feedback: string;
-		graded_at: number | null;
-	}
-	interface AssignmentRow {
-		user_id: string;
-		name: string;
-		text_body: string;
-		submitted: number;
-		submitted_at: number | null;
-		grade: number | null;
-		feedback: string;
-		graded_at: number | null;
-		image_count: number;
-		file_count: number;
-		uploads: UploadItem[];
-	}
 
 	let assignmentMine = $state<AssignmentMine | null>(null);
 	let assignmentUploads = $state<UploadItem[]>([]);
@@ -1014,22 +835,13 @@ import {
 		}
 	}
 
-	/** Diák hol tart: értékelve / beküldve / dolgozik / még semmi. */
-	function assignmentStatus(r: AssignmentRow): string {
-		if (r.grade !== null && r.grade !== undefined) return `Értékelve: ${r.grade}`;
-		if (r.submitted === 1) return 'Beküldve';
-		const audioCount = r.uploads.filter((u) => u.kind === 'audio').length;
-		if (r.text_body || r.image_count > 0 || r.file_count > 0 || audioCount > 0) return 'Dolgozik rajta';
-		return 'Még nem kezdte';
-	}
-
 	function openAssignmentSheet() {
 		sheet = 'assignment';
 		assignmentError = null;
 	}
 
 	async function refreshAssignments() {
-		const list = await privateFetch(`/api/classrooms/${room.id}/content`).then((r) =>
+		const list = await apiContent(room.id).then((r) =>
 			r.json().catch(() => ({}))
 		);
 		if (Array.isArray(list.assignments)) assignments = list.assignments;
@@ -1060,18 +872,14 @@ import {
 		}
 		creatingAssignment = true;
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/assignments`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					title: assignmentTitle,
-					description: assignmentDesc,
-					due_date: due,
-					require_text: assignmentRequireText,
-					require_images: assignmentRequireImages,
-					require_files: assignmentRequireFiles,
-					require_audio: assignmentRequireAudio
-				})
+			const res = await apiCreateAssignment(room.id, {
+				title: assignmentTitle,
+				description: assignmentDesc,
+				due_date: due,
+				require_text: assignmentRequireText,
+				require_images: assignmentRequireImages,
+				require_files: assignmentRequireFiles,
+				require_audio: assignmentRequireAudio
 			});
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
@@ -1121,18 +929,14 @@ import {
 			due = t;
 		}
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/assignments/${detailAssignment.id}`, {
-				method: 'PATCH',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					title: editAssignmentTitle,
-					description: editAssignmentDesc,
-					due_date: due,
-					require_text: editAssignmentRequireText,
-					require_images: editAssignmentRequireImages,
-					require_files: editAssignmentRequireFiles,
-					require_audio: editAssignmentRequireAudio
-				})
+			const res = await apiPatchAssignment(room.id, detailAssignment.id, {
+				title: editAssignmentTitle,
+				description: editAssignmentDesc,
+				due_date: due,
+				require_text: editAssignmentRequireText,
+				require_images: editAssignmentRequireImages,
+				require_files: editAssignmentRequireFiles,
+				require_audio: editAssignmentRequireAudio
 			});
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
@@ -1163,9 +967,7 @@ import {
 		if (!detailAssignment || deletingAssignment) return;
 		deletingAssignment = true;
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/assignments/${detailAssignment.id}`, {
-				method: 'DELETE'
-			});
+			const res = await apiDeleteAssignment(room.id, detailAssignment.id);
 			if (!res.ok) {
 				const j = await res.json().catch(() => ({}));
 				toast.error('Nem sikerült törölni', j.error ?? '');
@@ -1184,7 +986,7 @@ import {
 	async function loadAssignmentDetail(aid: string) {
 		assignmentLoading = true;
 		try {
-			const res = await privateFetch(`/api/classrooms/${room.id}/assignments/${aid}/submissions`);
+			const res = await apiAssignmentSubmissions(room.id, aid);
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) return;
 			if (data.own && Array.isArray(j.results)) {
@@ -1227,17 +1029,6 @@ import {
 		if (a) void loadAssignmentDetail(a.id);
 	});
 
-	function uploadUrl(aid: string, uploadId: string): string {
-		return `/api/classrooms/${room.id}/assignments/${aid}/uploads/${uploadId}`;
-	}
-
-	function fmtSize(bytes: number): string {
-		if (!Number.isFinite(bytes) || bytes < 0) return '';
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-	}
-
 	async function onImageEditorDone(blob: Blob, width: number, height: number) {
 		imageEditorOpen = false;
 		if (!detailAssignment || assignmentUploadBusy) return;
@@ -1248,10 +1039,7 @@ import {
 			form.set('file', new File([blob], 'kep.webp', { type: blob.type || 'image/webp' }));
 			form.set('width', String(width));
 			form.set('height', String(height));
-			const res = await mutationFetch(
-				`/api/classrooms/${room.id}/assignments/${detailAssignment.id}/uploads`,
-				{ method: 'POST', body: form }
-			);
+			const res = await apiUploadAssignment(room.id, detailAssignment.id, form);
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				toast.error('Feltöltés sikertelen', j.error ?? 'Próbáld újra!');
@@ -1274,10 +1062,7 @@ import {
 			const form = new FormData();
 			form.set('kind', 'audio');
 			form.set('file', new File([blob], audioFileName(blob), { type: blob.type || 'audio/webm' }));
-			const res = await mutationFetch(
-				`/api/classrooms/${room.id}/assignments/${detailAssignment.id}/uploads`,
-				{ method: 'POST', body: form }
-			);
+			const res = await apiUploadAssignment(room.id, detailAssignment.id, form);
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				toast.error('Feltöltés sikertelen', j.error ?? 'Próbáld újra!');
@@ -1292,20 +1077,6 @@ import {
 		}
 	}
 
-	function audioFileName(blob: Blob): string {
-		const t = blob.type || '';
-		if (t.includes('mp4') || t.includes('aac') || t.includes('m4a')) return 'hangfelvetel.m4a';
-		if (t.includes('webm') || t.includes('opus') || t.includes('ogg')) return 'hangfelvetel.webm';
-		return 'hangfelvetel.wav';
-	}
-
-	function fmtDuration(s: number): string {
-		if (!Number.isFinite(s) || s < 0) return '';
-		const m = Math.floor(s / 60);
-		const sec = Math.round(s % 60);
-		return m > 0 ? `${m}p ${sec}mp` : `${sec}mp`;
-	}
-
 	async function onFilePicked(e: Event) {
 		const input = e.target as HTMLInputElement;
 		const files = input.files ? [...input.files] : [];
@@ -1317,10 +1088,7 @@ import {
 				const form = new FormData();
 				form.set('kind', 'file');
 				form.set('file', f);
-				const res = await mutationFetch(
-					`/api/classrooms/${room.id}/assignments/${detailAssignment.id}/uploads`,
-					{ method: 'POST', body: form }
-				);
+				const res = await apiUploadAssignment(room.id, detailAssignment.id, form);
 				const j = await res.json().catch(() => ({}));
 				if (!res.ok) {
 					toast.error(f.name, j.error ?? 'Nem sikerült feltölteni.');
@@ -1339,10 +1107,7 @@ import {
 	async function deleteUpload(uploadId: string) {
 		if (!detailAssignment) return;
 		try {
-			const res = await mutationFetch(
-				`/api/classrooms/${room.id}/assignments/${detailAssignment.id}/uploads/${uploadId}`,
-				{ method: 'DELETE' }
-			);
+			const res = await apiDeleteUpload(room.id, detailAssignment.id, uploadId);
 			if (!res.ok) {
 				const j = await res.json().catch(() => ({}));
 				toast.error('Nem sikerült törölni', j.error ?? '');
@@ -1372,14 +1137,7 @@ import {
 		}
 		assignmentSaving = true;
 		try {
-			const res = await mutationFetch(
-				`/api/classrooms/${room.id}/assignments/${detailAssignment.id}/submissions`,
-				{
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({ text: assignmentText })
-				}
-			);
+			const res = await apiPostAssignmentSubmission(room.id, detailAssignment.id, { text: assignmentText });
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				toast.error('Nem sikerült menteni', j.error ?? 'Próbáld újra!');
@@ -1401,14 +1159,7 @@ import {
 		assignmentTextTimer = null;
 		assignmentSubmitBusy = true;
 		try {
-			const res = await mutationFetch(
-				`/api/classrooms/${room.id}/assignments/${detailAssignment.id}/submissions`,
-				{
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({ text: assignmentText, submitted: want })
-				}
-			);
+			const res = await apiPostAssignmentSubmission(room.id, detailAssignment.id, { text: assignmentText, submitted: want });
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				toast.error('Nem sikerült', j.error ?? 'Próbáld újra!');
@@ -1433,26 +1184,6 @@ import {
 			toast.error('Hálózati hiba. Próbáld újra!');
 		} finally {
 			assignmentSubmitBusy = false;
-		}
-	}
-
-	function taskLessonTitle(p: ContentPick): string {
-		return p.levelTitle ? `${p.levelTitle} - ${p.lessonTitle}` : p.lessonTitle;
-	}
-
-	function parseTaskLessons(t: FeedTask): { id: string; title: string }[] {
-		try {
-			const raw = JSON.parse(t.lesson_ids_json) as unknown;
-			if (!Array.isArray(raw)) return [];
-			return raw
-				.map((l) => {
-					if (typeof l === 'string') return { id: l, title: 'Lecke' };
-					const o = l as { id?: unknown; title?: unknown };
-					return { id: String(o.id ?? ''), title: String(o.title ?? 'Lecke') };
-				})
-				.filter((l) => l.id);
-		} catch {
-			return [];
 		}
 	}
 
@@ -1499,11 +1230,7 @@ import {
 			const subject = setSubjectId
 				? (subjects.find((s) => s.id === setSubjectId)?.title ?? '')
 				: setSubjectKeep;
-			const res = await mutationFetch(`/api/classrooms/${room.id}`, {
-				method: 'PATCH',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ name: setName, subject })
-			});
+			const res = await apiPatchClassroom(room.id, { name: setName, subject });
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				toast.error('Nem sikerült menteni', j.error ?? '');
@@ -1524,7 +1251,7 @@ import {
 		if (regenCode) return;
 		regenCode = true;
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/code`, { method: 'POST' });
+			const res = await apiRegenCode(room.id);
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				toast.error('Nem sikerült', j.error ?? 'Próbáld újra!');
@@ -1552,7 +1279,7 @@ import {
 		if (kicking) return;
 		kicking = true;
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}/members/${id}`, { method: 'DELETE' });
+			const res = await apiKick(room.id, id);
 			if (!res.ok) {
 				const j = await res.json().catch(() => ({}));
 				toast.error('Nem sikerült', j.error ?? 'Próbáld újra!');
@@ -1572,7 +1299,7 @@ import {
 		if (deleting) return;
 		deleting = true;
 		try {
-			const res = await mutationFetch(`/api/classrooms/${room.id}`, { method: 'DELETE' });
+			const res = await apiDeleteClassroom(room.id);
 			if (!res.ok) {
 				const j = await res.json().catch(() => ({}));
 				toast.error('Nem sikerült törölni', j.error ?? '');
@@ -1589,6 +1316,8 @@ import {
 
 	const stepperBtn =
 		'grid size-9 place-items-center rounded-full border border-stone-200 text-lg font-bold text-ink-600 transition hover:bg-stone-50 active:scale-95 dark:border-white/15 dark:text-stone-300 dark:hover:bg-white/10';
+
+	let membersLabel = $derived([displaySubject, `${members.length} fő`].filter(Boolean).join(' · '));
 </script>
 
 <svelte:head>
@@ -1718,128 +1447,7 @@ import {
 	</div>
 {/if}
 
-<div data-tutorial="room-feed" class="mt-4 grid min-w-0 gap-2.5 [&>*]:min-w-0">
-	{#if feed.length === 0}
-		<EmptyState
-			title="Még nincs bejegyzés"
-			description={data.own ? 'A Létrehozás gombbal küldhetsz az osztálynak.' : 'A tanárod bejegyzései itt jelennek meg.'}
-		/>
-	{:else}
-		{#each feed as item (item.kind + ':' + (item.kind === 'message' ? item.msg.id : item.kind === 'task' ? item.task.id : item.assignment.id))}
-			{#if item.kind === 'assignment'}
-				<Card
-					href={data.own ? `/tanterem/${room.id}/beadando/${item.assignment.id}` : undefined}
-					onclick={data.own ? undefined : () => openDetail('assignment', item.assignment.id)}
-					ariaLabel={item.assignment.title || 'Beadandó részletei'}
-				>
-					<div class="flex min-w-0 items-start gap-3 overflow-hidden">
-						<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-300">
-							<FileText size={20} />
-						</span>
-						<div class="min-w-0 flex-1 overflow-hidden">
-							<p class="truncate text-[15px] font-extrabold text-ink-900 dark:text-white">
-								{item.assignment.title || 'Beadandó'}
-							</p>
-							<p class="mt-0.5 truncate text-[13px] text-stone-500 dark:text-stone-400">
-								Beadandó
-							</p>
-							{#if item.assignment.due_date}
-								{@const late = item.assignment.due_date < Date.now()}
-								<p class="mt-1 flex min-w-0 items-start gap-1.5 text-[13px] font-bold {late ? 'text-red-600 dark:text-red-300' : 'text-stone-500 dark:text-stone-400'}">
-									<CalendarDays size={14} class="mt-0.5 shrink-0" />
-									<span class="min-w-0 flex-1 break-words">{late ? 'Lejárt: ' : 'Határidő: '}{fmtDate(item.assignment.due_date)}</span>
-								</p>
-							{/if}
-						</div>
-						{#if !data.own}
-							{@const st = assignmentMap[item.assignment.id]}
-							{#if st?.grade !== null && st?.grade !== undefined}
-								<span
-									class="grid size-7 shrink-0 place-items-center self-start rounded-full bg-brand-500 text-[15px] font-extrabold text-white"
-									title="Érdemjegy: {st.grade}"
-									role="img"
-									aria-label="Érdemjegy: {st.grade}"
-								>
-									{st.grade}
-								</span>
-							{:else if st?.submitted}
-								<span
-									class="grid size-6 shrink-0 place-items-center self-start rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
-									title="Beküldve"
-									role="img"
-									aria-label="Beküldve"
-								>
-									<Check size={15} strokeWidth={3} />
-								</span>
-							{/if}
-						{/if}
-					</div>
-				</Card>
-			{:else if item.kind === 'task'}
-				{@const lessons = parseTaskLessons(item.task)}
-				<Card
-					href={data.own ? `/tanterem/${room.id}/feladat/${item.task.id}` : undefined}
-					onclick={data.own ? undefined : () => openDetail('task', item.task.id)}
-					ariaLabel={item.task.title || 'Feladat részletei'}
-				>
-					<div class="flex min-w-0 items-start gap-3 overflow-hidden">
-						<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
-							<ClipboardList size={20} />
-						</span>
-						<div class="min-w-0 flex-1 overflow-hidden">
-							<p class="truncate text-[15px] font-extrabold text-ink-900 dark:text-white">
-								{item.task.title || 'Kvízfeladat'}
-							</p>
-							<p class="mt-0.5 truncate text-[13px] text-stone-500 dark:text-stone-400">
-								{lessons.length} lecke · {item.task.question_count} kérdés · cél: {item.task.target_pct}%
-							</p>
-							{#if item.task.due_date}
-								{@const late = item.task.due_date < Date.now()}
-								<p class="mt-1 flex min-w-0 items-start gap-1.5 text-[13px] font-bold {late ? 'text-red-600 dark:text-red-300' : 'text-stone-500 dark:text-stone-400'}">
-									<CalendarDays size={14} class="mt-0.5 shrink-0" />
-									<span class="min-w-0 flex-1 break-words">{late ? 'Lejárt: ' : 'Határidő: '}{fmtDate(item.task.due_date)}</span>
-								</p>
-							{/if}
-						</div>
-						{#if !data.own && myMap[item.task.id]?.submitted}
-							<span
-								class="grid size-6 shrink-0 place-items-center self-start rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
-								title="Beküldve"
-								role="img"
-								aria-label="Beküldve"
-							>
-								<Check size={15} strokeWidth={3} />
-							</span>
-						{/if}
-					</div>
-				</Card>
-			{:else}
-				{@const chips = messageChips(item.msg)}
-				<Card onclick={() => openDetail('message', item.msg.id)} ariaLabel={item.msg.title}>
-					<div class="flex min-w-0 items-start gap-3 overflow-hidden">
-						<span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
-							<Megaphone size={20} />
-						</span>
-						<div class="min-w-0 flex-1 overflow-hidden">
-							<p class="truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{item.msg.title}</p>
-							{#if item.msg.body}
-								<p class="mt-0.5 line-clamp-2 text-sm leading-relaxed break-words text-stone-600 dark:text-stone-300">{item.msg.body}</p>
-							{/if}
-							<p class="mt-1.5 flex min-w-0 items-center gap-1 text-[12px] text-stone-400 dark:text-stone-500">
-								<span class="min-w-0 flex-1 truncate">{item.msg.teacher_name ?? ''} · {fmtTime(item.msg.created_at)}</span>
-								{#if chips.length > 0}
-									<span class="inline-flex shrink-0 items-center gap-1 font-bold">
-										<Paperclip size={12} /> {chips.length}
-									</span>
-								{/if}
-							</p>
-						</div>
-					</div>
-				</Card>
-			{/if}
-		{/each}
-	{/if}
-</div>
+<FeedList feed={feed} isOwner={data.own} roomId={room.id} {myMap} {assignmentMap} onOpen={openDetail} />
 
 <!-- Bejegyzés részletei: csatolmányok csak itt -->
 <Drawer
@@ -1856,583 +1464,94 @@ import {
 		{/if}
 	{/snippet}
 	{#if detailAssignment}
-		{#if editingAssignment}
-			<form id="edit-assignment" onsubmit={saveAssignmentEdit} class="mt-3 grid gap-3.5" novalidate>
-				<Input label="Beadandó címe" required placeholder="pl. Olvasónapló 1. fejezet" bind:value={editAssignmentTitle} disabled={savingEdit} error={editError} />
-				<div>
-					<label for="edit-assignment-desc" class="mb-1.5 block text-[13px] font-semibold text-ink-900 dark:text-white">
-						Leírás
-					</label>
-					<textarea
-						id="edit-assignment-desc"
-						rows="3"
-						maxlength="2000"
-						placeholder="Mit kell beadni? (nem kötelező)"
-						bind:value={editAssignmentDesc}
-						disabled={savingEdit}
-						class={inputCls}
-					></textarea>
-				</div>
-				<div>
-					<label for="edit-assignment-due" class="mb-1.5 flex items-center gap-1 text-[13px] font-semibold text-ink-900 dark:text-white">
-						<CalendarDays size={14} /> Határidő <span class="font-normal text-stone-400">(üresen hagyható)</span>
-					</label>
-					<input
-						id="edit-assignment-due"
-						type="datetime-local"
-						bind:value={editAssignmentDue}
-						disabled={savingEdit}
-						class={[inputCls, 'dark:[color-scheme:dark]']}
-					/>
-				</div>
-				<div class="grid gap-2">
-					<p class="text-[13px] font-semibold text-ink-900 dark:text-white">Mit kell beadni?</p>
-					<div class="flex items-center justify-between gap-2">
-						<span class="text-[14px] font-bold text-ink-900 dark:text-white">Szöveg kérése</span>
-						<Switch bind:checked={editAssignmentRequireText} disabled={savingEdit} label="Szöveg kérése" />
-					</div>
-					<div class="flex items-center justify-between gap-2">
-						<span class="text-[14px] font-bold text-ink-900 dark:text-white">Kép feltöltés</span>
-						<Switch bind:checked={editAssignmentRequireImages} disabled={savingEdit} label="Kép feltöltés kérése" />
-					</div>
-					<div class="flex items-center justify-between gap-2">
-						<span class="text-[14px] font-bold text-ink-900 dark:text-white">Hangfelvétel</span>
-						<Switch bind:checked={editAssignmentRequireAudio} disabled={savingEdit} label="Hangfelvétel kérése" />
-					</div>
-					<div class="flex items-center justify-between gap-2">
-						<span class="text-[14px] font-bold text-ink-900 dark:text-white">Fájl feltöltés</span>
-						<Switch bind:checked={editAssignmentRequireFiles} disabled={savingEdit} label="Fájl feltöltés kérése" />
-					</div>
-				</div>
-				<div class="grid gap-2.5">
-					<Button variant="outline" block disabled={savingEdit} onclick={() => (editingAssignment = false)}>
-						Mégse
-					</Button>
-				</div>
-				{#if !confirmDeleteAssignment}
-					<Button variant="danger" block disabled={savingEdit} onclick={() => (confirmDeleteAssignment = true)}>
-						<Trash2 size={16} /> Beadandó törlése
-					</Button>
-				{:else}
-					<div class="grid grid-cols-2 gap-2.5">
-						<Button variant="outline" block disabled={deletingAssignment} onclick={() => (confirmDeleteAssignment = false)}>
-							Mégse
-						</Button>
-						<Button variant="danger" block busy={deletingAssignment} onclick={deleteAssignment}>
-							{deletingAssignment ? 'Törlés…' : 'Biztosan törlöm'}
-						</Button>
-					</div>
-				{/if}
-			</form>
-		{:else}
-			{@const aSubmitted = (assignmentMine?.submitted ?? 0) === 1}
-			{@const aPastDue = detailAssignment.due_date !== null && Date.now() > (detailAssignment.due_date ?? 0)}
-			{@const aSubmittedCount = assignmentResults.filter((r) => r.submitted === 1).length}
-			{@const aImages = assignmentUploads.filter((u) => u.kind === 'image')}
-			{@const aFiles = assignmentUploads.filter((u) => u.kind === 'file')}
-			{@const aAudios = assignmentUploads.filter((u) => u.kind === 'audio')}
-			{@const aTotal = aImages.length + aAudios.length + aFiles.length}
-			<div class="mt-3 grid min-w-0 gap-3 overflow-hidden">
-				{#if detailAssignment.description}
-					<p class="text-sm leading-relaxed break-words whitespace-pre-line text-stone-600 dark:text-stone-300">{detailAssignment.description}</p>
-				{/if}
-				{#if detailAssignment.due_date}
-					{@const late = detailAssignment.due_date < Date.now()}
-					<p class="flex items-center gap-1.5 text-[13px] font-bold {late ? 'text-red-600 dark:text-red-300' : 'text-stone-500 dark:text-stone-400'}">
-						<CalendarDays size={14} />
-						{late ? 'Lejárt: ' : 'Határidő: '}{fmtDate(detailAssignment.due_date)}
-					</p>
-				{/if}
-				{#if assignmentLoading}
-					<p class="text-[13px] text-stone-400 dark:text-stone-500">Betöltés…</p>
-				{:else if !data.own}
-					{#if aSubmitted && assignmentMine && (assignmentMine.grade !== null || (assignmentMine.feedback ?? '') !== '')}
-						<div class="rounded-2xl border border-brand-200 bg-brand-50 p-3 dark:border-brand-500/30 dark:bg-brand-500/10">
-							<p class="text-[12px] font-bold text-brand-600 dark:text-brand-300">Tanári értékelés</p>
-						{#if assignmentMine.grade !== null}
-								<p class="flex items-center gap-2 text-[15px] font-extrabold text-ink-900 dark:text-white">
-									<span class="grid size-7 place-items-center rounded-full bg-brand-500 text-[14px] text-white">
-										{assignmentMine.grade}
-									</span>
-									Érdemjegy
-								</p>
-							{/if}
-							{#if assignmentMine.feedback}
-								<p class="mt-1 text-sm leading-relaxed break-words whitespace-pre-line text-stone-600 dark:text-stone-300">{assignmentMine.feedback}</p>
-							{/if}
-						</div>
-					{/if}
-				{#if detailAssignment.require_text}
-						<div>
-							<p class="mb-1.5 text-[13px] font-semibold text-ink-900 dark:text-white">Szöveges válasz</p>
-						{#if aSubmitted}
-							<p class="text-sm leading-relaxed break-words whitespace-pre-wrap text-stone-700 dark:text-stone-200">{assignmentMine?.text_body || 'Nincs szöveges válasz.'}</p>
-						{:else}
-							<label for="assignment-text" class="sr-only">Szöveges válasz</label>
-							<textarea
-								id="assignment-text"
-								rows="5"
-								maxlength="20000"
-								placeholder="Írd ide a beadandót…"
-								bind:value={assignmentText}
-								oninput={scheduleAssignmentAutosave}
-								disabled={assignmentSubmitBusy || aPastDue}
-								class={inputCls}
-							></textarea>
-							<p class="mt-1 text-[12px] text-stone-400 tabular-nums dark:text-stone-500">
-								{assignmentText.trim().length} karakter{assignmentSaving ? ' · Mentés…' : assignmentTextSaved ? ' · Mentve' : ''}
-							</p>
-						{/if}
-					</div>
-					{/if}
-
-				{#if detailAssignment.require_images || (detailAssignment.require_audio ?? 0) === 1 || detailAssignment.require_files}
-					<div class="rounded-2xl border border-stone-200 {aSubmitted ? 'p-2.5' : 'p-3.5'} dark:border-white/10">
-						<div class="mb-1 flex items-center gap-2">
-							<p class="flex min-w-0 flex-1 items-center gap-1 text-[13px] font-semibold text-ink-900 dark:text-white">
-								<Paperclip size={14} /> Csatolmányok ({aTotal})
-							</p>
-							{#if !aPastDue && !aSubmitted}
-								<button
-									type="button"
-									aria-label="Csatolmány hozzáadása"
-									disabled={assignmentUploadBusy}
-									onclick={() => (attachPickOpen = true)}
-									class="grid size-8 shrink-0 place-items-center rounded-full bg-brand-500 text-white transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
-								>
-									<Plus size={17} />
-								</button>
-							{/if}
-						</div>
-						{#if aTotal === 0 && !assignmentUploadBusy}
-							<p class="text-[13px] text-stone-400 dark:text-stone-500">
-								Még nincs csatolmány. A + gombbal adhatsz hozzá képet, hangot vagy fájlt.
-							</p>
-						{/if}
-						{#if assignmentUploadBusy}
-							<p class="text-[13px] text-stone-400 dark:text-stone-500">Feltöltés…</p>
-						{/if}
-						{#if detailAssignment.require_images && aImages.length > 0}
-							<div class="mt-1.5 grid {aSubmitted ? 'grid-cols-4 gap-1' : 'grid-cols-3 gap-1.5'}">
-								{#each aImages as u (u.id)}
-									<div class="group relative overflow-hidden bg-stone-100 dark:bg-white/10">
-										<img src={uploadUrl(detailAssignment.id, u.id)} alt={u.file_name} loading="lazy" class="aspect-square w-full object-cover" />
-										{#if !aSubmitted && !aPastDue}
-											<button
-												type="button"
-												aria-label="Kép törlése"
-												onclick={() => deleteUpload(u.id)}
-												class="absolute top-1 right-1 grid size-7 place-items-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
-											>
-												<X size={14} />
-											</button>
-										{/if}
-									</div>
-								{/each}
-							</div>
-						{/if}
-						{#if (detailAssignment.require_audio ?? 0) === 1 && aAudios.length > 0}
-							<ul class="mt-1.5 grid {aSubmitted ? 'gap-1' : 'gap-2'}">
-								{#each aAudios as u, i (u.id)}
-									<li class="rounded-xl bg-stone-100 {aSubmitted ? 'p-1.5' : 'p-2.5'} dark:bg-white/10">
-										<div class="flex items-center gap-2">
-											<p class="min-w-0 flex-1 truncate text-[13px] font-bold text-ink-700 dark:text-stone-200">
-												Hangfelvétel {i + 1} <span class="font-normal text-stone-400">({fmtSize(u.size)})</span>
-											</p>
-											{#if !aSubmitted && !aPastDue}
-												<button
-													type="button"
-													aria-label="Hangfelvétel törlése"
-													onclick={() => deleteUpload(u.id)}
-													class="grid size-7 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-black/5 hover:text-ink-900 dark:hover:bg-white/10 dark:hover:text-white"
-												>
-													<X size={15} />
-												</button>
-											{/if}
-										</div>
-										<audio controls preload="none" src={uploadUrl(detailAssignment.id, u.id)} class="mt-1.5 w-full"></audio>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-						{#if detailAssignment.require_files && aFiles.length > 0}
-							<ul class="mt-1.5 grid {aSubmitted ? 'gap-1' : 'gap-1.5'}">
-								{#each aFiles as u (u.id)}
-									<li class="flex items-center gap-2 rounded-xl bg-stone-100 {aSubmitted ? 'px-2.5 py-1.5' : 'px-3 py-2'} dark:bg-white/10">
-										<a href={uploadUrl(detailAssignment.id, u.id)} class="min-w-0 flex-1 truncate text-[13px] font-bold text-ink-700 dark:text-stone-200" download>
-											{u.file_name} <span class="font-normal text-stone-400">({fmtSize(u.size)})</span>
-										</a>
-										{#if !aSubmitted && !aPastDue}
-											<button
-												type="button"
-												aria-label="Fájl törlése"
-												onclick={() => deleteUpload(u.id)}
-												class="grid size-7 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-black/5 hover:text-ink-900 dark:hover:bg-white/10 dark:hover:text-white"
-											>
-												<X size={15} />
-											</button>
-										{/if}
-									</li>
-								{/each}
-							</ul>
-						{/if}
-					</div>
-				{/if}
-					{#if aSubmitted}
-						<p class="flex items-center gap-1.5 text-[14px] font-extrabold text-emerald-700 dark:text-emerald-300">
-							<Check size={16} /> {aTotal > 0 ? 'Beküldve' : 'Késznek jelölve'}{#if assignmentMine?.submitted_at} · {fmtDate(assignmentMine.submitted_at)}{/if}
-						</p>
-						<Button variant="outline" block disabled={assignmentSubmitBusy || assignmentSaving || assignmentUploadBusy || aPastDue} onclick={() => submitAssignment(false)}>
-							<Undo2 size={16} /> Visszavonom
-						</Button>
-					{:else}
-						<Button block disabled={assignmentSubmitBusy || assignmentSaving || assignmentUploadBusy || aPastDue} onclick={() => submitAssignment(true)}>
-							<Send size={16} /> {assignmentSubmitBusy ? '…' : aTotal > 0 ? 'Beküldöm' : 'Megjelölés készként'}
-						</Button>
-						{#if aPastDue}
-							<p class="text-[12px] text-stone-400 dark:text-stone-500">A határidő lejárt, már nem küldhető be.</p>
-						{/if}
-					{/if}
-				{:else}
-					<div>
-						<p class="mb-1.5 text-[13px] font-semibold text-ink-900 dark:text-white">
-							Beküldések ({aSubmittedCount}/{assignmentResults.length})
-						</p>
-						{#if assignmentLoading}
-							<p class="text-[13px] text-stone-400 dark:text-stone-500">Betöltés…</p>
-						{:else if assignmentResults.length === 0}
-							<p class="text-[13px] text-stone-400 dark:text-stone-500">Még senki sem küldte be.</p>
-						{:else}
-							<ul class="grid min-w-0 gap-1.5 overflow-hidden">
-								{#each assignmentResults as r (r.user_id)}
-									{@const graded = r.grade !== null && r.grade !== undefined}
-									{@const done = r.submitted === 1}
-									<li class="min-w-0">
-										<button
-											type="button"
-											onclick={() => (gradingStudent = r)}
-											aria-label={`${r.name} beküldésének megtekintése`}
-											class="flex w-full min-w-0 items-center gap-2 rounded-xl bg-stone-100 px-3 py-2 text-left transition hover:bg-stone-200/70 active:scale-[0.99] dark:bg-white/10 dark:hover:bg-white/15"
-										>
-											<span class="min-w-0 flex-1">
-												<span class="block truncate text-[13px] font-bold text-ink-700 dark:text-stone-200">
-													{r.name}
-												</span>
-												<span class="block truncate text-[12px] {graded || done ? 'font-bold text-emerald-700 dark:text-emerald-300' : 'text-stone-400 dark:text-stone-500'}">
-													{assignmentStatus(r)}
-												</span>
-											</span>
-											{#if graded}
-												<span
-													class="grid size-7 shrink-0 place-items-center rounded-full bg-brand-500 text-[14px] font-extrabold text-white"
-													title="Értékelve: {r.grade}"
-												>
-													{r.grade}
-												</span>
-											{:else if done}
-												<span
-													class="grid size-6 shrink-0 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
-													title="Beküldve"
-												>
-													<Check size={15} strokeWidth={3} />
-												</span>
-											{/if}
-											<ChevronRight size={16} class="shrink-0 text-stone-400 dark:text-stone-500" />
-										</button>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-					</div>
-				{/if}
-			</div>
-		{/if}
+		<AssignmentDetail
+			assignment={detailAssignment}
+			roomId={room.id}
+			isOwner={data.own}
+			mine={assignmentMine}
+			uploads={assignmentUploads}
+			results={assignmentResults}
+			loading={assignmentLoading}
+			bind:text={assignmentText}
+			saving={assignmentSaving}
+			textSaved={assignmentTextSaved}
+			submitBusy={assignmentSubmitBusy}
+			uploadBusy={assignmentUploadBusy}
+			bind:editing={editingAssignment}
+			bind:editTitle={editAssignmentTitle}
+			bind:editDesc={editAssignmentDesc}
+			bind:editDue={editAssignmentDue}
+			bind:editRequireText={editAssignmentRequireText}
+			bind:editRequireImages={editAssignmentRequireImages}
+			bind:editRequireFiles={editAssignmentRequireFiles}
+			bind:editRequireAudio={editAssignmentRequireAudio}
+			savingEdit={savingEdit}
+			deleting={deletingAssignment}
+			bind:confirmDelete={confirmDeleteAssignment}
+			editError={editError}
+			{inputCls}
+			onTextInput={scheduleAssignmentAutosave}
+			onSubmit={submitAssignment}
+			onAddAttachment={() => (attachPickOpen = true)}
+			onDeleteUpload={deleteUpload}
+			onSaveEdit={saveAssignmentEdit}
+			onCancelEdit={() => (editingAssignment = false)}
+			onDeleteAssignment={deleteAssignment}
+			onGradeSelect={(r) => (gradingStudent = r)}
+		/>
 	{:else if detailMsg}
-		{#if editingMsg}
-			<form id="edit-message" onsubmit={saveMsgEdit} class="mt-3 grid gap-3.5" novalidate>
-				<Input label="Cím" required placeholder="Üzenet címe" bind:value={editMsgTitle} disabled={savingEdit} error={editError} />
-				<div>
-					<label for="edit-msg-body" class="mb-1.5 block text-[13px] font-semibold text-ink-900 dark:text-white">
-						Leírás
-					</label>
-					<textarea
-						id="edit-msg-body"
-						rows="3"
-						maxlength="2000"
-						bind:value={editMsgBody}
-						disabled={savingEdit}
-						class={inputCls}
-					></textarea>
-				</div>
-				{@render messageAttachments(editAttaches, true, savingEdit, (a) => editAttaches = editAttaches.filter((x) => x !== a))}
-				<div class="grid gap-2.5">
-					<Button variant="outline" block disabled={savingEdit} onclick={() => (editingMsg = false)}>
-						Mégse
-					</Button>
-					<Button variant="danger" block disabled={savingEdit || deletingMessage} onclick={() => { deleteMessageOpen = true; }}>
-						<Trash2 size={17} /> Üzenet törlése
-					</Button>
-				</div>
-			</form>
-		{:else}
-		{@const chips = messageChips(detailMsg)}
-		<div class="mt-3 grid min-w-0 gap-3 overflow-hidden">
-			{#if detailMsg.body}
-				<p class="text-sm leading-relaxed break-words whitespace-pre-line text-stone-600 dark:text-stone-300">{detailMsg.body}</p>
-			{/if}
-			<p class="text-[12px] text-stone-400 dark:text-stone-500">
-				{detailMsg.teacher_name ?? ''} · {fmtTime(detailMsg.created_at)}
-			</p>
-			{#if chips.length > 0}
-				<div>
-					<p class="mb-1.5 text-[13px] font-semibold text-ink-900 dark:text-white">
-						Csatolmányok ({chips.length})
-					</p>
-					<ul class="grid min-w-0 gap-1.5 overflow-hidden">
-						{#each chips as c (c.ref_type + ':' + c.ref_id)}
-							{@const href = attachHrefFor(c.ref_type, c.ref_id)}
-							{@const AIcon = attachIcons[c.ref_type] ?? BookOpen}
-							<li class="min-w-0">
-								{#if href}
-									<a
-										{href}
-										class="flex min-w-0 items-center gap-1.5 rounded-xl bg-stone-100 px-3 py-2 text-[13px] font-bold text-ink-700 transition hover:bg-stone-200/70 dark:bg-white/10 dark:text-stone-200 dark:hover:bg-white/15"
-									>
-										<AIcon size={16} aria-hidden="true" />
-										<span class="min-w-0 flex-1 truncate">{c.ref_type === 'deck' ? c.ref_title : attachmentTitle(c.ref_title ?? '', displaySubject)}</span>
-									</a>
-								{:else}
-									<p class="flex min-w-0 items-center gap-1.5 rounded-xl bg-stone-100 px-3 py-2 text-[13px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">
-										{#if c.ref_type === 'topic'}<BookMarked size={14} />{/if}
-										<span class="min-w-0 flex-1 truncate">{c.ref_type === 'deck' ? c.ref_title : attachmentTitle(c.ref_title ?? '', displaySubject)}</span>
-									</p>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				</div>
-			{/if}
-		</div>
-		{/if}
+		<MessageDetail
+			msg={detailMsg}
+			{displaySubject}
+			bind:editing={editingMsg}
+			bind:editTitle={editMsgTitle}
+			bind:editBody={editMsgBody}
+			bind:editAttaches={editAttaches}
+			saving={savingEdit}
+			editError={editError}
+			{inputCls}
+			onSave={saveMsgEdit}
+			onCancel={() => (editingMsg = false)}
+			onDeleteRequest={() => { deleteMessageOpen = true; }}
+			onOpenAttach={() => openAttach('edit')}
+		/>
 	{:else if detailTask}
-		{#if editingTask}
-			<form id="edit-task" onsubmit={saveTaskEdit} class="mt-3 grid gap-3.5" novalidate>
-				<Input label="Feladat címe" placeholder="pl. 3. lecke kvíz" bind:value={editTaskTitle} disabled={savingEdit} error={editError} />
-				{@render taskAttachments(editTaskLessons, true, savingEdit, (t) => editTaskLessons = editTaskLessons.filter((x) => x.lessonId !== t.lessonId))}
-				<div class="grid grid-cols-2 gap-3">
-					<div>
-						<p class="mb-1.5 text-[13px] font-semibold text-ink-900 dark:text-white">Kérdések száma</p>
-						<div class="flex items-center gap-2">
-							<button type="button" aria-label="Kevesebb kérdés" class={stepperBtn} onclick={() => (editTaskCount = step(editTaskCount, -1, 1, 100))}>
-								−
-							</button>
-							<span class="w-10 text-center text-[16px] font-extrabold text-ink-900 tabular-nums dark:text-white">
-								{editTaskCount}
-							</span>
-							<button type="button" aria-label="Több kérdés" class={stepperBtn} onclick={() => (editTaskCount = step(editTaskCount, 1, 1, 100))}>
-								+
-							</button>
-						</div>
-					</div>
-					<div>
-						<p class="mb-1.5 flex items-center gap-1 text-[13px] font-semibold text-ink-900 dark:text-white">
-							<Target size={14} /> Cél
-						</p>
-						<div class="flex items-center gap-2">
-							<button type="button" aria-label="Kisebb cél" class={stepperBtn} onclick={() => (editTaskTarget = step(editTaskTarget, -5, 10, 100))}>
-								−
-							</button>
-							<span class="w-10 text-center text-[16px] font-extrabold text-ink-900 tabular-nums dark:text-white">
-								{editTaskTarget}%
-							</span>
-							<button type="button" aria-label="Nagyobb cél" class={stepperBtn} onclick={() => (editTaskTarget = step(editTaskTarget, 5, 10, 100))}>
-								+
-							</button>
-						</div>
-					</div>
-				</div>
-				<div>
-					<label for="edit-task-due" class="mb-1.5 flex items-center gap-1 text-[13px] font-semibold text-ink-900 dark:text-white">
-						<CalendarDays size={14} /> Határidő <span class="font-normal text-stone-400">(üresen hagyható)</span>
-					</label>
-					<input
-						id="edit-task-due"
-						type="datetime-local"
-						bind:value={editTaskDue}
-						disabled={savingEdit}
-						class={[inputCls, 'dark:[color-scheme:dark]']}
-					/>
-				</div>
-				<div class="grid gap-2.5">
-					<Button variant="outline" block disabled={savingEdit} onclick={() => (editingTask = false)}>
-						Mégse
-					</Button>
-				</div>
-			</form>
-		{:else}
-		{@const lessons = parseTaskLessons(detailTask)}
-		{@const submitted = (myResult?.submitted ?? 0) === 1}
-		{@const pastDue = detailTask.due_date !== null && Date.now() > (detailTask.due_date ?? 0)}
-		{@const submittedCount = taskResults.filter((r) => (r.submitted ?? 0) === 1).length}
-			<div class="mt-3 grid min-w-0 gap-3 overflow-hidden">
-			{#if !data.own}
-				<div>
-					<Button
-						block
-						size="lg"
-						busy={quizLoading}
-						disabled={quizLoading || lessons.length === 0}
-						onclick={() => detailTask && startTaskQuiz(detailTask)}
-					>
-						<ListChecks size={18} /> {quizLoading ? 'Összeállítás…' : 'Kitöltés'}
-					</Button>
-				</div>
-			{/if}
-			{#if detailTask.due_date}
-				{@const late = detailTask.due_date < Date.now()}
-				<p class="flex items-center gap-1.5 text-[13px] font-bold {late ? 'text-red-600 dark:text-red-300' : 'text-stone-500 dark:text-stone-400'}">
-					<CalendarDays size={14} />
-					{late ? 'Lejárt: ' : 'Határidő: '}{fmtDate(detailTask.due_date)}
-				</p>
-			{/if}
-			{#if !data.own}
-				{#if resultsLoading && !myResult}
-					<p class="text-[13px] text-stone-400 dark:text-stone-500">Betöltés…</p>
-				{:else}
-				<div class="rounded-2xl border border-stone-200 p-3.5 dark:border-white/10">
-					{#if submitted}
-						<p class="flex items-center gap-1.5 text-[14px] font-extrabold text-emerald-700 dark:text-emerald-300">
-							<Check size={16} /> Beküldve
-						</p>
-						{#if myResult && myResult.attempts > 0}
-							<p class="mt-1 text-[13px] text-stone-500 dark:text-stone-400">
-								Legjobb: {myResult.best_score}/{myResult.best_total} ({myResult.best_pct}%)
-							</p>
-						{/if}
-						<Button
-							variant="outline"
-							block
-							disabled={submitBusy || pastDue}
-							onclick={() => detailTask && toggleSubmit(detailTask, false)}
-						>
-							<Undo2 size={16} /> {submitBusy ? '…' : 'Visszavonom'}
-						</Button>
-						{#if pastDue}
-							<p class="mt-1.5 text-[12px] text-stone-400 dark:text-stone-500">
-								Határidő után már nem vonható vissza.
-							</p>
-						{/if}
-					{:else}
-						{#if myResult && myResult.attempts > 0}
-							<p class="text-[14px] font-extrabold text-ink-900 dark:text-white">
-								Legjobb: {myResult.best_score}/{myResult.best_total} ({myResult.best_pct}%)
-							</p>
-							<p class="mt-0.5 text-[13px] text-stone-500 dark:text-stone-400">
-								{myResult.attempts} próbálkozás
-							</p>
-						{:else}
-							<p class="text-[13px] text-stone-500 dark:text-stone-400">
-								Töltsd ki a kvízt, az eredmény mentődik. A cél alatt is beküldheted.
-							</p>
-						{/if}
-						<div class="mt-2">
-							<Button
-								block
-								disabled={submitBusy || !myResult || myResult.attempts === 0}
-								onclick={() => detailTask && toggleSubmit(detailTask, true)}
-							>
-								<Send size={16} /> {submitBusy ? '…' : 'Beküldöm'}
-							</Button>
-						</div>
-					{/if}
-				</div>
-				{/if}
-				{#if lastReview}
-					<div class="rounded-2xl border border-stone-200 p-3.5 dark:border-white/10">
-						<QuizReviewList review={lastReview} />
-						<div class="mt-2.5 grid grid-cols-2 gap-2">
-							<Button
-								variant="outline"
-								block
-								disabled={quizLoading}
-								onclick={() => detailTask && startTaskQuiz(detailTask)}
-							>
-								<RotateCcw size={16} /> Újra
-							</Button>
-							{#if !submitted}
-								<Button
-									block
-									disabled={submitBusy || pastDue}
-									onclick={() => detailTask && toggleSubmit(detailTask, true)}
-								>
-									<Send size={16} /> {submitBusy ? '…' : 'Beküldöm'}
-								</Button>
-							{/if}
-						</div>
-					</div>
-				{/if}
-			{:else}
-				<div>
-					<p class="mb-1.5 text-[13px] font-semibold text-ink-900 dark:text-white">
-						Kitöltések ({submittedCount}/{taskResults.length})
-					</p>
-					{#if resultsLoading}
-						<p class="text-[13px] text-stone-400 dark:text-stone-500">Betöltés…</p>
-					{:else if taskResults.length === 0}
-						<p class="text-[13px] text-stone-400 dark:text-stone-500">Még senki sem töltötte ki!</p>
-					{:else}
-						<ul class="grid min-w-0 gap-1.5 overflow-hidden">
-							{#each taskResults as r (r.user_id)}
-								<li class="flex min-w-0 items-center gap-2 rounded-xl bg-stone-100 px-3 py-2 dark:bg-white/10">
-									<span class="min-w-0 flex-1 truncate text-[13px] font-bold text-ink-700 dark:text-stone-200">
-										{r.name}
-									</span>
-									{#if (r.submitted ?? 0) === 1}
-										<span class="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[12px] font-bold text-emerald-700 dark:text-emerald-300">
-											<Check size={12} /> {r.best_pct ?? 0}%
-										</span>
-									{:else if (r.attempts ?? 0) > 0}
-										<span class="shrink-0 text-[12px] font-bold text-stone-500 tabular-nums dark:text-stone-400">
-											{r.best_pct ?? 0}%
-										</span>
-									{:else}
-										<span class="shrink-0 text-[12px] text-stone-400 dark:text-stone-500">–</span>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</div>
-			{/if}
-			{#if lessons.length > 0}
-				<div>
-					<p class="mb-1.5 text-[13px] font-semibold text-ink-900 dark:text-white">
-						Leckék ({lessons.length})
-					</p>
-					<ul class="grid min-w-0 gap-1.5 overflow-hidden">
-						{#each lessons as l (l.id)}
-							<li class="min-w-0">
-								<a
-									href={lessonPath(l.id)}
-									class="block min-w-0 truncate rounded-xl bg-stone-100 px-3 py-2 text-[13px] font-bold text-ink-700 transition hover:bg-stone-200/70 dark:bg-white/10 dark:text-stone-200 dark:hover:bg-white/15"
-								>
-									{l.title}
-								</a>
-							</li>
-						{/each}
-					</ul>
-				</div>
-			{/if}
-		</div>
-		{/if}
+		<TaskDetail
+			task={detailTask}
+			isOwner={data.own}
+			myResult={myResult}
+			taskResults={taskResults}
+			resultsLoading={resultsLoading}
+			submitBusy={submitBusy}
+			quizLoading={quizLoading}
+			lastReview={lastReview}
+			bind:editing={editingTask}
+			bind:editTitle={editTaskTitle}
+			bind:editLessons={editTaskLessons}
+			bind:editCount={editTaskCount}
+			bind:editTarget={editTaskTarget}
+			bind:editDue={editTaskDue}
+			saving={savingEdit}
+			editError={editError}
+			{stepperBtn}
+			{inputCls}
+			onStartQuiz={() => detailTask && startTaskQuiz(detailTask)}
+			onToggleSubmit={(want) => detailTask && toggleSubmit(detailTask, want)}
+			onSaveEdit={saveTaskEdit}
+			onCancelEdit={() => (editingTask = false)}
+			onOpenLessonPicker={() => {
+				taskPickerTarget = 'edit';
+				void ensureSubjects().then(() => taskPickerOpen = true);
+			}}
+		/>
 	{/if}
 </Drawer>
 
 <!-- Tanári beküldés-részletező: értékelés felül, feltöltések egymás alatt -->
-<Drawer
-	open={gradingStudent !== null && detailAssignment !== null}
-	label="Beküldés részletei"
-	title={gradingStudent?.name ?? 'Beküldés'}
+<GradingDrawer
+	student={gradingStudent}
+	assignmentId={detailAssignment?.id ?? null}
+	roomId={room.id}
 	onBack={() => {
 		gradingStudent = null;
 		previewUpload = null;
@@ -2441,107 +1560,11 @@ import {
 		gradingStudent = null;
 		previewUpload = null;
 	}}
->
-	{#if gradingStudent && detailAssignment}
-		{@const gs = gradingStudent}
-		{@const gImgs = gs.uploads.filter((u) => u.kind === 'image')}
-		{@const gAuds = gs.uploads.filter((u) => u.kind === 'audio')}
-		{@const gFiles = gs.uploads.filter((u) => u.kind === 'file')}
-		<div class="mt-3 grid min-w-0 gap-3 overflow-hidden">
-			<div class="rounded-2xl border border-stone-200 p-3.5 dark:border-white/10">
-				<p class="mb-1 text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">
-					Értékelés
-				</p>
-				<AssignmentGrading
-					classroomId={room.id}
-					assignmentId={detailAssignment.id}
-					student={gs}
-					onSaved={onGradeSaved}
-				/>
-			</div>
-			<p class="text-[13px] font-bold {gs.submitted === 1 ? 'text-emerald-700 dark:text-emerald-300' : 'text-stone-500 dark:text-stone-400'}">
-				{assignmentStatus(gs)}{#if gs.submitted === 1 && gs.submitted_at} · {fmtDate(gs.submitted_at)}{/if}
-			</p>
-			{#if gs.text_body}
-				<div class="rounded-2xl bg-stone-100 p-3.5 dark:bg-white/10">
-					<p class="text-sm leading-relaxed break-words whitespace-pre-line text-stone-700 dark:text-stone-200">{gs.text_body}</p>
-				</div>
-			{/if}
-			{#if gs.uploads.length === 0}
-				<p class="text-[13px] text-stone-400 dark:text-stone-500">Nincs feltöltött fájl.</p>
-			{:else}
-				<div class="grid min-w-0 gap-2">
-					<p class="text-[13px] font-semibold text-ink-900 dark:text-white">
-						Feltöltések ({gs.uploads.length})
-					</p>
-					{#if gImgs.length > 0}
-						<ul class="grid min-w-0 gap-2">
-							{#each gImgs as u (u.id)}
-								<li class="min-w-0">
-									<button
-										type="button"
-										onclick={() => (previewUpload = u)}
-										aria-label="{u.file_name} előnézete"
-										class="block w-full overflow-hidden bg-stone-100 transition hover:opacity-90 active:scale-[0.99] dark:bg-white/10"
-									>
-										<img src={uploadUrl(detailAssignment.id, u.id)} alt={u.file_name} loading="lazy" class="max-h-64 w-full object-cover" />
-									</button>
-									<p class="mt-0.5 truncate text-[12px] text-stone-400 dark:text-stone-500">{u.file_name}</p>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-					{#if gAuds.length > 0}
-						<ul class="grid min-w-0 gap-2">
-							{#each gAuds as u, i (u.id)}
-								<li class="rounded-xl bg-stone-100 p-2.5 dark:bg-white/10">
-									<p class="truncate text-[13px] font-bold text-ink-700 dark:text-stone-200">
-										Hangfelvétel {i + 1} <span class="font-normal text-stone-400">({fmtSize(u.size)})</span>
-									</p>
-									<audio controls preload="none" src={uploadUrl(detailAssignment.id, u.id)} class="mt-1.5 w-full"></audio>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-					{#if gFiles.length > 0}
-						<ul class="grid min-w-0 gap-1.5">
-							{#each gFiles as u (u.id)}
-								<li>
-									<a
-										href={uploadUrl(detailAssignment.id, u.id)}
-										target="_blank"
-										rel="noreferrer"
-										class="flex min-w-0 items-center gap-2 rounded-xl bg-stone-100 px-3 py-2.5 text-[13px] font-bold text-ink-700 transition hover:bg-stone-200/70 dark:bg-white/10 dark:text-stone-200 dark:hover:bg-white/15"
-									>
-										<FileText size={15} class="shrink-0" />
-										<span class="min-w-0 flex-1 truncate">{u.file_name} <span class="font-normal text-stone-400">({fmtSize(u.size)})</span></span>
-									</a>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</div>
-			{/if}
-		</div>
-	{/if}
-</Drawer>
+	onSaved={onGradeSaved}
+	onPreview={(u) => (previewUpload = u)}
+/>
 
-{#if previewUpload && detailAssignment}
-	<div class="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4" role="presentation">
-		<button type="button" tabindex="-1" aria-label="Előnézet bezárása" onclick={() => (previewUpload = null)} class="absolute inset-0"></button>
-		<div class="relative max-h-full max-w-full overflow-auto">
-			<img src={uploadUrl(detailAssignment.id, previewUpload.id)} alt={previewUpload.file_name} class="max-h-[80dvh] w-auto max-w-full" />
-			<button
-				type="button"
-				onclick={() => (previewUpload = null)}
-				aria-label="Bezárás"
-				class="absolute top-2 right-2 grid size-9 place-items-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
-			>
-				<X size={18} />
-			</button>
-		</div>
-	</div>
-{/if}
+<ImagePreviewOverlay upload={previewUpload} assignmentId={detailAssignment?.id ?? null} roomId={room.id} onClose={() => (previewUpload = null)} />
 
 <QuizModal open={quizOpen} label={quizTitle || 'Kvíz'} title={quizTitle} onClose={() => (quizOpen = false)}>
 	{#if quizQuestions.length > 0}
@@ -2614,78 +1637,19 @@ import {
 	</div>
 </Drawer>
 
-
-{#snippet messageAttachments(items: AttachPick[], edit: boolean, disabled: boolean, remove: (item: AttachPick) => void)}
-		<div>
-			<div class="mb-1.5 flex items-center justify-between gap-2">
-				<p class="text-[13px] font-semibold text-ink-900 dark:text-white">Csatolmány</p>
-				<button
-					type="button"
-					onclick={() => openAttach(edit ? 'edit' : 'new')}
-					disabled={disabled}
-					aria-label="Csatolmány választása"
-					class="grid size-8 place-items-center rounded-full bg-brand-500 text-white shadow-lg shadow-brand-500/20 transition hover:bg-brand-600 active:scale-95 disabled:pointer-events-none disabled:opacity-60 dark:shadow-black/30"
-				>
-					<Plus size={18} strokeWidth={3} />
-				</button>
-			</div>
-			{#if items.length > 0}
-				<ul class="grid min-w-0 gap-2">
-					{#each items as a (a.type + ':' + a.id)}
-						{@const AIcon = attachIcons[a.type] ?? BookOpen}
-						<li class="flex min-w-0 items-center gap-2 rounded-2xl border border-brand-500/40 bg-brand-50 p-3 dark:bg-brand-500/15">
-							<span class="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-500 text-white">
-								<AIcon size={17} />
-							</span>
-							<span class="min-w-0 flex-1">
-								<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
-									{a.type === 'deck' ? a.crumb : attachmentTitle(a.crumb, displaySubject)}
-								</span>
-							</span>
-							<button
-								type="button"
-								onclick={() => remove(a)}
-								disabled={disabled}
-								aria-label="Csatolmány törlése"
-								class="grid size-8 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-black/5 hover:text-ink-900 dark:hover:bg-white/10 dark:hover:text-white"
-							>
-								<X size={17} />
-							</button>
-						</li>
-					{/each}
-				</ul>
-			{:else}
-				<p class="text-[13px] text-stone-400 dark:text-stone-500">
-					A + gombbal csatolhatsz leckét, kvízt, kártyát vagy témakört, akár többet is.
-				</p>
-			{/if}
-		</div>
-{/snippet}
-
 <!-- Üzenet írása -->
 <Drawer open={sheet === 'message'} label="Új üzenet" title="Új üzenet" wide onClose={closeSheet}>
-	<form onsubmit={sendMessage} class="mt-3 grid gap-3.5" novalidate>
-		<Input label="Cím" required placeholder="pl. Holnapi óra" bind:value={msgTitle} disabled={sendingMsg} error={msgError} />
-		<div>
-			<label for="msg-body" class="mb-1.5 block text-[13px] font-semibold text-ink-900 dark:text-white">
-				Leírás
-			</label>
-			<textarea
-				id="msg-body"
-				rows="3"
-				maxlength="2000"
-				placeholder="Részletek az osztálynak (nem kötelező)"
-				bind:value={msgBody}
-				disabled={sendingMsg}
-				class={inputCls}
-			></textarea>
-		</div>
-		{@render messageAttachments(attaches, false, sendingMsg, (a) => attaches = attaches.filter((x) => x !== a))}
-
-		<Button type="submit" block busy={sendingMsg} disabled={msgTitle.trim().length < 3}>
-			{sendingMsg ? 'Küldés…' : 'Üzenet küldése'}
-		</Button>
-	</form>
+	<CreateMessageForm
+		bind:title={msgTitle}
+		bind:body={msgBody}
+		bind:attaches={attaches}
+		sending={sendingMsg}
+		error={msgError}
+		{inputCls}
+		{displaySubject}
+		onSubmit={sendMessage}
+		onOpenAttach={() => openAttach()}
+	/>
 </Drawer>
 
 <AttachSheet
@@ -2703,286 +1667,73 @@ import {
 	}}
 />
 
-{#snippet taskAttachments(items: ContentPick[], edit: boolean, disabled: boolean, remove: (item: ContentPick) => void)}
-		<div>
-			<div class="mb-1.5 flex items-center justify-between gap-2">
-				<p class="text-[13px] font-semibold text-ink-900 dark:text-white">
-					Leckék{#if items.length > 0} ({items.length}){/if}
-				</p>
-				<button
-					type="button"
-					onclick={() => {
-						taskPickerTarget = edit ? 'edit' : 'new';
-						void ensureSubjects().then(() => taskPickerOpen = true);
-					}}
-					disabled={disabled}
-					aria-label="Leckék választása"
-					class="grid size-8 place-items-center rounded-full bg-brand-500 text-white shadow-lg shadow-brand-500/20 transition hover:bg-brand-600 active:scale-95 disabled:pointer-events-none disabled:opacity-60 dark:shadow-black/30"
-				>
-					<Plus size={18} strokeWidth={3} />
-				</button>
-			</div>
-			{#if items.length > 0}
-				<ul class="grid min-w-0 gap-1.5">
-					{#each items as t (t.lessonId)}
-						<li class="flex min-w-0 items-center gap-2 rounded-xl bg-stone-100 px-3 py-2 dark:bg-white/10">
-							<Target size={16} class="shrink-0 text-stone-500" />
-							<span class="min-w-0 flex-1 truncate text-[13px] font-bold text-ink-700 dark:text-stone-200">
-								{taskLessonTitle(t)}
-							</span>
-							<button
-								type="button"
-								onclick={() => remove(t)}
-								disabled={disabled}
-								aria-label="Lecke kivétele"
-								class="grid size-7 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-black/5 hover:text-ink-900 dark:hover:bg-white/10 dark:hover:text-white"
-							>
-								<X size={15} />
-							</button>
-						</li>
-					{/each}
-				</ul>
-			{:else}
-				<p class="text-[13px] text-stone-400 dark:text-stone-500">
-					A + gombbal válassz kvízes leckéket, akár több témakörből is.
-				</p>
-			{/if}
-		</div>
-{/snippet}
-
 <!-- Feladat kiosztása -->
 <Drawer open={sheet === 'task'} label="Új feladat" title="Új feladat" wide onClose={closeSheet}>
-	<form onsubmit={createTask} class="mt-3 grid gap-3.5" novalidate>
-		<Input label="Feladat címe" placeholder="pl. 3. lecke kvíz (nem kötelező)" bind:value={taskTitle} disabled={creatingTask} error={taskError} />
-		{@render taskAttachments(taskLessons, false, creatingTask, (t) => taskLessons = taskLessons.filter((x) => x.lessonId !== t.lessonId))}
-
-		<div class="grid grid-cols-2 gap-3">
-			<div>
-				<p class="mb-1.5 text-[13px] font-semibold text-ink-900 dark:text-white">Kérdések száma</p>
-				<div class="flex items-center gap-2">
-					<button type="button" aria-label="Kevesebb kérdés" class={stepperBtn} onclick={() => (questionCount = step(questionCount, -1, 5, 100))}>
-						−
-					</button>
-					<span class="w-10 text-center text-[16px] font-extrabold text-ink-900 tabular-nums dark:text-white">
-						{questionCount}
-					</span>
-					<button type="button" aria-label="Több kérdés" class={stepperBtn} onclick={() => (questionCount = step(questionCount, 1, 5, 100))}>
-						+
-					</button>
-				</div>
-			</div>
-			<div>
-				<p class="mb-1.5 flex items-center gap-1 text-[13px] font-semibold text-ink-900 dark:text-white">
-					<Target size={14} /> Célszázalék
-				</p>
-				<div class="flex items-center gap-2">
-					<button type="button" aria-label="Kisebb cél" class={stepperBtn} onclick={() => (targetPct = step(targetPct, -5, 10, 100))}>
-						−
-					</button>
-					<span class="w-10 text-center text-[16px] font-extrabold text-ink-900 tabular-nums dark:text-white">
-						{targetPct}%
-					</span>
-					<button type="button" aria-label="Nagyobb cél" class={stepperBtn} onclick={() => (targetPct = step(targetPct, 5, 10, 100))}>
-						+
-					</button>
-				</div>
-			</div>
-		</div>
-
-		<div>
-			<p class="mb-1.5 flex items-center gap-1 text-[13px] font-semibold text-ink-900 dark:text-white">
-				<Shuffle size={14} /> Sorrend
-			</p>
-			<Segmented
-				ariaLabel="Kérdéssorrend"
-				bind:value={shuffleMode}
-				options={[
-					{ value: 'mixed', label: 'Kevert mindenkinek' },
-					{ value: 'fixed', label: 'Fix sorrend' }
-				]}
-			/>
-		</div>
-
-		<div>
-			<label for="task-due" class="mb-1.5 flex items-center gap-1 text-[13px] font-semibold text-ink-900 dark:text-white">
-				<CalendarDays size={14} /> Határidő <span class="font-normal text-stone-400">(üresen hagyható)</span>
-			</label>
-			<input
-				id="task-due"
-				type="datetime-local"
-				bind:value={dueInput}
-				disabled={creatingTask}
-				class={[inputCls, 'dark:[color-scheme:dark]']}
-			/>
-		</div>
-
-		<Button type="submit" block busy={creatingTask} disabled={taskLessons.length === 0}>
-			{creatingTask ? 'Kiosztás…' : 'Feladat kiosztása'}
-		</Button>
-	</form>
+	<CreateTaskForm
+		bind:title={taskTitle}
+		bind:lessons={taskLessons}
+		bind:questionCount={questionCount}
+		bind:targetPct={targetPct}
+		bind:shuffleMode={shuffleMode}
+		bind:dueInput={dueInput}
+		creating={creatingTask}
+		error={taskError}
+		{stepperBtn}
+		{inputCls}
+		onSubmit={createTask}
+		onOpenLessonPicker={() => {
+			taskPickerTarget = 'new';
+			void ensureSubjects().then(() => taskPickerOpen = true);
+		}}
+	/>
 </Drawer>
 
 <!-- Beadandó kiosztása -->
 <Drawer open={sheet === 'assignment'} label="Új beadandó" title="Új beadandó" wide onClose={closeSheet}>
-	<form onsubmit={createAssignment} class="mt-3 grid gap-3.5" novalidate>
-		<Input label="Beadandó címe" required placeholder="pl. Olvasónapló 1. fejezet" bind:value={assignmentTitle} disabled={creatingAssignment} error={assignmentError} />
-		<div>
-			<label for="assignment-desc" class="mb-1.5 block text-[13px] font-semibold text-ink-900 dark:text-white">
-				Leírás
-			</label>
-			<textarea
-				id="assignment-desc"
-				rows="3"
-				maxlength="2000"
-				placeholder="Mit kell beadni? (nem kötelező)"
-				bind:value={assignmentDesc}
-				disabled={creatingAssignment}
-				class={inputCls}
-			></textarea>
-		</div>
-		<div>
-			<label for="assignment-due" class="mb-1.5 flex items-center gap-1 text-[13px] font-semibold text-ink-900 dark:text-white">
-				<CalendarDays size={14} /> Határidő <span class="font-normal text-stone-400">(üresen hagyható)</span>
-			</label>
-			<input
-				id="assignment-due"
-				type="datetime-local"
-				bind:value={assignmentDue}
-				disabled={creatingAssignment}
-				class={[inputCls, 'dark:[color-scheme:dark]']}
-			/>
-		</div>
-		<div class="grid gap-2">
-			<p class="text-[13px] font-semibold text-ink-900 dark:text-white">Mit kell beadni?</p>
-			<div class="flex items-center justify-between gap-2">
-				<span class="inline-flex items-center gap-1.5 text-[14px] font-bold text-ink-900 dark:text-white"><FileText size={15} /> Szöveg</span>
-				<Switch bind:checked={assignmentRequireText} disabled={creatingAssignment} label="Szöveg kérése" />
-			</div>
-			<div class="flex items-center justify-between gap-2">
-				<span class="inline-flex items-center gap-1.5 text-[14px] font-bold text-ink-900 dark:text-white"><ImageIcon size={15} /> Kép feltöltés</span>
-				<Switch bind:checked={assignmentRequireImages} disabled={creatingAssignment} label="Kép feltöltés kérése" />
-			</div>
-			<div class="flex items-center justify-between gap-2">
-				<span class="inline-flex items-center gap-1.5 text-[14px] font-bold text-ink-900 dark:text-white"><Mic size={15} /> Hangfelvétel</span>
-				<Switch bind:checked={assignmentRequireAudio} disabled={creatingAssignment} label="Hangfelvétel kérése" />
-			</div>
-			<div class="flex items-center justify-between gap-2">
-				<span class="inline-flex items-center gap-1.5 text-[14px] font-bold text-ink-900 dark:text-white"><FileUp size={15} /> Fájl feltöltés</span>
-				<Switch bind:checked={assignmentRequireFiles} disabled={creatingAssignment} label="Fájl feltöltés kérése" />
-			</div>
-		</div>
-		<Button type="submit" block busy={creatingAssignment}>
-			{creatingAssignment ? 'Kiosztás…' : 'Beadandó kiosztása'}
-		</Button>
-	</form>
+	<CreateAssignmentForm
+		bind:title={assignmentTitle}
+		bind:desc={assignmentDesc}
+		bind:due={assignmentDue}
+		bind:requireText={assignmentRequireText}
+		bind:requireImages={assignmentRequireImages}
+		bind:requireFiles={assignmentRequireFiles}
+		bind:requireAudio={assignmentRequireAudio}
+		creating={creatingAssignment}
+		error={assignmentError}
+		{inputCls}
+		onSubmit={createAssignment}
+	/>
 </Drawer>
 
 <!-- Osztálybeállítások -->
-<Drawer open={sheet === 'settings'} label="Osztálybeállítások" title="Osztálybeállítások" onClose={closeSheet}>
-	{#snippet actions()}
-		{#if data.own}
-			<Button type="submit" form="classroom-settings" size="sm" busy={savingSettings} disabled={setName.trim().length < 3} ariaLabel="Osztálybeállítások mentése"><Save size={17} /> Mentés</Button>
-		{/if}
-	{/snippet}
-	{#if data.own}
-		<div class="mt-3 flex items-center gap-3">
-			<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Értesítés</p>
-			<Switch bind:checked={roomNotif} label="Értesítés" />
-		</div>
-		<form id="classroom-settings" onsubmit={saveSettings} class="mt-3 grid gap-3.5" novalidate>
-			<Input label="Osztály neve" required bind:value={setName} disabled={savingSettings} />
-			<div>
-				<SubjectPicker {subjects} bind:value={setSubjectId} disabled={savingSettings} />
-			</div>
-			<div class="grid grid-cols-2 gap-2.5">
-				<div class="rounded-2xl border border-stone-200 p-3.5 dark:border-white/10">
-					<p class="flex items-center gap-1.5 text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">
-						<Users size={13} /> Tagok
-					</p>
-					<p class="mt-1 text-[20px] font-extrabold text-ink-900 tabular-nums dark:text-white">
-						{members.length}
-					</p>
-				</div>
-				<div class="rounded-2xl border border-stone-200 p-3.5 dark:border-white/10">
-					<p class="flex items-center gap-1.5 text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">
-						<CalendarDays size={13} /> Létrehozva
-					</p>
-					<p class="mt-1 text-[15px] font-extrabold text-ink-900 dark:text-white">
-						{fmtDateOnly(room.created_at)}
-					</p>
-				</div>
-			</div>
-			<div class="rounded-2xl border border-stone-200 p-3.5 dark:border-white/10">
-				<p class="text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">
-					Csatlakozási kód
-				</p>
-				<div class="mt-1.5 flex items-center justify-between gap-2">
-					<p class="font-mono text-[24px] font-extrabold tracking-[0.2em] text-ink-900 dark:text-white">
-						{displayCode}
-					</p>
-					<div class="flex shrink-0 gap-2">
-						<IconButton ariaLabel="Kód másolása" size={40} onclick={copyCode}>
-							<Copy size={18} />
-						</IconButton>
-						<IconButton ariaLabel="Új kód generálása" size={40} disabled={regenCode} onclick={regenerateCode}>
-							<RefreshCw size={18} />
-						</IconButton>
-					</div>
-				</div>
-			</div>
-			<Button variant="outline" block onclick={() => (membersOpen = true)}>
-				<Users size={17} /> Tagok ({members.length})
-			</Button>
-			<Button variant="outline" block onclick={() => (statsOpen = true)}>
-				<TrendingUp size={17} /> Statisztika
-			</Button>
-		</form>
-		<button
-			type="button"
-			onclick={() => {
-				deleteOpen = true;
-			}}
-			class="mt-4 flex w-full items-center gap-3 rounded-2xl border border-red-200 p-4 text-left transition hover:bg-red-50 active:scale-[0.99] dark:border-red-500/30 dark:hover:bg-red-500/10"
-		>
-			<span class="min-w-0 flex-1">
-				<span class="block text-[15px] font-bold text-ink-900 dark:text-white">Osztály törlése</span>
-				<span class="block text-[13px] text-stone-500 dark:text-stone-400">
-					Az üzenetek és feladatok is törlődnek.
-				</span>
-			</span>
-			<span class="grid size-10 shrink-0 place-items-center rounded-full bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300">
-				<Trash2 size={18} />
-			</span>
-		</button>
-	{:else}
-		<div class="mt-3 flex items-center gap-3">
-			<p class="min-w-0 flex-1 text-[15px] font-semibold text-ink-900 dark:text-white">Értesítés</p>
-			<Switch bind:checked={roomNotif} label="Értesítés" />
-		</div>
-		<div class="mt-2.5 rounded-2xl border border-stone-200 p-4 dark:border-white/10">
-			<p class="text-[12px] font-bold tracking-wide text-stone-400 uppercase dark:text-stone-500">Osztály</p>
-			<p class="mt-1 truncate text-[15px] font-bold text-ink-900 dark:text-white">{displayName || room.name}</p>
-			<p class="mt-0.5 text-[13px] text-stone-500 dark:text-stone-400">
-				{[displaySubject, `${members.length} fő`].filter(Boolean).join(' · ')}
-			</p>
-		</div>
-		<div class="mt-2.5">
-			<Button variant="outline" block onclick={() => (membersOpen = true)}>
-				<Users size={17} /> Tagok ({members.length})
-			</Button>
-		</div>
-		{#if !confirmLeave}
-			<button
-				type="button"
-				onclick={() => (confirmLeave = true)}
-				class="mt-2.5 flex w-full items-center justify-center gap-2 rounded-full border border-red-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-red-600 transition hover:bg-red-50 active:scale-[0.99] dark:border-red-500/30 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-500/10"
-			>
-				<LogOut size={17} />
-				Kilépés az osztályból
-			</button>
-		{/if}
-	{/if}
-</Drawer>
+<ClassroomSettingsDrawer
+	open={sheet === 'settings'}
+	isOwner={data.own}
+	bind:roomNotif={roomNotif}
+	bind:setName={setName}
+	bind:setSubjectId={setSubjectId}
+	{subjects}
+	membersCount={members.length}
+	createdAt={room.created_at}
+	displayCode={displayCode}
+	displayName={displayName}
+	{displaySubject}
+	{membersLabel}
+	saving={savingSettings}
+	regenBusy={regenCode}
+	{confirmLeave}
+	{leaving}
+	onClose={closeSheet}
+	onSave={saveSettings}
+	onCopyCode={copyCode}
+	onRegenCode={regenerateCode}
+	onOpenMembers={() => (membersOpen = true)}
+	onOpenStats={() => (statsOpen = true)}
+	onDeleteRequest={() => {
+		deleteOpen = true;
+	}}
+	onLeaveRequest={() => (confirmLeave = true)}
+/>
 
 <ConfirmDialog
 	open={deleteMessageOpen}
@@ -3063,44 +1814,15 @@ import {
 	onClose={() => (attachPickOpen = false)}
 />
 
-<Drawer open={membersOpen} label="Tagok" title={`Tagok (${members.length})`} onClose={() => { membersOpen = false; confirmKickId = null; }}>
-	<div class="mt-2 grid gap-2">
-		{#if members.length === 0}
-			<Card><p class="text-sm text-stone-500 dark:text-stone-400">Még senki nem csatlakozott.</p></Card>
-		{:else}
-			{#each members as m (m.id)}
-				{@const confirm = confirmKickId === m.id}
-				<Card>
-					<div class="flex items-center gap-3">
-						<div class="min-w-0 flex-1 self-center">
-							<p class="truncate text-[15px] font-bold text-ink-900 dark:text-white">{m.name}</p>
-							<p class="text-[12px] text-stone-400 dark:text-stone-500">
-								Csatlakozott: {fmtDate(m.joined_at)}
-							</p>
-						</div>
-						{#if data.own}
-							<button
-								type="button"
-								onclick={() => kickMember(m.id, m.name)}
-								disabled={kicking}
-								aria-label={confirm ? 'Kidobás megerősítése' : `${m.name} kidobása`}
-								class={[
-									'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-bold transition active:scale-[0.98] disabled:opacity-60',
-									confirm
-										? 'bg-red-600 text-white hover:bg-red-700'
-										: 'border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10'
-								]}
-							>
-								<UserMinus size={15} />
-								{confirm ? (kicking ? '…' : 'Biztos?') : 'Kidobom'}
-							</button>
-						{/if}
-					</div>
-				</Card>
-			{/each}
-		{/if}
-	</div>
-</Drawer>
+<MembersDrawer
+	open={membersOpen}
+	{members}
+	isOwner={data.own}
+	{confirmKickId}
+	{kicking}
+	onClose={() => { membersOpen = false; confirmKickId = null; }}
+	onKick={kickMember}
+/>
 
 
 		<ContentPicker

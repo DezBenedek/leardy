@@ -5,7 +5,7 @@ import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import ts from 'typescript';
 import { compileModule } from 'svelte/compiler';
-import { buildDailyWordQueue, buildWordQueue, calculateSM2, gradeSM2, nextReviewText, summarizeSM2, todayDay } from '../src/lib/sm2.ts';
+import { buildDailyWordQueue, buildWordQueue, calculateSM2, gradeSM2, nextReviewText, summarizeSM2, todayDay } from '../src/lib/deck/sm2.ts';
 
 const day = 20000;
 
@@ -124,11 +124,11 @@ async function importSource(source) {
 	return import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 }
 
-const sm2Url = new URL('../src/lib/sm2.ts', import.meta.url).href;
-const activityUrl = new URL('../src/lib/learning-activity.ts', import.meta.url).href;
-const reviewSource = (await readFile(new URL('../src/lib/card-review.svelte.ts', import.meta.url), 'utf8'))
+const sm2Url = new URL('../src/lib/deck/sm2.ts', import.meta.url).href;
+const activityUrl = new URL('../src/lib/deck/learning-activity.ts', import.meta.url).href;
+const reviewSource = (await readFile(new URL('../src/lib/deck/card-review.svelte.ts', import.meta.url), 'utf8'))
 	.replace("from './sm2'", `from '${sm2Url}'`)
-	.replace("import { invalidate } from './query.svelte';", 'const invalidate = () => {};');
+	.replace("import { invalidate } from '../state/query.svelte';", 'const invalidate = () => {};');
 const reviewJs = ts.transpileModule(reviewSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 const compiledReview = compileModule(reviewJs, { filename: 'card-review.svelte.js', generate: 'client' }).js.code
 	.replace(/['"]svelte\/internal\/client['"]/, JSON.stringify(import.meta.resolve('svelte/internal/client')));
@@ -188,7 +188,7 @@ test('A háttérből érkező régi adat nem írja felül a helyi válaszokat', 
 	} finally { globalThis.fetch = originalFetch; }
 });
 
-const curriculumSource = await readFile(new URL('../src/lib/server/curriculum.ts', import.meta.url), 'utf8');
+const curriculumSource = await readFile(new URL('../src/lib/server/curriculum/card-progress.ts', import.meta.url), 'utf8');
 const saveSource = curriculumSource.slice(curriculumSource.indexOf('export async function saveCardProgress('));
 const { saveCardProgress } = await importSource(`import { gradeSM2, todayDay } from '${sm2Url}'; import { learningDay } from '${activityUrl}'; const resolveDb = (db) => db; ${saveSource}`);
 

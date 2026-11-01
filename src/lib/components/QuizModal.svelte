@@ -2,7 +2,7 @@
 	import { browser } from '$app/environment';
 	import { X } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
-	import { lockBody, motionOK } from '$lib/overlay';
+	import { lockBody, motionOK } from '$lib/view/overlay';
 
 	/* Teljes képernyős ablak kvízekhez és szókártyákhoz (Quizlet-minta):
 	   fade belépés, sticky fejléc X-szel, Escape, fókuszcsapda. */

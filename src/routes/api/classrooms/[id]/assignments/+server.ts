@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { fireNotify, processPushQueue, notifyClassroom } from '$lib/server/push';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { fireNotify, processPushQueue, notifyClassroom } from '$lib/server/messaging/push';
 
 /* Beadando letrehozasa: csak a sajat tanar.
    Body: { title, description?, due_date?, require_text?, min_chars?,

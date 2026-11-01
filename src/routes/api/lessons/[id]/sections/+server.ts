@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb } from '$lib/server/db';
-import { getLessonPage } from '$lib/server/curriculum';
-import { lessonSections } from '$lib/lesson-content';
+import { getDb } from '$lib/server/infra/db';
+import { getLessonPage } from '$lib/server/curriculum/curriculum';
+import { lessonSections } from '$lib/curriculum/lesson-content';
 
 /* Egy lecke bekezdései (szekciói): [{ slug, title }] a kártya-besoroláshoz. */
 

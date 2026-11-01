@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureSecuritySchema } from '$lib/server/classroom';
-import { sendPushToSubscription, type PushSubscription } from '$lib/server/push';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { ensureSecuritySchema } from '$lib/server/classroom/classroom';
+import { sendPushToSubscription, type PushSubscription } from '$lib/server/messaging/push';
 
 /* Teszt push a saját eszközeidre. Így ellenőrizhető, hogy a zárt appos
  * értesítés megérkezik-e: a teszt után tedd háttérbe vagy zárd be az appot.

@@ -1,7 +1,7 @@
 // Futtatás: node --experimental-strip-types --conditions=browser --test scripts/test-deck-paste.mjs
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isMultiPaste, parsePastedPairs, splitPairLine } from '../src/lib/deck-paste.ts';
+import { isMultiPaste, parsePastedPairs, splitPairLine } from '../src/lib/deck/deck-paste.ts';
 
 const WORDS = [
 	['alma', 'apple'],

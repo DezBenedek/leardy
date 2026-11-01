@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 const origin = 'https://example.invalid';
-const sources = await Promise.all(['content-protocol', 'content-storage', 'offline-library', 'content-client', 'mutation-fetch'].map(async (name) => {
+const sources = await Promise.all(['content/content-protocol', 'content/content-storage', 'content/offline-library', 'content/content-client', 'platform/mutation-fetch'].map(async (name) => {
 	const source = await readFile(new URL(`../src/lib/${name}.ts`, import.meta.url), 'utf8');
 	return ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace(/^import .*\n/gm, '').replaceAll('export ', '');
 }));

@@ -8,7 +8,7 @@
 	import { editorFor } from '$lib/question-types/components';
 	import { questionType } from '$lib/question-types/registry';
 	import { fieldClass, labelClass } from '$lib/question-types/editor-styles';
-	import { questionTypeTitle, type QuestionDraft, type SectionOption } from '$lib/quiz-editor';
+	import { questionTypeTitle, type QuestionDraft, type SectionOption } from '$lib/quiz/quiz-editor';
 
 	interface Props {
 		draft: QuestionDraft;

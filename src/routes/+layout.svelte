@@ -1,6 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import { theme } from '$lib/theme.svelte';
+	import { theme } from '$lib/state/theme.svelte';
 	import type { Snippet } from 'svelte';
 	import { browser, dev } from '$app/environment';
 	import { page } from '$app/state';
@@ -9,26 +9,26 @@
 	import { provideTutorial } from '$lib/tutorial/controller.svelte';
 	import Tutorial from '$lib/components/Tutorial.svelte';
 	import { invalidate } from '$app/navigation';
-	import { isLearningPath } from '$lib/content-protocol';
-	import { startContentSync, invalidateContent, offlineIdentity } from '$lib/content-client';
-	import { startProgressSync, syncProgress, outbox, dismissProgress } from '$lib/progress-outbox.svelte';
-	import { startPwaUpdates } from '$lib/pwa-client';
+	import { isLearningPath } from '$lib/content/content-protocol';
+	import { startContentSync, invalidateContent, offlineIdentity } from '$lib/content/content-client';
+	import { startProgressSync, syncProgress, outbox, dismissProgress } from '$lib/state/progress-outbox.svelte';
+	import { startPwaUpdates } from '$lib/platform/pwa-client';
 	import { pwaInfo } from 'virtual:pwa-info';
-	import { auth } from '$lib/auth.svelte';
+	import { auth } from '$lib/state/auth.svelte';
 	import AuthDrawer from '$lib/components/AuthDrawer.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import GoogleLoginButton from '$lib/components/GoogleLoginButton.svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Toaster from '$lib/components/Toaster.svelte';
-	import { toast } from '$lib/toast.svelte';
+	import { toast } from '$lib/state/toast.svelte';
 	import WhatsNew from '$lib/components/WhatsNew.svelte';
-	import { startNotificationEngine } from '$lib/notifications';
-	import { startPushSync } from '$lib/push-client';
-	import { startAppViewport } from '$lib/app-viewport';
-	import { loadSettings } from '$lib/settings';
-	import { applyDisplaySettings, shouldAnimate } from '$lib/display';
-	import { LATEST_CHANGE, getSeenWhatsNew } from '$lib/changelog';
+	import { startNotificationEngine } from '$lib/platform/notifications';
+	import { startPushSync } from '$lib/platform/push-client';
+	import { startAppViewport } from '$lib/view/app-viewport';
+	import { loadSettings } from '$lib/state/settings';
+	import { applyDisplaySettings, shouldAnimate } from '$lib/state/display';
+	import { LATEST_CHANGE, getSeenWhatsNew } from '$lib/app/changelog';
 	import type { LayoutData } from './$types';
 
 	const tutorial = provideTutorial();

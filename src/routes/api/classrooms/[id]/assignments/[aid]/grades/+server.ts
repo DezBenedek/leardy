@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureClassContentSchema } from '$lib/server/classroom';
-import { fireNotify, processPushQueue, notifyUser } from '$lib/server/push';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { ensureClassContentSchema } from '$lib/server/classroom/classroom';
+import { fireNotify, processPushQueue, notifyUser } from '$lib/server/messaging/push';
 
 /* Beadandó értékelése: csak a saját tanár. Body: { userId, grade?, feedback? }.
  * grade: 1-5 érdemjegy vagy null (értékelés törlése). feedback: max 2000 karakter. */

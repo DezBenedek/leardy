@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { auth } from '$lib/auth.svelte';
-	import { navFor, isActive } from '$lib/navigation';
+	import { auth } from '$lib/state/auth.svelte';
+	import { navFor, isActive } from '$lib/platform/navigation';
 	import { House, GraduationCap, Users, Dumbbell } from '@lucide/svelte';
 
 	const icons: Record<string, typeof House> = {

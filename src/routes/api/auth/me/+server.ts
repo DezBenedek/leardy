@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { canEnterEditor } from '$lib/server/curriculum-editor';
+import { canEnterEditor } from '$lib/server/curriculum/curriculum-editor';
 import {
 	getDb,
 	ensureAuthSchema,
@@ -8,7 +8,7 @@ import {
 	publicUser,
 	SESSION_COOKIE,
 	type DbUser
-} from '$lib/server/db';
+} from '$lib/server/infra/db';
 
 export const GET: RequestHandler = async (event) => {
 	const db = getDb(event);

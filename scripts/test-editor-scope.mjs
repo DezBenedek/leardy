@@ -9,9 +9,9 @@ function moduleUrl(source) {
 	return `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`;
 }
 
-const scopeUrl = moduleUrl((await readFile(new URL('../src/lib/scope.ts', import.meta.url), 'utf8'))
+const scopeUrl = moduleUrl((await readFile(new URL('../src/lib/platform/scope.ts', import.meta.url), 'utf8'))
 	.replace("import { browser } from '$app/environment';", 'const browser = true;'));
-const editorScopeUrl = moduleUrl((await readFile(new URL('../src/lib/editor-scope.ts', import.meta.url), 'utf8'))
+const editorScopeUrl = moduleUrl((await readFile(new URL('../src/lib/platform/editor-scope.ts', import.meta.url), 'utf8'))
 	.replace("from './scope'", `from '${scopeUrl}'`));
 const { loadEditorScopes, rememberEditorScope, findEditableEditorScope } = await import(editorScopeUrl);
 const { saveScope } = await import(scopeUrl);
@@ -77,8 +77,8 @@ const editorUrl = moduleUrl(`
 `);
 const pageSource = (await readFile(new URL('../src/routes/tanulas/szerkeszto/+page.server.ts', import.meta.url), 'utf8'))
 	.replace("from '@sveltejs/kit'", `from '${import.meta.resolve('@sveltejs/kit')}'`)
-	.replace("from '$lib/server/curriculum'", `from '${curriculumUrl}'`)
-	.replace("from '$lib/server/curriculum-editor'", `from '${editorUrl}'`);
+	.replace("from '$lib/server/curriculum/curriculum'", `from '${curriculumUrl}'`)
+	.replace("from '$lib/server/curriculum/curriculum-editor'", `from '${editorUrl}'`);
 const { load } = await import(moduleUrl(pageSource));
 
 function pageEvent(search = '') {

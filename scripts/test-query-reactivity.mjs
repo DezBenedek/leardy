@@ -5,11 +5,11 @@ import { compileModule } from 'svelte/compiler';
 import * as runtime from 'svelte/internal/client';
 import ts from 'typescript';
 
-const source = (await readFile(new URL('../src/lib/query.svelte.ts', import.meta.url), 'utf8'))
+const source = (await readFile(new URL('../src/lib/state/query.svelte.ts', import.meta.url), 'utf8'))
 	.replace("import { browser } from '$app/environment';", 'const browser = true;')
-	.replace("import { PRIVATE_APP_CACHE_PREFIX, PRIVATE_CACHE_PREFIX } from './content-protocol';", "const PRIVATE_APP_CACHE_PREFIX = 'leardy-offline-api-v1:'; const PRIVATE_CACHE_PREFIX = 'leardy-private-v2:';")
+	.replace("import { PRIVATE_APP_CACHE_PREFIX, PRIVATE_CACHE_PREFIX } from '../content/content-protocol';", "const PRIVATE_APP_CACHE_PREFIX = 'leardy-offline-api-v1:'; const PRIVATE_CACHE_PREFIX = 'leardy-private-v2:';")
 	.replace("import { onDestroy, untrack } from 'svelte';", "import { untrack } from 'svelte'; const onDestroy = () => {};")
-	.replace("import { subscribeContent } from './content-client';", `
+	.replace("import { subscribeContent } from '../content/content-client';", `
 		const contentListeners = new Set();
 		const subscribeContent = (callback) => { contentListeners.add(callback); return () => contentListeners.delete(callback); };
 		export function emitContent(message) { for (const listener of contentListeners) listener(message); }
@@ -168,9 +168,9 @@ test('Fiókváltáskor az érvénytelenített folyamatban lévő kérés nem tö
 	} finally { second.dispose(); }
 });
 
-const mutationSource = (await readFile(new URL('../src/lib/mutation-fetch.ts', import.meta.url), 'utf8'))
-	.replace("'./query.svelte'", JSON.stringify(queryUrl))
-	.replace("import { contentFetch } from './content-client';", 'const contentFetch = (...args) => fetch(...args);');
+const mutationSource = (await readFile(new URL('../src/lib/platform/mutation-fetch.ts', import.meta.url), 'utf8'))
+	.replace("'../state/query.svelte'", JSON.stringify(queryUrl))
+	.replace("import { contentFetch } from '../content/content-client';", 'const contentFetch = (...args) => fetch(...args);');
 const mutationJs = ts.transpileModule(mutationSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 const { mutationFetch } = await import(`data:text/javascript;base64,${Buffer.from(mutationJs).toString('base64')}`);
 

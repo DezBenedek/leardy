@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
+import { getDb, requireUser } from '$lib/server/infra/db';
 
 /* Feladat szerkesztése: csak a saját tanár.
    Cím, leckék, kérdésszám, célszázalék és határidő. */

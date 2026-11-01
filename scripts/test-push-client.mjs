@@ -4,7 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-const source = ts.transpileModule(await readFile(new URL('../src/lib/push-client.ts', import.meta.url), 'utf8'), {
+const source = ts.transpileModule(await readFile(new URL('../src/lib/platform/push-client.ts', import.meta.url), 'utf8'), {
  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
 }).outputText.replace(/^import .*\n/gm, '').replaceAll('export ', '');
 

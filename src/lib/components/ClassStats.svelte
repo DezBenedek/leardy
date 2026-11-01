@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { privateFetch } from '$lib/offline-api';
+	import { privateFetch } from '$lib/content/offline-api';
 	import { Download, Search } from '@lucide/svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import Skeleton from '$lib/ui/Skeleton.svelte';
-	import { toast } from '$lib/toast.svelte';
+	import { toast } from '$lib/state/toast.svelte';
 
 	/* Tanari osztaly statisztika: osszesito kartyak, diak tabla (kereses +
 	 * lemarado szuro), feladatonkenti bekuldesi arany, CSV export. */

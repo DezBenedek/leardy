@@ -8,8 +8,8 @@
 	import Sheet from '$lib/ui/Sheet.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import { portal } from '$lib/components/SubjectPicker.svelte';
-	import { normalizeQuestionImageUrl, MAX_QUESTION_IMAGE_BYTES, QUESTION_IMAGE_TYPES } from '$lib/question-image';
-	import { safeLessonLink, type LessonNode } from '$lib/lesson-content';
+	import { normalizeQuestionImageUrl, MAX_QUESTION_IMAGE_BYTES, QUESTION_IMAGE_TYPES } from '$lib/content/question-image';
+	import { safeLessonLink, type LessonNode } from '$lib/curriculum/lesson-content';
 	import { lessonEditorExtensions } from './lesson-editor-extensions';
 	import MathInput from './MathInput.svelte';
 	import EditorPopover from './EditorPopover.svelte';

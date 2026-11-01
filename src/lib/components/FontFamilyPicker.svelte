@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { FontFamilyChoice } from '$lib/settings';
+	import type { FontFamilyChoice } from '$lib/state/settings';
 
 	export const fontFamilyStacks: Record<FontFamilyChoice, string> = {
 		system: "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",

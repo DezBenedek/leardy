@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureAssignmentSchema, ensureClassContentSchema, ensureSecuritySchema } from '$lib/server/classroom';
-import { ensureCurriculumSchema } from '$lib/server/curriculum';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { ensureAssignmentSchema, ensureClassContentSchema, ensureSecuritySchema } from '$lib/server/classroom/classroom';
+import { ensureCurriculumSchema } from '$lib/server/curriculum/curriculum';
 
 /* Saját adatok letöltése (GDPR export): profil, haladás, kártyák, tantermi beküldések. */
 export const GET: RequestHandler = async (event) => {

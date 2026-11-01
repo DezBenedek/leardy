@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { mutationFetch } from '$lib/mutation-fetch';
-	import { toast } from '$lib/toast.svelte';
+	import { mutationFetch } from '$lib/platform/mutation-fetch';
+	import { toast } from '$lib/state/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 
 	/* Tanári értékelés: érdemjegy és szöveges visszajelzés egy beküldéshez. */

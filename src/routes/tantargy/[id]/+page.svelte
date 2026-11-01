@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { createBackNavigation } from '$lib/back-navigation';
-	import { lessonPath } from '$lib/lesson-paths';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
+	import { lessonPath } from '$lib/curriculum/lesson-paths';
 	import { ArrowLeft, Check, ChevronRight, Layers } from '@lucide/svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';

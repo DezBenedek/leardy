@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureSecuritySchema } from '$lib/server/classroom';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { ensureSecuritySchema } from '$lib/server/classroom/classroom';
 
 function clampMuted(v: unknown): string[] {
 	if (!Array.isArray(v)) return [];

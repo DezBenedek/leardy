@@ -2,8 +2,8 @@ import type { DurableObjectNamespace, ExportedHandler } from '@cloudflare/worker
 // A SvelteKit által előállított HTTP-kezelő a build után érhető el.
 // @ts-expect-error A generált JavaScript-modulhoz nincs típusdeklaráció.
 import app from './.svelte-kit/cloudflare/_worker.js';
-import { runPushSchedule } from './src/lib/server/push-scheduler';
-import { LiveRoom } from './src/lib/server/live-do';
+import { runPushSchedule } from './src/lib/server/messaging/push-scheduler';
+import { LiveRoom } from './src/lib/server/live/live-do';
 
 export { LiveRoom };
 

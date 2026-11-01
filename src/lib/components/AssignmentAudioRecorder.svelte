@@ -6,7 +6,7 @@
 	import Sheet from '$lib/ui/Sheet.svelte';
 	import { portal } from '$lib/components/SubjectPicker.svelte';
 	import MediaPermissionHelp from '$lib/components/MediaPermissionHelp.svelte';
-	import { lockBody } from '$lib/overlay';
+	import { lockBody } from '$lib/view/overlay';
 
 	/* Hangrögzítő beadandóhoz: felvétel vagy fájl, automatikus csendvágás
 	   az elejéről és végéről (1 mp ráhagyással), meghallgatás, tömörített feltöltés. */

@@ -1,8 +1,8 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { D1Database } from '@cloudflare/workers-types';
-import { getDb, requireUser, type PublicUser } from '$lib/server/db';
-import { canPublishDeck, ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum';
-import { cardKindForSubject } from '$lib/sm2';
+import { getDb, requireUser, type PublicUser } from '$lib/server/infra/db';
+import { canPublishDeck, ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum/curriculum';
+import { cardKindForSubject } from '$lib/deck/sm2';
 
 /* Saját csomag lekérése, módosítása, törlése.
    Mindhárom requireUser + ownership-ellenőrzéssel (idegen id → 404). */

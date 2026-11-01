@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { getTutorial } from '$lib/tutorial/controller.svelte';
-	import { privateFetch } from '$lib/offline-api';
-	import { mutationFetch } from '$lib/mutation-fetch';
+	import { privateFetch } from '$lib/content/offline-api';
+	import { mutationFetch } from '$lib/platform/mutation-fetch';
 	import { KeyRound, Plus, Sparkles, Users } from '@lucide/svelte';
-	import { auth } from '$lib/auth.svelte';
-	import { toast } from '$lib/toast.svelte';
+	import { auth } from '$lib/state/auth.svelte';
+	import { toast } from '$lib/state/toast.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import SubjectPicker from '$lib/components/SubjectPicker.svelte';
-	import type { Subject } from '$lib/curriculum';
+	import type { Subject } from '$lib/curriculum/curriculum';
 	import Button from '$lib/ui/Button.svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';

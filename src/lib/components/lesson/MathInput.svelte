@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { MathfieldElement, Selector } from 'mathlive';
-	import { validLessonMath, renderLessonMath } from '$lib/lesson-render';
+	import { validLessonMath, renderLessonMath } from '$lib/curriculum/lesson-render';
 	import { resolve } from '$app/paths';
 	import { ArrowLeft, ArrowRight, Delete, Redo2, Undo2, CornerDownRight, Trash2 } from '@lucide/svelte';
 	import Button from '$lib/ui/Button.svelte';

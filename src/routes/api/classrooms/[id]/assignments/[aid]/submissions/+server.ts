@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { type AssignmentSubmission, type AssignmentUpload } from '$lib/server/classroom';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { type AssignmentSubmission, type AssignmentUpload } from '$lib/server/classroom/classroom';
 
 async function checkAccess(db: NonNullable<ReturnType<typeof getDb>>, classroomId: string, userId: string) {
 	const room = await db

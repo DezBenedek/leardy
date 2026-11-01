@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { canUsePublicApi, ensureApiKeysSchema } from '$lib/server/api-keys';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { canUsePublicApi, ensureApiKeysSchema } from '$lib/server/auth/api-keys';
 
 /* Egy API kulcs visszavonása: DELETE /api/api-keys/:id */
 

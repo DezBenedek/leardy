@@ -1,5 +1,5 @@
 import { browser } from '$app/environment';
-import { loadSession } from '$lib/session-client';
+import { loadSession } from '$lib/platform/session-client';
 import type { LayoutLoad } from './$types';
 
 /** Hálózathiba esetén a helyben megőrzött fiókkal folytatjuk. */

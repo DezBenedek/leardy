@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
-	import { motionOK } from '$lib/overlay';
+	import { motionOK } from '$lib/view/overlay';
 	let { open, id, children }: { open: boolean; id?: string; children: Snippet } = $props();
 </script>
 

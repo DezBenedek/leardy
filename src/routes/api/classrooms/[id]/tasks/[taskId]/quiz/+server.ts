@@ -1,8 +1,8 @@
 import { loadQuestionOptions } from '$lib/question-types/registry';
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureClassContentSchema } from '$lib/server/classroom';
-import { ensureCurriculumSchema } from '$lib/server/curriculum';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { ensureClassContentSchema } from '$lib/server/classroom/classroom';
+import { ensureCurriculumSchema } from '$lib/server/curriculum/curriculum';
 
 /* Feladat kvízének összeállítása kitöltéshez.
    GET: a feladat leckéinek összes kérdéséből véletlen (kevert) vagy fix sorrendű,

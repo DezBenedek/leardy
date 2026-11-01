@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { createBackNavigation } from '$lib/back-navigation';
-	import { lessonPath, lessonEditorPath } from '$lib/lesson-paths';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
+	import { lessonPath, lessonEditorPath } from '$lib/curriculum/lesson-paths';
 	import { afterNavigate, beforeNavigate, goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { ArrowDown, ArrowLeft, ArrowUp, BookOpenText, ChevronDown, ChevronRight, Pencil, Plus, Save, Settings, Trash2, UserRound } from '@lucide/svelte';
@@ -8,13 +8,13 @@
 	import Drawer from '$lib/components/Drawer.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import ContentPicker from '$lib/components/ContentPicker.svelte';
-	import type { EditorCandidate, EditorLevel } from '$lib/curriculum-editor';
-	import type { SubjectTree } from '$lib/curriculum';
-	import { editCurriculum } from '$lib/curriculum-edit-api';
-	import { cachedEditorSearch, type EditorSearchResult } from '$lib/editor-candidate-search';
-	import { normHu } from '$lib/deck-history';
-	import { findEditableEditorScope, loadEditorScopes, rememberEditorScope } from '$lib/editor-scope';
-	import { toast } from '$lib/toast.svelte';
+	import type { EditorCandidate, EditorLevel } from '$lib/curriculum/curriculum-editor';
+	import type { SubjectTree } from '$lib/curriculum/curriculum';
+	import { editCurriculum } from '$lib/curriculum/curriculum-edit-api';
+	import { cachedEditorSearch, type EditorSearchResult } from '$lib/curriculum/editor-candidate-search';
+	import { normHu } from '$lib/deck/deck-history';
+	import { findEditableEditorScope, loadEditorScopes, rememberEditorScope } from '$lib/platform/editor-scope';
+	import { toast } from '$lib/state/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import ActionMenu from '$lib/ui/ActionMenu.svelte';

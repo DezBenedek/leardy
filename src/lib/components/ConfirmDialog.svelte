@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import Button from '$lib/ui/Button.svelte';
-	import { lockBody, motionOK } from '$lib/overlay';
+	import { lockBody, motionOK } from '$lib/view/overlay';
 	import { tick as svelteTick } from 'svelte';
 
 	/* Globalis megerosito dialogus nyomva-tartos gombbal.

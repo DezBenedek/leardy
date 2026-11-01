@@ -3,8 +3,8 @@
    tantervi API-t használja, a későbbi saját (privát) tanári kvízek másik
    adaptert kapnak ugyanahhoz a felülethez. */
 
-import { editCurriculum } from '$lib/curriculum-edit-api';
-import { draftCorrectAnswer, draftOptionsJson, type QuestionDraft } from '$lib/quiz-editor';
+import { editCurriculum } from '$lib/curriculum/curriculum-edit-api';
+import { draftCorrectAnswer, draftOptionsJson, type QuestionDraft } from '$lib/quiz/quiz-editor';
 
 export interface QuizAdapter {
 	uploadImage?: (file: File) => Promise<string>;

@@ -3,7 +3,7 @@
 	import { typeComponents } from '$lib/question-types/components';
 	import Sheet from '$lib/ui/Sheet.svelte';
 	import { portal } from '$lib/components/SubjectPicker.svelte';
-	import { QUESTION_TYPES, type QuestionTypeId } from '$lib/quiz-editor';
+	import { QUESTION_TYPES, type QuestionTypeId } from '$lib/quiz/quiz-editor';
 
 	/* Kérdéstípus választó Sheetben: ikoncsempe, cím, kiválasztva Check. */
 

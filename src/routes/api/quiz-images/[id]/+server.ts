@@ -1,6 +1,6 @@
 import { error, type RequestHandler } from '@sveltejs/kit';
-import { getUploadsBucket } from '$lib/server/uploads';
-import { QUESTION_IMAGE_TYPES } from '$lib/question-image';
+import { getUploadsBucket } from '$lib/server/infra/uploads';
+import { QUESTION_IMAGE_TYPES } from '$lib/content/question-image';
 
 export const GET: RequestHandler = async (event) => {
 	if (!/^[a-f0-9-]{36}$/.test(event.params.id ?? '')) error(404, 'Nincs ilyen kép.');

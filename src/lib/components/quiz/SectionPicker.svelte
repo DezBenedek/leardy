@@ -2,7 +2,7 @@
 	import { AlignLeft, Check, ChevronDown, Globe, Plus } from '@lucide/svelte';
 	import Sheet from '$lib/ui/Sheet.svelte';
 	import { portal } from '$lib/components/SubjectPicker.svelte';
-	import type { SectionOption } from '$lib/quiz-editor';
+	import type { SectionOption } from '$lib/quiz/quiz-editor';
 
 	/* Opcionális bekezdés bekötés: vékony kártyagomb (Kártya oldal mintája),
 	   Sheetben nyíló listával. Kérdéshez és kvízblokkhoz is jó. */

@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureClassroomSchema } from '$lib/server/classroom';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { ensureClassroomSchema } from '$lib/server/classroom/classroom';
 
 /* Kilépés az osztályból: a tag saját magát lépteti ki.
    A tanár nem léphet ki a saját osztályából, azt törölni kell. */

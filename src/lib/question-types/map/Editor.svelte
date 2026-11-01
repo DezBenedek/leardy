@@ -2,7 +2,7 @@
 	import { Plus, RotateCcw, Trash2 } from '@lucide/svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
-	import { motionOK } from '$lib/overlay';
+	import { motionOK } from '$lib/view/overlay';
 	import Collapse from '$lib/ui/Collapse.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 	import type { QuestionEditorProps, MapBox } from '../types';

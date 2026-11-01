@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { typescriptModuleUrl } from './typescript-module.mjs';
 
-const model = await import(await typescriptModuleUrl(new URL('../src/lib/lesson-content.ts', import.meta.url)));
-const { markdownLessonDoc } = await import(await typescriptModuleUrl(new URL('../src/lib/lesson-markdown.ts', import.meta.url)));
-const { renderLessonDoc, validLessonMath } = await import(await typescriptModuleUrl(new URL('../src/lib/lesson-render.ts', import.meta.url)));
-const { splitSections } = await import(await typescriptModuleUrl(new URL('../src/lib/markdown.ts', import.meta.url)));
+const model = await import(await typescriptModuleUrl(new URL('../src/lib/curriculum/lesson-content.ts', import.meta.url)));
+const { markdownLessonDoc } = await import(await typescriptModuleUrl(new URL('../src/lib/curriculum/lesson-markdown.ts', import.meta.url)));
+const { renderLessonDoc, validLessonMath } = await import(await typescriptModuleUrl(new URL('../src/lib/curriculum/lesson-render.ts', import.meta.url)));
+const { splitSections } = await import(await typescriptModuleUrl(new URL('../src/lib/curriculum/markdown.ts', import.meta.url)));
 const text = (value) => ({ type: 'text', text: value });
 const p = (value) => ({ type: 'paragraph', content: [text(value)] });
 const document = (nodes) => ({ version: 1, sections: [{ slug: 'elso', title: 'Első', intro: false, doc: { type: 'doc', content: nodes } }] });

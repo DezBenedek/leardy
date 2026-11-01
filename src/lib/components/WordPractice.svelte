@@ -2,9 +2,9 @@
 	import { untrack } from 'svelte';
 	import { browser } from '$app/environment';
 	import { Check, Lightbulb, RotateCcw, X } from '@lucide/svelte';
-	import type { QuizQuestion } from '$lib/curriculum';
-	import type { SM2Mark } from '$lib/sm2';
-	import { buildDailyWordQueue, buildWordQueue, gradeSM2, todayDay } from '$lib/sm2';
+	import type { QuizQuestion } from '$lib/curriculum/curriculum';
+	import type { SM2Mark } from '$lib/deck/sm2';
+	import { buildDailyWordQueue, buildWordQueue, gradeSM2, todayDay } from '$lib/deck/sm2';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 

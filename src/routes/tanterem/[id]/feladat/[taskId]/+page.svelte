@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { mutationFetch } from '$lib/mutation-fetch';
-	import { createBackNavigation } from '$lib/back-navigation';
-	import { lessonPath } from '$lib/lesson-paths';
+	import { mutationFetch } from '$lib/platform/mutation-fetch';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
+	import { lessonPath } from '$lib/curriculum/lesson-paths';
 	import { resolve } from '$app/paths';
 	import { ArrowLeft, CalendarDays, Check, Pencil, Plus, Target, X } from '@lucide/svelte';
 	import ContentPicker, { type ContentPick } from '$lib/components/ContentPicker.svelte';
-	import type { Subject } from '$lib/curriculum';
+	import type { Subject } from '$lib/curriculum/curriculum';
 	import Drawer from '$lib/components/Drawer.svelte';
-	import { toast } from '$lib/toast.svelte';
+	import { toast } from '$lib/state/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';

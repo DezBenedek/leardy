@@ -1,8 +1,8 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import type { MessageRefType } from '$lib/server/classroom';
-import { parseMessageAttachments } from '$lib/message-attachments';
-import { fireNotify, processPushQueue, notifyClassroom } from '$lib/server/push';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import type { MessageRefType } from '$lib/server/classroom/classroom';
+import { parseMessageAttachments } from '$lib/content/message-attachments';
+import { fireNotify, processPushQueue, notifyClassroom } from '$lib/server/messaging/push';
 
 const REF_TYPES: MessageRefType[] = ['', 'subject', 'lesson', 'quiz', 'deck', 'topic'];
 

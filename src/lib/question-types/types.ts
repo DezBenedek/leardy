@@ -1,6 +1,6 @@
-import type { QuizPair, QuizQuestion } from '../curriculum';
+import type { QuizPair, QuizQuestion } from '../curriculum/curriculum';
 import type { GameQuestion } from '../games/types';
-import type { QuestionDraft } from '../quiz-editor';
+import type { QuestionDraft } from '../quiz/quiz-editor';
 
 export type QuestionTypeId = 'choice' | 'tf' | 'text' | 'match' | 'order' | 'gap' | 'map';
 export type InputMode = 'drag' | 'text' | 'dropdown';

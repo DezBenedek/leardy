@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { mutationFetch } from '$lib/mutation-fetch';
-	import { createBackNavigation } from '$lib/back-navigation';
+	import { mutationFetch } from '$lib/platform/mutation-fetch';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import {
@@ -17,7 +17,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import Switch from '$lib/ui/Switch.svelte';
-	import { toast } from '$lib/toast.svelte';
+	import { toast } from '$lib/state/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';

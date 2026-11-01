@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { typescriptModuleUrl } from './typescript-module.mjs';
-const { blankQuestion, draftOptionsJson, draftToPreview, validateQuestion, seedToDraft } = await import(await typescriptModuleUrl(new URL('../src/lib/quiz-editor.ts', import.meta.url)));
+const { blankQuestion, draftOptionsJson, draftToPreview, validateQuestion, seedToDraft } = await import(await typescriptModuleUrl(new URL('../src/lib/quiz/quiz-editor.ts', import.meta.url)));
 const { loadQuestionOptions, prepareQuestion, questionType, QUESTION_TYPES } = await import(await typescriptModuleUrl(new URL('../src/lib/question-types/registry.ts', import.meta.url)));
 const { readSettings } = await import(await typescriptModuleUrl(new URL('../src/lib/question-types/settings.ts', import.meta.url)));
 const { boxArrowEnd } = await import(await typescriptModuleUrl(new URL('../src/lib/question-types/map/geometry.ts', import.meta.url)));

@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
+import { getDb, requireUser } from '$lib/server/infra/db';
 
 /* Osztálybeállítások: csak a saját tanár. PATCH { name?, subject?, description? }, DELETE. */
 export const PATCH: RequestHandler = async (event) => {

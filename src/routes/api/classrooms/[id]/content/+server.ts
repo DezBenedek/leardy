@@ -1,12 +1,12 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
+import { getDb, requireUser } from '$lib/server/infra/db';
 import {
 	getMessageRefs,
 	isTeacher,
 	type ClassAssignment,
 	type ClassMessage,
 	type ClassTask
-} from '$lib/server/classroom';
+} from '$lib/server/classroom/classroom';
 
 /* Osztályfal: üzenetek + feladatok. Tag, saját tanár vagy bármely tanár olvashatja. */
 export const GET: RequestHandler = async (event) => {

@@ -1,4 +1,4 @@
-import { pwaManifest } from '$lib/pwa-manifest';
+import { pwaManifest } from '$lib/app/pwa-manifest';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ url }) => new Response(

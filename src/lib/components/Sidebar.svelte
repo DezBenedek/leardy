@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import type { User } from '$lib/auth.svelte';
-	import { isActive, navFor } from '$lib/navigation';
+	import type { User } from '$lib/state/auth.svelte';
+	import { isActive, navFor } from '$lib/platform/navigation';
 	import { House, GraduationCap, Users, Dumbbell } from '@lucide/svelte';
 	import Logo from './Logo.svelte';
 

@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { CONTENT_CACHE, PRIVATE_CACHE_PREFIX, PRIVATE_APP_CACHE_PREFIX, contentUrl, isContentUrl, isOfflinePath, type ContentMessage } from './lib/content-protocol';
+import { CONTENT_CACHE, PRIVATE_CACHE_PREFIX, PRIVATE_APP_CACHE_PREFIX, contentUrl, isContentUrl, isOfflinePath, type ContentMessage } from './lib/content/content-protocol';
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: { url: string; revision: string | null }[] };
 declare const __APP_BUILD_TIME__: string;

@@ -3,9 +3,9 @@
 	import { X } from '@lucide/svelte';
 	import { tick } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { isTopOverlay, lockBody, motionOK } from '$lib/overlay';
-	import { fitOverlayViewport } from '$lib/overlay-viewport';
-	import { attachDismissGesture } from '$lib/dismiss-gesture';
+	import { isTopOverlay, lockBody, motionOK } from '$lib/view/overlay';
+	import { fitOverlayViewport } from '$lib/view/overlay-viewport';
+	import { attachDismissGesture } from '$lib/view/dismiss-gesture';
 
 	interface Props {
 		open: boolean;

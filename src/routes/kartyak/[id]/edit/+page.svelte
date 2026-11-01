@@ -1,40 +1,32 @@
 <script lang="ts">
-	import { mutationFetch } from '$lib/mutation-fetch';
-	import { createBackNavigation } from '$lib/back-navigation';
+	import { mutationFetch } from '$lib/platform/mutation-fetch';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
 		ArrowLeft,
-		BookOpenText,
-		Check,
-		ChevronDown,
-		Landmark,
-		Languages,
-		Layers,
-		Leaf,
 		Save,
-		Settings2,
-		Shapes,
-		Trash2,
-		X
+		Settings2
 	} from '@lucide/svelte';
-	import type { DeckCardKind, LevelNode, Subject } from '$lib/curriculum';
-	import { deckCardKindLabel } from '$lib/curriculum';
-	import { cardKindForSubject } from '$lib/sm2';
-	import { parsePastedPairs } from '$lib/deck-paste';
-	import { pruneEmptyRows } from '$lib/deck-rows';
-	import { auth } from '$lib/auth.svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { invalidate } from '$lib/query.svelte';
+	import type { DeckCardKind, LevelNode, Subject } from '$lib/curriculum/curriculum';
+	import { deckCardKindLabel } from '$lib/curriculum/curriculum';
+	import { cardKindForSubject } from '$lib/deck/sm2';
+	import { parsePastedPairs } from '$lib/deck/deck-paste';
+	import { pruneEmptyRows } from '$lib/deck/deck-rows';
+	import { auth } from '$lib/state/auth.svelte';
+	import { toast } from '$lib/state/toast.svelte';
+	import { invalidate } from '$lib/state/query.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import Drawer from '$lib/components/Drawer.svelte';
 	import ContentPicker, { type ContentPick } from '$lib/components/ContentPicker.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
-	import Sheet from '$lib/ui/Sheet.svelte';
 	import Skeleton from '$lib/ui/Skeleton.svelte';
-	import Switch from '$lib/ui/Switch.svelte';
+	import CardRows from './CardRows.svelte';
+	import EditPickerSheets from './EditPickerSheets.svelte';
+	import SettingsDrawer from './SettingsDrawer.svelte';
+	import { fetchDeckRaw, fetchLevelsRaw as fetchLevelsData, fetchSubjectsRaw, readError } from './edit-api';
+	import { backLabel, frontLabel, levelLabel, norm, type CardRow } from './edit-format';
 
 	/* Saját csomag szerkesztője külön oldalon: piszkozat + kifejezett Mentés.
 	   Beállítások (név, működés, besorolás, csatolás) drawerben, kártyák alatta. */
@@ -45,20 +37,6 @@
 	);
 	const detailUrl = $derived(`/kartyak/${encodeURIComponent(deckParam)}`);
 
-	interface CardRow {
-		key: number;
-		id: string | null;
-		front: string;
-		back: string;
-		sectionSlug: string;
-		orig: { front: string; back: string; section: string } | null;
-	}
-
-	const inputCls =
-		'min-w-0 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm text-ink-900 outline-none transition placeholder:text-stone-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 motion-reduce:transition-none dark:border-white/15 dark:bg-white/5 dark:text-white dark:placeholder:text-stone-500';
-	const cardInputCls =
-		'min-w-0 w-full rounded-xl border border-transparent bg-stone-100 px-2.5 py-2 text-[14px] font-medium text-ink-900 outline-none transition placeholder:font-normal placeholder:text-stone-400 focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-100 motion-reduce:transition-none dark:bg-white/5 dark:text-white dark:placeholder:text-stone-500 dark:focus:bg-white/10';
-
 	let loading = $state(true);
 	let loadError = $state<string | null>(null);
 	let saving = $state(false);
@@ -66,25 +44,6 @@
 	let picker = $state<'subject' | 'level' | null>(null);
 	let deleteOpen = $state(false);
 	let nextKey = $state(1);
-
-	const subjectIcons: Record<string, typeof Landmark> = {
-		landmark: Landmark,
-		leaf: Leaf,
-		languages: Languages,
-		book: BookOpenText
-	};
-
-	const pickRowBtn =
-		'flex w-full items-center gap-3 rounded-2xl border border-stone-200 bg-white p-3 text-left transition hover:bg-stone-50 active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 disabled:opacity-50 dark:border-white/10 dark:bg-transparent dark:hover:bg-white/5';
-	const optRowBtn =
-		'flex w-full items-center gap-2.5 rounded-2xl p-2.5 text-left transition active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100';
-	const optTile = (selected: boolean) =>
-		[
-			'grid size-9 shrink-0 place-items-center rounded-xl',
-			selected
-				? 'bg-brand-500 text-white'
-				: 'bg-stone-100 text-stone-500 dark:bg-white/10 dark:text-stone-300'
-		].join(' ');
 
 	// Piszkozat (már csak kártyacsomag van, kvízfajta nélkül)
 	let title = $state('');
@@ -127,22 +86,14 @@
 
 	let subjectTitle = $derived(subjects.find((s) => s.id === subjectId)?.title ?? '');
 	let levelTitle = $derived(levels.find((l) => l.id === levelId)?.title ?? '');
-	/** A tananyagválasztó egységes címkéje. */
-	const levelLabel = 'Tananyag';
 	let levelLabelLow = $derived(levelLabel.toLowerCase());
 
 	let materials = $derived(levels.find((l) => l.id === levelId)?.materials ?? []);
 	let lessonOptions = $derived(materials.find((m) => m.id === materialId)?.lessons ?? []);
 	let materialTitle = $derived(materials.find((m) => m.id === materialId)?.title ?? '');
 	let lessonTitle = $derived(lessonOptions.find((l) => l.id === lessonId)?.title ?? '');
-	let frontLabel = 'Kifejezés';
-	let backLabel = 'Definíció';
 	/** Automatikus típus a tantárgy alapján: nyelvnél Szókártya, máshol Tanulókártya. */
 	let autoKindLabel = $derived(deckCardKindLabel(cardKind));
-
-	function norm(s: string): string {
-		return s.trim();
-	}
 
 	/** Változott-e valami a betöltött állapothoz képest? */
 	let dirty = $derived.by(() => {
@@ -169,45 +120,19 @@
 		return false;
 	});
 
-	async function readError(res: Response, fallback: string): Promise<string> {
-		try {
-			const j = await res.json();
-			if (typeof j?.error === 'string' && j.error) return j.error;
-		} catch {
-			// JSON nélküli válasz
-		}
-		return fallback;
-	}
-
 	async function fetchSubjects() {
-		try {
-			const res = await fetch('/api/browse');
-			const j = await res.json();
-			subjects = res.ok ? (j.subjects ?? []) : [];
-		} catch {
-			subjects = [];
-		}
+		subjects = await fetchSubjectsRaw();
 	}
 
 	async function fetchLevels(subject: string) {
-		if (!subject) {
-			levels = [];
-			return;
-		}
-		try {
-			const res = await fetch(`/api/browse?subject=${encodeURIComponent(subject)}`);
-			const j = await res.json();
-			levels = res.ok && j.tree ? (j.tree.levels ?? []) : [];
-		} catch {
-			levels = [];
-		}
+		levels = await fetchLevelsData(subject);
 	}
 
 	async function loadDeck() {
 		loading = true;
 		loadError = null;
 		try {
-			const res = await fetch(`/api/decks/${encodeURIComponent(deckId)}`);
+			const res = await fetchDeckRaw(deckId);
 			if (!res.ok) throw new Error(await readError(res, 'Nem sikerült betölteni a csomagot.'));
 			const j = await res.json();
 			const d = j.deck;
@@ -724,265 +649,63 @@
 		{/if}
 	</div>
 
-	<div class="mt-2 overflow-hidden rounded-[20px] border border-stone-200 bg-white dark:border-white/10 dark:bg-stone-900">
-		<div class="flex items-center gap-1.5 border-b border-stone-100 bg-stone-50 px-2 py-2 dark:border-white/5 dark:bg-white/5" aria-hidden="true">
-			<span class="grid size-6 shrink-0"></span>
-			<p class="min-w-0 flex-1 text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">
-				{frontLabel}
-			</p>
-			<p class="min-w-0 flex-1 text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">
-				{backLabel}
-			</p>
-			{#if cards.length > 1}
-				<span class="grid size-8 shrink-0"></span>
-			{/if}
-		</div>
-		<ul id="card-rows" class="divide-y divide-stone-100 dark:divide-white/5">
-			{#each cards as card, i (card.key)}
-				<li class="flex items-center gap-1.5 px-2 py-1.5" data-key={card.key} onfocusout={onRowFocusOut}>
-					<span
-						class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-50 text-[12px] font-extrabold text-brand-600 tabular-nums dark:bg-brand-500/20 dark:text-white"
-						aria-hidden="true"
-					>
-						{i + 1}
-					</span>
-					<input
-						bind:value={card.front}
-						data-field="front"
-						oninput={onRowInput}
-						onpaste={(e) => onPasteCard(e, card)}
-						onkeydown={(e) => onCardKeydown(e, card, 'front')}
-						placeholder={frontLabel}
-						aria-label="{i + 1}. kártya {frontLabel.toLowerCase()} oldala"
-						class={cardInputCls}
-					/>
-					<input
-						bind:value={card.back}
-						data-field="back"
-						oninput={onRowInput}
-						onpaste={(e) => onPasteCard(e, card)}
-						onkeydown={(e) => onCardKeydown(e, card, 'back')}
-						placeholder={backLabel}
-						aria-label="{i + 1}. kártya {backLabel.toLowerCase()} oldala"
-						class={cardInputCls}
-					/>
-					{#if cards.length > 1}
-						<button
-							type="button"
-							tabindex="-1"
-							onclick={() => removeRow(card)}
-							aria-label="{i + 1}. kártya törlése"
-							class="grid size-8 shrink-0 place-items-center rounded-full text-stone-300 transition hover:bg-red-50 hover:text-red-600 active:scale-95 dark:text-stone-600 dark:hover:bg-red-500/10 dark:hover:text-red-300"
-						>
-							<X size={15} />
-						</button>
-					{/if}
-				</li>
-			{/each}
-		</ul>
-	</div>
+	<CardRows
+		bind:cards
+		{frontLabel}
+		{backLabel}
+		{onRowInput}
+		{onPasteCard}
+		{onCardKeydown}
+		{onRowFocusOut}
+		onRemoveRow={removeRow}
+	/>
 {/if}
 
-<Drawer open={settingsOpen} label="Csomag beállításai" title="Beállítások" onClose={() => (settingsOpen = false)}>
-	{#if !loading && !loadError}
-		<label class="mt-2 block text-[13px] font-semibold text-ink-900 dark:text-white" for="deck-name">
-			Név
-			<input
-				id="deck-name"
-				bind:value={title}
-				placeholder="Pl. Angol szavak 1"
-				maxlength={80}
-				class="mt-1.5 {inputCls}"
-			/>
-		</label>
-		<div class="mt-4 grid gap-2">
-			<button type="button" onclick={() => (picker = 'subject')} class={pickRowBtn}>
-				<span class="min-w-0 flex-1">
-					<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Tantárgy</span>
-					<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
-						{subjectTitle || 'Válassz…'}
-					</span>
-				</span>
-				<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
-			</button>
-			<button type="button" onclick={() => (picker = 'level')} disabled={!subjectId} class={pickRowBtn}>
-				<span class="min-w-0 flex-1">
-					<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">{levelLabel}</span>
-					<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
-						{levelTitle || 'Válassz…'}
-					</span>
-				</span>
-				<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
-			</button>
-		</div>
+<SettingsDrawer
+	open={settingsOpen}
+	onClose={() => (settingsOpen = false)}
+	{loading}
+	{loadError}
+	bind:title
+	{subjectTitle}
+	{levelTitle}
+	{levelLabel}
+	{autoKindLabel}
+	{isTeacher}
+	bind:isPublic
+	{attachedLessons}
+	{saving}
+	{subjectId}
+	onPickSubject={() => (picker = 'subject')}
+	onPickLevel={() => (picker = 'level')}
+	onOpenLessonPicker={() => (lessonPickerOpen = true)}
+	onRemoveLesson={removeLesson}
+	onDelete={() => (deleteOpen = true)}
+/>
 
-		<p class="mt-4 text-[13px] font-semibold text-ink-900 dark:text-white">
-			Kártyák típusa: {autoKindLabel}
-		</p>
-
-		{#if isTeacher}
-			<div class="mt-3 flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-transparent">
-				<span class="min-w-0 flex-1">
-					<span class="block text-[14px] font-extrabold text-ink-900 dark:text-white">Publikálva</span>
-					<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">
-						Mindenki látja a Felfedezésben és a csatolt leckénél
-					</span>
-				</span>
-				<Switch id="deck-published" bind:checked={isPublic} label="Publikálva" />
-			</div>
-
-			<p class="mt-4 text-[13px] font-semibold text-ink-900 dark:text-white">
-				Csatolás <span class="font-normal text-stone-400 dark:text-stone-500">(opcionális, több lecke is lehet)</span>
-			</p>
-			<div class="mt-1.5 grid gap-2">
-				<button type="button" onclick={() => (lessonPickerOpen = true)} class={pickRowBtn}>
-					<span class="min-w-0 flex-1">
-						<span class="block text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Leckék</span>
-						<span class="block truncate text-[14px] font-extrabold text-ink-900 dark:text-white">
-							{attachedLessons.length > 0 ? `${attachedLessons.length} lecke csatolva` : 'Nincs csatolva'}
-						</span>
-					</span>
-					<ChevronDown size={16} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
-				</button>
-				{#if attachedLessons.length > 0}
-					<ul class="grid gap-1.5">
-						{#each attachedLessons as a (a.lessonId)}
-							<li class="flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-transparent">
-								<span class="min-w-0 flex-1">
-									<span class="block truncate text-[13px] font-bold text-ink-900 dark:text-white">
-										{a.lessonTitle}
-									</span>
-									<span class="block truncate text-[11px] font-medium text-stone-500 dark:text-stone-400">
-										{a.crumb}
-									</span>
-								</span>
-								<button
-									type="button"
-									onclick={() => removeLesson(a.lessonId)}
-									aria-label="{a.lessonTitle} csatolás törlése"
-									class="grid size-8 shrink-0 place-items-center rounded-full text-stone-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-300"
-								>
-									<X size={15} />
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</div>
-		{:else}
-			<p class="mt-4 rounded-2xl bg-stone-100 px-3 py-2.5 text-[12px] font-medium text-stone-500 dark:bg-white/5 dark:text-stone-400">
-				A csomagod privát: csak te látod. Leckéhez csatolni és publikálni csak tanár tud.
-			</p>
-		{/if}
-
-		<div class="mt-6 border-t border-stone-200 pt-4 dark:border-white/10">
-			<Button variant="outline" block disabled={saving} onclick={() => (deleteOpen = true)}>
-				<Trash2 size={16} />
-				Csomag törlése
-			</Button>
-		</div>
-	{/if}
-</Drawer>
-
-<Sheet open={picker === 'subject'} label="Tantárgy választása" title="Tantárgy" onClose={() => (picker = null)}>
-	<ul class="-mx-1 mt-2 space-y-0.5">
-		<li>
-			<button
-				type="button"
-				onclick={() => {
-					onSubject('');
-					picker = null;
-				}}
-				class={[optRowBtn, !subjectId ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
-			>
-				<span class={optTile(!subjectId)}><Shapes size={18} aria-hidden="true" /></span>
-				<span class="min-w-0 flex-1">
-					<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">Válassz…</span>
-					<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">Nincs besorolás</span>
-				</span>
-				{#if !subjectId}
-					<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
-				{/if}
-			</button>
-		</li>
-		{#each subjects as s (s.id)}
-			{@const SIcon = subjectIcons[s.icon] ?? Shapes}
-			{@const selected = s.id === subjectId}
-			<li>
-				<button
-					type="button"
-					onclick={() => {
-						onSubject(s.id);
-						picker = null;
-					}}
-					class={[optRowBtn, selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
-				>
-					<span class={optTile(selected)}><SIcon size={18} aria-hidden="true" /></span>
-					<span class="min-w-0 flex-1">
-						<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{s.title}</span>
-						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">{s.packCount} csomag</span>
-					</span>
-					{#if selected}
-						<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
-					{/if}
-				</button>
-			</li>
-		{/each}
-	</ul>
-</Sheet>
-
-<Sheet open={picker === 'level'} label="{levelLabel} választása" title={levelLabel} onClose={() => (picker = null)}>
-	<ul class="-mx-1 mt-2 space-y-0.5">
-		<li>
-			<button
-				type="button"
-				onclick={() => {
-					onLevel('');
-					picker = null;
-				}}
-				class={[optRowBtn, !levelId ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
-			>
-				<span class={optTile(!levelId)}><Layers size={18} aria-hidden="true" /></span>
-				<span class="min-w-0 flex-1">
-					<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">Válassz…</span>
-					<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">Nincs {levelLabelLow}</span>
-				</span>
-				{#if !levelId}
-					<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
-				{/if}
-			</button>
-		</li>
-		{#each levels as l (l.id)}
-			{@const selected = l.id === levelId}
-			<li>
-				<button
-					type="button"
-					onclick={() => {
-						onLevel(l.id);
-						picker = null;
-					}}
-					class={[optRowBtn, selected ? 'bg-brand-50 dark:bg-brand-500/20' : 'hover:bg-stone-100 dark:hover:bg-white/5']}
-				>
-					<span class={[optTile(selected), 'text-[15px] font-extrabold'].join(' ')}>
-						{l.title.trim().charAt(0).toUpperCase()}
-					</span>
-					<span class="min-w-0 flex-1">
-						<span class="block truncate text-[15px] font-extrabold text-ink-900 dark:text-white">{l.title}</span>
-						<span class="block text-[12px] font-medium text-stone-500 dark:text-stone-400">{l.materials.length} tananyag</span>
-					</span>
-					{#if selected}
-						<Check size={18} strokeWidth={3} class="shrink-0 text-brand-600 dark:text-white" aria-hidden="true" />
-					{/if}
-				</button>
-			</li>
-		{/each}
-	</ul>
-</Sheet>
+<EditPickerSheets
+	{picker}
+	onClose={() => (picker = null)}
+	{subjectId}
+	{levelId}
+	{subjects}
+	{levels}
+	{levelLabel}
+	{levelLabelLow}
+	onSubject={(v) => {
+		onSubject(v);
+		picker = null;
+	}}
+	onLevel={(v) => {
+		onLevel(v);
+		picker = null;
+	}}
+/>
 
 
 <ContentPicker
 	open={lessonPickerOpen}
-	subjects={subjects}
+	{subjects}
 	baseSubjectId={subjectId || undefined}
 	select="lesson"
 	multi

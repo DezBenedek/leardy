@@ -9,7 +9,7 @@ const currentCache = 'leardy-static-current';
 const transpile = (source) => ts.transpileModule(source, {
 	compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
 }).outputText;
-const protocol = transpile(await readFile(new URL('../src/lib/content-protocol.ts', import.meta.url), 'utf8')).replaceAll('export ', '');
+const protocol = transpile(await readFile(new URL('../src/lib/content/content-protocol.ts', import.meta.url), 'utf8')).replaceAll('export ', '');
 const worker = transpile((await readFile(new URL('../src/service-worker.ts', import.meta.url), 'utf8')).replace(/^import .*\n/m, ''));
 
 function harness(network = async () => new Response('network')) {
@@ -166,7 +166,7 @@ test('A megnyitott lecke- és kvízkép frissítés után offline is elérhető,
 });
 
 test('A PWA-frissítés nem indít újratöltést, nem dupláz induláskor, és korlátozza az ébresztési kéréseket', async () => {
-	const source = transpile(await readFile(new URL('../src/lib/pwa-client.ts', import.meta.url), 'utf8')).replaceAll('export ', '');
+	const source = transpile(await readFile(new URL('../src/lib/platform/pwa-client.ts', import.meta.url), 'utf8')).replaceAll('export ', '');
 	const document = new EventTarget();
 	document.visibilityState = 'visible';
 	const window = new EventTarget();
@@ -201,7 +201,7 @@ test('A PWA-frissítés nem indít újratöltést, nem dupláz induláskor, és 
 });
 
 test('Az ismételt telefonos ébresztési események egy tananyag-ellenőrzést indítanak', async () => {
-	const source = transpile(await readFile(new URL('../src/lib/content-client.ts', import.meta.url), 'utf8'))
+	const source = transpile(await readFile(new URL('../src/lib/content/content-client.ts', import.meta.url), 'utf8'))
 		.replace(/^import .*\n/gm, '').replaceAll('export ', '');
 	const window = new EventTarget(), document = new EventTarget();
 	document.visibilityState = 'visible';

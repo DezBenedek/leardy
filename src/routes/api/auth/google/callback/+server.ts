@@ -1,6 +1,6 @@
 import { redirect, type RequestHandler } from '@sveltejs/kit';
 import { env as privateEnv } from '$env/dynamic/private';
-import { createSession, ensureAuthSchema, getDb, type DbUser } from '$lib/server/db';
+import { createSession, ensureAuthSchema, getDb, type DbUser } from '$lib/server/infra/db';
 import {
 	ALLOWED_DOMAIN,
 	exchangeCodeForTokens,
@@ -9,7 +9,7 @@ import {
 	roleFromEmail,
 	validateGoogleProfile,
 	type GoogleEnv
-} from '$lib/server/google-auth';
+} from '$lib/server/auth/google-auth';
 
 const STATE_COOKIE = 'leardy_oauth_state';
 

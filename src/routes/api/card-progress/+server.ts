@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { saveCardProgress } from '$lib/server/curriculum';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { saveCardProgress } from '$lib/server/curriculum/curriculum';
 
 /** Kártya-osztályzatok mentése: { results: [{ key, known }] }. */
 export const POST: RequestHandler = async (event) => {

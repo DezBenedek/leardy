@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureClassContentSchema, type AssignmentUpload } from '$lib/server/classroom';
-import { getUploadsBucket, guessMediaMime, parseRange } from '$lib/server/uploads';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { ensureClassContentSchema, type AssignmentUpload } from '$lib/server/classroom/classroom';
+import { getUploadsBucket, guessMediaMime, parseRange } from '$lib/server/infra/uploads';
 
 /* Egy feltöltés letöltése (kép / hang / fájl) vagy törlése.
    A hang- és képlejátszáshoz HTTP Range kéréseket is kiszolgál (206),

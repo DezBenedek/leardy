@@ -1,8 +1,8 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { D1PreparedStatement } from '@cloudflare/workers-types';
-import { getDb, requireUser } from '$lib/server/db';
-import { canPublishDeck, ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum';
-import { cardKindForSubject } from '$lib/sm2';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { canPublishDeck, ensureCurriculumSchema, setDeckLessons } from '$lib/server/curriculum/curriculum';
+import { cardKindForSubject } from '$lib/deck/sm2';
 
 /* Saját kártyacsomag létrehozása: csak bejelentkezve, csak magának.
    Típus automatikus: nyelvi tantárgynál (Angol, Német, Olasz, Spanyol)

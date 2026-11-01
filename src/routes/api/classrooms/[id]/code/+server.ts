@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureClassContentSchema, generateClassCode } from '$lib/server/classroom';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { ensureClassContentSchema, generateClassCode } from '$lib/server/classroom/classroom';
 
 /* Csatlakozókód újragenerálása: csak a saját tanár. */
 export const POST: RequestHandler = async (event) => {

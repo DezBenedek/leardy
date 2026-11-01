@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import ts from 'typescript';
 
-const source = (await readFile(new URL('../src/lib/back-navigation.ts', import.meta.url), 'utf8'))
+const source = (await readFile(new URL('../src/lib/platform/back-navigation.ts', import.meta.url), 'utf8'))
 	.replace("import { browser } from '$app/environment';", 'const browser = true;')
 	.replace("import { afterNavigate, goto } from '$app/navigation';", `
 		const afterNavigate = (callback) => globalThis.backTest.callback = callback;

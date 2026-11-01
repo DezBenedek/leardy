@@ -1,26 +1,26 @@
 <script lang="ts">
-	import { createBackNavigation } from '$lib/back-navigation';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { onMount, tick, untrack } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicInOut } from 'svelte/easing';
-	import { rememberEditorScope } from '$lib/editor-scope';
-	import { motionOK } from '$lib/overlay';
+	import { rememberEditorScope } from '$lib/platform/editor-scope';
+	import { motionOK } from '$lib/view/overlay';
 	import type LessonRichEditor from './lesson/LessonRichEditor.svelte';
-	import { auth } from '$lib/auth.svelte';
-	import { emptyLessonDoc, editableLessonDoc, validateLessonContent, type LessonContentV1 } from '$lib/lesson-content';
-	import { markdownLessonDoc } from '$lib/lesson-markdown';
-	import { getLessonDraft, putLessonDraft, removeLessonDraft, lessonDraftKey, type LessonDraft } from '$lib/lesson-draft';
+	import { auth } from '$lib/state/auth.svelte';
+	import { emptyLessonDoc, editableLessonDoc, validateLessonContent, type LessonContentV1 } from '$lib/curriculum/lesson-content';
+	import { markdownLessonDoc } from '$lib/curriculum/lesson-markdown';
+	import { getLessonDraft, putLessonDraft, removeLessonDraft, lessonDraftKey, type LessonDraft } from '$lib/curriculum/lesson-draft';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
 	import { ArrowDown, ArrowLeft, ArrowUp, ListChecks, Menu, Pencil, Plus, Save, Trash2, FileClock, X } from '@lucide/svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import ActionMenu from '$lib/ui/ActionMenu.svelte';
 	import Drawer from './Drawer.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
-	import { editCurriculum } from '$lib/curriculum-edit-api';
-	import { parseEditableSections, type EditorLesson, type EditorQuiz } from '$lib/curriculum-editor';
-	import { toast } from '$lib/toast.svelte';
+	import { editCurriculum } from '$lib/curriculum/curriculum-edit-api';
+	import { parseEditableSections, type EditorLesson, type EditorQuiz } from '$lib/curriculum/curriculum-editor';
+	import { toast } from '$lib/state/toast.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 
 	let { lesson, initialQuizzes = [] }: { lesson: EditorLesson; initialQuizzes?: EditorQuiz[] } = $props();

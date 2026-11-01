@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { saveLessonProgress } from '$lib/server/curriculum';
-import { saveProgressEvent, type ProgressEvent } from '$lib/server/progress-events';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { saveLessonProgress } from '$lib/server/curriculum/curriculum';
+import { saveProgressEvent, type ProgressEvent } from '$lib/server/infra/progress-events';
 
 export const POST: RequestHandler = async (event) => {
 	if (event.request.headers.get('origin') !== event.url.origin) return json({ error: 'Érvénytelen kérésforrás.' }, { status: 403 });

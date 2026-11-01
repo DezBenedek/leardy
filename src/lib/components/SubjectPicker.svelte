@@ -13,7 +13,7 @@
 
 <script lang="ts">
 	import { BookOpenText, Check, ChevronDown, Landmark, Languages, Leaf, Shapes, X } from '@lucide/svelte';
-	import type { Subject } from '$lib/curriculum';
+	import type { Subject } from '$lib/curriculum/curriculum';
 	import Sheet from '$lib/ui/Sheet.svelte';
 
 	/* Tantárgyválasztó a Kártya oldal mintájára: vékony kártyagomb,

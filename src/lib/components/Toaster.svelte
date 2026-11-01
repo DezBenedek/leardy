@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { CircleCheck, CircleX, Info, TriangleAlert, X } from '@lucide/svelte';
-	import { toast, type ToastTone } from '$lib/toast.svelte';
+	import { toast, type ToastTone } from '$lib/state/toast.svelte';
 
 	const icons: Record<ToastTone, typeof Info> = {
 		success: CircleCheck,

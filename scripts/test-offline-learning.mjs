@@ -5,8 +5,8 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 const transpile = (source) => ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace(/^import .*\n/gm, '').replaceAll('export ', '');
-const protocol = transpile(await readFile(new URL('../src/lib/content-protocol.ts', import.meta.url), 'utf8'));
-const source = transpile(await readFile(new URL('../src/lib/offline-content.ts', import.meta.url), 'utf8'));
+const protocol = transpile(await readFile(new URL('../src/lib/content/content-protocol.ts', import.meta.url), 'utf8'));
+const source = transpile(await readFile(new URL('../src/lib/content/offline-content.ts', import.meta.url), 'utf8'));
 function catalog(storage = new Map()) {
 	return vm.runInNewContext(protocol + '\n' + source + '\n({buildOfflineCatalog, readOfflineCatalog})', {
 		URL, structuredClone, caches: { async keys() { return [...storage.keys()]; }, async open(name) { return {

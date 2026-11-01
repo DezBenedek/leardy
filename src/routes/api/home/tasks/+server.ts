@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
+import { getDb, requireUser } from '$lib/server/infra/db';
 
 /* Kezdőlap: a felhasználó határidős feladatai időrendi sorrendben.
    Kvízfeladatok és beadandók, csatlakozott osztályokból. A saját osztályokban külön az értékelendő beadandókat adjuk vissza.

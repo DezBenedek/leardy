@@ -14,7 +14,7 @@
 
 <script lang="ts">
 	import { BookMarked, BookOpen, Check, Layers, Minus, Plus, Search, Target, X } from '@lucide/svelte';
-	import type { Subject } from '$lib/curriculum';
+	import type { Subject } from '$lib/curriculum/curriculum';
 	import Button from '$lib/ui/Button.svelte';
 	import Drawer from './Drawer.svelte';
 	import ContentPicker, { type ContentPick } from './ContentPicker.svelte';

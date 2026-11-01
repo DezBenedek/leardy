@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { DurableObjectNamespace } from '@cloudflare/workers-types';
-import { getDb, requireUser } from '$lib/server/db';
-import { ensureLiveSchema, getClassRole, fetchLiveSnapshot } from '$lib/server/live';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { ensureLiveSchema, getClassRole, fetchLiveSnapshot } from '$lib/server/live/live';
 
 /* Munkamenet + DO pillanatkép: D1-ből session, DO-ból élő állapot.
    Ha a DO üres, a D1 config alapján adunk vissza alap snapshotot.

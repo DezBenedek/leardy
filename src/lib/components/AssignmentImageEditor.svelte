@@ -6,7 +6,7 @@
 	import Sheet from '$lib/ui/Sheet.svelte';
 	import { portal } from '$lib/components/SubjectPicker.svelte';
 	import MediaPermissionHelp from '$lib/components/MediaPermissionHelp.svelte';
-	import { lockBody } from '$lib/overlay';
+	import { lockBody } from '$lib/view/overlay';
 
 	/* Képszerkesztő beadandóhoz: fotózás vagy választás, téglalapos körülvágás,
 	   forgatás, tükrözés,

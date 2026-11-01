@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { CircleCheck } from '@lucide/svelte';
-	import type { QuizReview } from '$lib/quiz-review';
+	import type { QuizReview } from '$lib/quiz/quiz-review';
 	import QuizMistakeList from './QuizMistakeList.svelte';
 
 	/* Utolsó kitöltés átnézete: pontszám + rontott kérdések a helyes válasszal. */

@@ -1,13 +1,13 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { todayDay } from '$lib/sm2';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { todayDay } from '$lib/deck/sm2';
 import {
 	ensureCurriculumSchema,
 	getCardProgress,
 	listOfficialCardPacks,
 	listOfficialCardPacksByIds,
 	listUserDecks
-} from '$lib/server/curriculum';
+} from '$lib/server/curriculum/curriculum';
 
 /** Egy nyelv összes könyvtári szókártyája egyben az SM-2 gyakorláshoz.
  *  GET ?subject=<subjectId> → { packages, progress, today }.
@@ -55,7 +55,7 @@ export const GET: RequestHandler = async (event) => {
 		}
 		// Örökölt cards: forma is kellhet, ha a pack lista nem fedte le.
 		if (legacyIds.length > 0) {
-			const { getOfficialCardPack } = await import('$lib/server/curriculum');
+			const { getOfficialCardPack } = await import('$lib/server/curriculum/curriculum');
 			for (const lid of legacyIds.slice(0, 20)) {
 				try {
 					const pack = await getOfficialCardPack(db, lid.slice(6));

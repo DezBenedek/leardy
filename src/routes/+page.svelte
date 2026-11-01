@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { privateFetch } from '$lib/offline-api';
+	import { privateFetch } from '$lib/content/offline-api';
 	import { resolve } from '$app/paths';
 	import { ArrowRight, BookOpen, CalendarDays, Check, ChevronRight, ClipboardCheck, Flame, Languages, Minus, Settings } from '@lucide/svelte';
 	import { onMount } from 'svelte';
-	import { auth } from '$lib/auth.svelte';
-	import { Query } from '$lib/query.svelte';
-	import { loadSettings } from '$lib/settings';
-	import { learningDay, relativeDeadline } from '$lib/learning-activity';
-	import type { HomeStats, Suggestion } from '$lib/curriculum';
+	import { auth } from '$lib/state/auth.svelte';
+	import { Query } from '$lib/state/query.svelte';
+	import { loadSettings } from '$lib/state/settings';
+	import { learningDay, relativeDeadline } from '$lib/deck/learning-activity';
+	import type { HomeStats, Suggestion } from '$lib/curriculum/curriculum';
 	import TaskDetailDrawer, { type TaskDetail } from '$lib/components/TaskDetailDrawer.svelte';
 	import AssignmentDetailDrawer, { type AssignmentDetail } from '$lib/components/AssignmentDetailDrawer.svelte';
 	import Card from '$lib/ui/Card.svelte';

@@ -3,8 +3,8 @@
 	import { typeComponents } from '$lib/question-types/components';
 	import { prepareQuestion, questionType } from '$lib/question-types/registry';
 	import type { QuestionTypeId } from '$lib/question-types/types';
-	import type { QuizQuestion } from '$lib/curriculum';
-	import type { QuestionDraft } from '$lib/quiz-editor';
+	import type { QuizQuestion } from '$lib/curriculum/curriculum';
+	import type { QuestionDraft } from '$lib/quiz/quiz-editor';
 	import QuizEditorCore from '$lib/components/quiz/QuizEditorCore.svelte';
 	import type { QuizAdapter } from '$lib/components/quiz/quiz-adapter';
 	import QuestionForm from '$lib/components/quiz/QuestionForm.svelte';

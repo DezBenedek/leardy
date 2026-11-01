@@ -12,17 +12,14 @@ async function moduleUrl(path, replacements = {}) {
  for (const [from, to] of Object.entries(replacements)) source = source.replaceAll(`from '${from}'`, `from '${to}'`);
  return `data:text/javascript;base64,${Buffer.from(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText).toString('base64')}`;
 }
-const dbUrl = await moduleUrl('../src/lib/server/db.ts');
-const cacheUrl = await moduleUrl('../src/lib/server/content-cache.ts', { '@sveltejs/kit': import.meta.resolve('@sveltejs/kit'), './db': dbUrl });
-const activityUrl = await moduleUrl('../src/lib/learning-activity.ts');
-const curriculumUrl = await moduleUrl('../src/lib/server/curriculum.ts', {
- '../lesson-content': await typescriptModuleUrl(new URL('../src/lib/lesson-content.ts', import.meta.url)), '../question-types/registry': await typescriptModuleUrl(new URL('../src/lib/question-types/registry.ts', import.meta.url)), './db': dbUrl, './curriculum-publication': await moduleUrl('../src/lib/server/curriculum-publication.ts'),
- '$lib/sm2': await moduleUrl('../src/lib/sm2.ts'), '$lib/learning-activity': activityUrl
-});
+const dbUrl = await moduleUrl('../src/lib/server/infra/db.ts');
+const cacheUrl = await moduleUrl('../src/lib/server/infra/content-cache.ts', { '@sveltejs/kit': import.meta.resolve('@sveltejs/kit'), './db': dbUrl });
+const activityUrl = await moduleUrl('../src/lib/deck/learning-activity.ts');
+const curriculumUrl = await typescriptModuleUrl(new URL('../src/lib/server/curriculum/curriculum.ts', import.meta.url));
 const { getLessonPage } = await import(curriculumUrl);
 const { fingerprint, publicContent, contentResponse } = await import(cacheUrl);
-const { saveProgressEvent } = await import(await moduleUrl('../src/lib/server/progress-events.ts', {
- '@sveltejs/kit': import.meta.resolve('@sveltejs/kit'), './curriculum': curriculumUrl, './content-cache': cacheUrl, '$lib/learning-activity': activityUrl
+const { saveProgressEvent } = await import(await moduleUrl('../src/lib/server/infra/progress-events.ts', {
+ '@sveltejs/kit': import.meta.resolve('@sveltejs/kit'), '../curriculum/curriculum': curriculumUrl, './content-cache': cacheUrl, '$lib/deck/learning-activity': activityUrl
 }));
 function database() {
  const sqlite = new DatabaseSync(':memory:');
@@ -165,7 +162,7 @@ test('Leckeszöveg-változás után menthető, kérdésváltozás vagy törlés 
  } finally { db.sqlite.close(); }
 });
 
-const protocol = ts.transpileModule(await readFile(new URL('../src/lib/content-protocol.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replaceAll('export ', '');
+const protocol = ts.transpileModule(await readFile(new URL('../src/lib/content/content-protocol.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replaceAll('export ', '');
 const worker = ts.transpileModule((await readFile(new URL('../src/service-worker.ts', import.meta.url), 'utf8')).replace(/^import .*\n/m, ''), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 function harness(network) {
  const handlers = new Map(), storage = new Map(), messages = [];

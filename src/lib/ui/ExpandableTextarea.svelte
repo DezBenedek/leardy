@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { Maximize2, Minimize2 } from '@lucide/svelte';
-	import { loadSettings } from '$lib/settings';
+	import { loadSettings } from '$lib/state/settings';
 	import IconButton from './IconButton.svelte';
 
 	let { value = $bindable(''), disabled = false, label = 'Tartalom', placeholder = 'Írd ide a bekezdés tartalmát…' }: {

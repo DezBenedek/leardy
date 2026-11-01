@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { TOUR_IDS, TOURS, parseTourMutation, parseTourRecord, tourPath } from '../src/lib/tutorial/definition.ts';
-import { readTutorials, writeTutorial } from '../src/lib/server/tutorial.ts';
+import { readTutorials, writeTutorial } from '../src/lib/server/infra/tutorial.ts';
 
 const migration = await readFile(new URL('../migrations/0007_student_tutorial.sql', import.meta.url), 'utf8');
 function database() {

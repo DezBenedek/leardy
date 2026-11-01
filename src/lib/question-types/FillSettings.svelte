@@ -2,7 +2,7 @@
 	import { untrack, type Snippet } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { ChevronDown, Plus } from '@lucide/svelte';
-	import { motionOK } from '$lib/overlay';
+	import { motionOK } from '$lib/view/overlay';
 	import Collapse from '$lib/ui/Collapse.svelte';
 	import Toggle from '$lib/components/Toggle.svelte';
 	import type { QuestionEditorProps, InputMode } from './types';

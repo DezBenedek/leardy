@@ -5,9 +5,9 @@ import { hkdfSync, createDecipheriv } from 'node:crypto';
 import test from 'node:test';
 import { typescriptModuleUrl } from './typescript-module.mjs';
 
-const push = await import(await typescriptModuleUrl(new URL('../src/lib/server/push.ts', import.meta.url)));
-const { runPushSchedule, reminderClock } = await import(await typescriptModuleUrl(new URL('../src/lib/server/push-scheduler.ts', import.meta.url)));
-const { pwaManifest } = await import(await typescriptModuleUrl(new URL('../src/lib/pwa-manifest.ts', import.meta.url)));
+const push = await import(await typescriptModuleUrl(new URL('../src/lib/server/messaging/push.ts', import.meta.url)));
+const { runPushSchedule, reminderClock } = await import(await typescriptModuleUrl(new URL('../src/lib/server/messaging/push-scheduler.ts', import.meta.url)));
+const { pwaManifest } = await import(await typescriptModuleUrl(new URL('../src/lib/app/pwa-manifest.ts', import.meta.url)));
 const now = Date.parse('2026-10-25T19:05:00Z');
 const message = { title: 'Új tantermi üzenet', body: 'Holnap gyakorlunk.', url: '/tanterem/room', tag: 'msg:one' };
 

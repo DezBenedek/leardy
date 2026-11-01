@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { readTutorials, writeTutorial } from '$lib/server/tutorial';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { readTutorials, writeTutorial } from '$lib/server/infra/tutorial';
 import { parseTourMutation } from '$lib/tutorial/definition';
 
 const headers = { 'cache-control': 'no-store' };

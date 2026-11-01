@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getTutorial } from '$lib/tutorial/controller.svelte';
-	import { mutationFetch } from '$lib/mutation-fetch';
-	import { contentFetch } from '$lib/content-client';
-	import { createBackNavigation } from '$lib/back-navigation';
+	import { mutationFetch } from '$lib/platform/mutation-fetch';
+	import { contentFetch } from '$lib/content/content-client';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
@@ -13,12 +13,12 @@
 		desc: string;
 		icon: typeof Compass;
 	}
-	import type { LevelNode, Package, Subject } from '$lib/curriculum';
-	import { deckCardKindLabel } from '$lib/curriculum';
-	import { normHu } from '$lib/deck-history';
-	import { Query, getOrFetch, invalidate } from '$lib/query.svelte';
-	import { loadScope, saveScope } from '$lib/scope';
-	import { toast } from '$lib/toast.svelte';
+	import type { LevelNode, Package, Subject } from '$lib/curriculum/curriculum';
+	import { deckCardKindLabel } from '$lib/curriculum/curriculum';
+	import { normHu } from '$lib/deck/deck-history';
+	import { Query, getOrFetch, invalidate } from '$lib/state/query.svelte';
+	import { loadScope, saveScope } from '$lib/platform/scope';
+	import { toast } from '$lib/state/toast.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';

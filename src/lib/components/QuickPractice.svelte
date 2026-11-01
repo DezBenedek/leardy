@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { QuizQuestion } from '$lib/curriculum';
+	import type { QuizQuestion } from '$lib/curriculum/curriculum';
 	import QuizModal from '$lib/components/QuizModal.svelte';
 	import QuizRunner from '$lib/components/QuizRunner.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';

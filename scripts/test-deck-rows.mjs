@@ -1,7 +1,7 @@
 // Futtatás: node --experimental-strip-types --conditions=browser --test scripts/test-deck-rows.mjs
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { pruneEmptyRows } from '../src/lib/deck-rows.ts';
+import { pruneEmptyRows } from '../src/lib/deck/deck-rows.ts';
 
 const row = (key, front, back, id = null) => ({ key, id, front, back, sectionSlug: '', orig: null });
 

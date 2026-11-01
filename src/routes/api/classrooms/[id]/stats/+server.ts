@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { ensureAuthSchema, getDb, requireUser } from '$lib/server/db';
-import { ensureClassContentSchema } from '$lib/server/classroom';
+import { ensureAuthSchema, getDb, requireUser } from '$lib/server/infra/db';
+import { ensureClassContentSchema } from '$lib/server/classroom/classroom';
 
 /* Osztaly statisztika: csak a sajat tanar.
  * Tagokkent: kviz probalkozas/bekuldes/atlag, beadando bekuldes/ertekeles atlag.

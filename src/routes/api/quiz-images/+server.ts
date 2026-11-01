@@ -1,3 +1,3 @@
-import { uploadLessonImage } from '$lib/server/lesson-image-upload';
+import { uploadLessonImage } from '$lib/server/infra/lesson-image-upload';
 
 export const POST = uploadLessonImage('quiz-images');

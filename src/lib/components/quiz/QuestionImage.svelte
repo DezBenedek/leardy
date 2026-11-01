@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { ImageOff } from '@lucide/svelte';
-	import { normalizeQuestionImageUrl } from '$lib/question-image';
+	import { normalizeQuestionImageUrl } from '$lib/content/question-image';
 	let { src }: { src?: string } = $props();
 	const url = $derived(normalizeQuestionImageUrl(src) || '');
 	let failed = $state('');

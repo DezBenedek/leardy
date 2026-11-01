@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { fireNotify, processPushQueue, notifyClassroom } from '$lib/server/push';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { fireNotify, processPushQueue, notifyClassroom } from '$lib/server/messaging/push';
 
 /* Feladat kiosztása: kvíz leckékből. Csak a saját tanár.
    Body: { title?, lesson_ids: string[], question_count, target_pct, shuffle, due_date? }

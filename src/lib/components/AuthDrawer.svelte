@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Drawer from '$lib/components/Drawer.svelte';
 	import GoogleLoginButton from '$lib/components/GoogleLoginButton.svelte';
-	import { authUI } from '$lib/auth-ui.svelte';
+	import { authUI } from '$lib/state/auth-ui.svelte';
 </script>
 
 <Drawer

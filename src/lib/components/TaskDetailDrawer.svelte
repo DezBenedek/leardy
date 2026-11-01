@@ -1,16 +1,16 @@
 <script lang="ts">
-	import { privateFetch } from '$lib/offline-api';
-	import { mutationFetch } from '$lib/mutation-fetch';
-	import { lessonPath } from '$lib/lesson-paths';
+	import { privateFetch } from '$lib/content/offline-api';
+	import { mutationFetch } from '$lib/platform/mutation-fetch';
+	import { lessonPath } from '$lib/curriculum/lesson-paths';
 	import { CalendarDays, Check, ListChecks, RotateCcw, Send, Undo2 } from '@lucide/svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import QuizModal from '$lib/components/QuizModal.svelte';
 	import QuizRunner, { type QuizMiss } from '$lib/components/QuizRunner.svelte';
 	import QuizReviewList from '$lib/components/QuizReviewList.svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { loadQuizReview, saveQuizReview, type QuizReview } from '$lib/quiz-review';
-	import type { QuizQuestion } from '$lib/curriculum';
+	import { toast } from '$lib/state/toast.svelte';
+	import { loadQuizReview, saveQuizReview, type QuizReview } from '$lib/quiz/quiz-review';
+	import type { QuizQuestion } from '$lib/curriculum/curriculum';
 
 	/** Kezdőlapról vagy osztályfalról nyitható kvízfeladat-részletező. */
 	export interface TaskDetail {

@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
-import { contentFetch, offlineIdentity } from '$lib/content-client';
-import { readOfflineCatalog } from '$lib/offline-content';
-import type { SubjectTree } from '$lib/curriculum';
+import { contentFetch, offlineIdentity } from '$lib/content/content-client';
+import { readOfflineCatalog } from '$lib/content/offline-content';
+import type { SubjectTree } from '$lib/curriculum/curriculum';
 import type { PageLoad } from './$types';
 
 export const ssr = false;

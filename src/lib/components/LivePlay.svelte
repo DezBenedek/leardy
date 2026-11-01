@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { QuizQuestion } from '$lib/curriculum';
+	import type { QuizQuestion } from '$lib/curriculum/curriculum';
 
 	/** Élő dolgozat egy kérdése (a kvízkérdés alakjával egyezik). */
 	export type LiveQuestion = QuizQuestion;
@@ -9,7 +9,7 @@
 	import { ArrowDown, ArrowUp, Circle, CircleCheck, CircleX, Diamond, Square, Triangle } from '@lucide/svelte';
 	import { gameFor } from '$lib/question-types/components';
 	import { isQuestionType, prepareQuestion } from '$lib/question-types/registry';
-	import { isQuizAnswerCorrect } from '$lib/quiz-answers';
+	import { isQuizAnswerCorrect } from '$lib/quiz/quiz-answers';
 	import type { GameQuestion } from '$lib/games/types';
 	import Button from '$lib/ui/Button.svelte';
 	import QuestionImage from '$lib/components/quiz/QuestionImage.svelte';

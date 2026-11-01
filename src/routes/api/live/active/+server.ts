@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getDb, requireUser } from '$lib/server/db';
-import { ensureLiveSchema } from '$lib/server/live';
+import { getDb, requireUser } from '$lib/server/infra/db';
+import { ensureLiveSchema } from '$lib/server/live/live';
 
 /* Aktív élő dolgozatok: a saját termek (tanár vagy tag) lobby/live állapotú munkamenetei. */
 export const GET: RequestHandler = async (event) => {

@@ -3,12 +3,12 @@
 	import { untrack } from 'svelte';
 	import { browser } from '$app/environment';
 	import { ArrowRight, ChevronDown, LogOut, RotateCcw, CircleCheck, CircleX, Trophy } from '@lucide/svelte';
-	import type { QuizQuestion } from '$lib/curriculum';
-	import { correctQuizAnswer as correctOf, isQuizAnswerCorrect as isCorrect, formatQuizAnswer } from '$lib/quiz-answers';
+	import type { QuizQuestion } from '$lib/curriculum/curriculum';
+	import { correctQuizAnswer as correctOf, isQuizAnswerCorrect as isCorrect, formatQuizAnswer } from '$lib/quiz/quiz-answers';
 	import { gameFor } from '$lib/question-types/components';
 	import { prepareQuestion } from '$lib/question-types/registry';
 	import type { GameQuestion } from '$lib/games/types';
-	import { ADV_MISS_MS, ADV_OK_MS } from '$lib/practice';
+	import { ADV_MISS_MS, ADV_OK_MS } from '$lib/deck/practice';
 	import Button from '$lib/ui/Button.svelte';
 	import QuizMistakeList from './QuizMistakeList.svelte';
 

@@ -3,7 +3,7 @@
 	import { Mic, RotateCcw, Video, X } from '@lucide/svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
-	import { lockBody, motionOK } from '$lib/overlay';
+	import { lockBody, motionOK } from '$lib/view/overlay';
 	import { tick } from 'svelte';
 
 	/* Engedélykérő ablak: ha a böngésző/PWA nem adja oda a mikrofont vagy a

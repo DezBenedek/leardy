@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { createBackNavigation } from '$lib/back-navigation';
+	import { createBackNavigation } from '$lib/platform/back-navigation';
 	import { beforeNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { ArrowLeft, ArrowLeftRight, ChevronDown } from '@lucide/svelte';
 	import WordPractice from '$lib/components/WordPractice.svelte';
-	import type { Package } from '$lib/curriculum';
-	import { loadDeckOpened } from '$lib/deck-history';
-	import { Query } from '$lib/query.svelte';
-	import { summarizeSM2, todayDay } from '$lib/sm2';
-	import { CardReviewSession } from '$lib/card-review.svelte';
+	import type { Package } from '$lib/curriculum/curriculum';
+	import { loadDeckOpened } from '$lib/deck/deck-history';
+	import { Query } from '$lib/state/query.svelte';
+	import { summarizeSM2, todayDay } from '$lib/deck/sm2';
+	import { CardReviewSession } from '$lib/deck/card-review.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';

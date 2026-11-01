@@ -4,7 +4,7 @@
 	import Sheet from '$lib/ui/Sheet.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import { fieldClass, labelClass } from '$lib/question-types/editor-styles';
-	import { MAX_QUESTION_IMAGE_BYTES, normalizeQuestionImageUrl, QUESTION_IMAGE_TYPES } from '$lib/question-image';
+	import { MAX_QUESTION_IMAGE_BYTES, normalizeQuestionImageUrl, QUESTION_IMAGE_TYPES } from '$lib/content/question-image';
 
 	let { value = '', disabled = false, uploadImage, onChange, onBusyChange }: {
 		value?: string;

@@ -14,23 +14,19 @@ async function moduleUrl(path, replacements = {}) {
 }
 
 const questionTypesUrl = await typescriptModuleUrl(new URL('../src/lib/question-types/registry.ts', import.meta.url));
-const dbUrl = await moduleUrl('../src/lib/server/db.ts');
-const publicationUrl = await moduleUrl('../src/lib/server/curriculum-publication.ts');
-const sm2Url = await moduleUrl('../src/lib/sm2.ts');
-const activityUrl = await moduleUrl('../src/lib/learning-activity.ts');
-const lessonContentUrl = await typescriptModuleUrl(new URL('../src/lib/lesson-content.ts', import.meta.url));
-const editorUrl = await moduleUrl('../src/lib/server/curriculum-editor.ts', {
-	'@sveltejs/kit': import.meta.resolve('@sveltejs/kit'), './db': dbUrl, './curriculum-publication': publicationUrl, '../question-types/registry': questionTypesUrl, '../lesson-content': lessonContentUrl
-});
-const curriculumUrl = await moduleUrl('../src/lib/server/curriculum.ts', {
-	'./db': dbUrl, './curriculum-publication': publicationUrl, '../question-types/registry': questionTypesUrl, '../lesson-content': lessonContentUrl, '$lib/sm2': sm2Url, '$lib/learning-activity': activityUrl
-});
+const dbUrl = await moduleUrl('../src/lib/server/infra/db.ts');
+const publicationUrl = await moduleUrl('../src/lib/server/curriculum/curriculum-publication.ts');
+const sm2Url = await moduleUrl('../src/lib/deck/sm2.ts');
+const activityUrl = await moduleUrl('../src/lib/deck/learning-activity.ts');
+const lessonContentUrl = await typescriptModuleUrl(new URL('../src/lib/curriculum/lesson-content.ts', import.meta.url));
+const editorUrl = await typescriptModuleUrl(new URL('../src/lib/server/curriculum/curriculum-editor.ts', import.meta.url));
+const curriculumUrl = await typescriptModuleUrl(new URL('../src/lib/server/curriculum/curriculum.ts', import.meta.url));
 const { mutateCurriculum, getEditorLevels, getEditorLesson, getEditorQuizzes, canEnterEditor, countEditorLevelsBySubject, searchEditorCandidates } = await import(editorUrl);
 const { listSubjects, getSubjectTree, getLessonPage, countQuizzesByLesson, listScopedPackages } = await import(curriculumUrl);
-const markdownUrl = await moduleUrl('../src/lib/markdown.ts');
+const markdownUrl = await moduleUrl('../src/lib/curriculum/markdown.ts');
 const { splitSections, renderMarkdown } = await import(markdownUrl);
-const { parseEditableSections, serializeEditableSections, withEditableSectionSlugs } = await import(await moduleUrl('../src/lib/curriculum-editor.ts', { './markdown': markdownUrl }));
-const { cachedEditorSearch } = await import(await moduleUrl('../src/lib/editor-candidate-search.ts'));
+const { parseEditableSections, serializeEditableSections, withEditableSectionSlugs } = await import(await moduleUrl('../src/lib/curriculum/curriculum-editor.ts', { './markdown': markdownUrl }));
+const { cachedEditorSearch } = await import(await moduleUrl('../src/lib/curriculum/editor-candidate-search.ts'));
 const { lessonContentMarkdown } = await import(lessonContentUrl);
 const lessonMigration = await readFile(new URL('../migrations/0006_lesson_content.sql', import.meta.url), 'utf8');
 const schema = await readFile(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8');
