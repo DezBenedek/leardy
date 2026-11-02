@@ -13,12 +13,13 @@
 	import { markdownLessonDoc } from '$lib/curriculum/lesson-markdown';
 	import { getLessonDraft, putLessonDraft, removeLessonDraft, lessonDraftKey, type LessonDraft } from '$lib/curriculum/lesson-draft';
 	import ScrollableText from '$lib/ui/ScrollableText.svelte';
-	import { ArrowDown, ArrowLeft, ArrowUp, Layers, ListChecks, Menu, Pencil, Plus, Save, Trash2, FileClock, X } from '@lucide/svelte';
+	import { ArrowDown, ArrowLeft, ArrowUp, FileJson, Layers, ListChecks, Menu, Pencil, Plus, Save, Trash2, FileClock, X } from '@lucide/svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import ActionMenu from '$lib/ui/ActionMenu.svelte';
 	import Drawer from './Drawer.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import LessonDecksDrawer from './LessonDecksDrawer.svelte';
+	import LessonJsonImportDrawer from './LessonJsonImportDrawer.svelte';
 	import { editCurriculum } from '$lib/curriculum/curriculum-edit-api';
 	import { parseEditableSections, type EditorLesson, type EditorQuiz, type EditorLessonDeck } from '$lib/curriculum/curriculum-editor';
 	import { toast } from '$lib/state/toast.svelte';
@@ -153,6 +154,7 @@
 	let renameOpen = $state(false);
 	let deleteOpen = $state(false);
 	let decksOpen = $state(false);
+	let jsonImportOpen = $state(false);
 	let quizTotal = $state(untrack(() => initialQuizzes.reduce((n, q) => n + (q.questions?.length ?? 0), 0)));
 	let deckTotal = $state(untrack(() => initialDecks.reduce((n, d) => n + (d.count ?? 0), 0)));
 	let rename = $state('');
@@ -298,6 +300,7 @@
 			<ActionMenu compact triggerIcon={Menu} label="Lecke műveletei" disabled={locked} actions={[
 				{ id: 'quiz', label: quizLabel, icon: ListChecks, onclick: () => { void openQuiz(); } },
 				{ id: 'decks', label: deckLabel, icon: Layers, onclick: () => { decksOpen = true; } },
+				{ id: 'import', label: 'Importálás JSON-ból', icon: FileJson, onclick: () => { jsonImportOpen = true; } },
 				{ id: 'rename', label: 'Átnevezés', icon: Pencil, onclick: openRename },
 				{ id: 'delete', label: 'Törlés', icon: Trash2, tone: 'danger', onclick: openDelete }
 			]} />
@@ -373,6 +376,19 @@
 	open={decksOpen}
 	initialDecks={initialDecks}
 	onClose={() => { decksOpen = false; }}
+/>
+
+<LessonJsonImportDrawer
+	lesson={lesson}
+	open={jsonImportOpen}
+	onClose={() => { jsonImportOpen = false; }}
+	onAppendSections={(imported) => {
+		if (sections.length === 0) activeSlug = imported[0]?.slug ?? '';
+		sections = [...sections, ...imported];
+	}}
+	onTitleImported={(next) => { title = next; }}
+	onQuizImported={(count) => { quizTotal += count; }}
+	onDecksImported={(packs, cards) => { deckTotal += cards; }}
 />
 
 <style>

@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { ChevronRight } from '@lucide/svelte';
+	import { ChevronRight, Download, SlidersHorizontal } from '@lucide/svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import SearchInput from '$lib/ui/SearchInput.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -34,6 +36,8 @@
 	let q = $state('');
 	let cq = $state('');
 	let classesOpen = $state(false);
+	let filterOpen = $state(false);
+	let searchFocus = $state(false);
 	let loading = $state(true);
 	let error = $state('');
 	const PAGE = 30;
@@ -99,18 +103,42 @@
 		}
 	}
 
+	async function loadPeople() {
+		try {
+			const res = await fetch(`/api/admin/students?role=${tab}&q=${encodeURIComponent(q)}&limit=${PAGE}&offset=0`, { credentials: 'same-origin' });
+			if (res.ok) {
+				const j = await res.json();
+				students = j.items ?? [];
+				total = j.total ?? 0;
+			}
+		} catch {
+			// néma hiba
+		}
+	}
+
 	let timer: ReturnType<typeof setTimeout>;
 	let classTimer: ReturnType<typeof setTimeout>;
+	let firstPeopleRun = true;
+	let skipPeopleOnce = false;
 	$effect(() => {
 		void range;
 		void tab;
 		void load();
 	});
-	function onSearch(v: string) {
-		q = v;
+	$effect(() => {
+		void q;
+		if (firstPeopleRun) {
+			firstPeopleRun = false;
+			return;
+		}
+		if (skipPeopleOnce) {
+			skipPeopleOnce = false;
+			return;
+		}
 		clearTimeout(timer);
-		timer = setTimeout(() => void load(), 350);
-	}
+		timer = setTimeout(() => void loadPeople(), 350);
+		return () => clearTimeout(timer);
+	});
 	async function onClassSearch(v: string) {
 		cq = v;
 		clearTimeout(classTimer);
@@ -130,8 +158,20 @@
 	function switchTab(t: 'student' | 'teacher') {
 		if (tab === t) return;
 		tab = t;
+		skipPeopleOnce = true;
 		q = '';
 	}
+
+	function resetFilters() {
+		range = 30;
+		if (tab !== 'student') {
+			skipPeopleOnce = true;
+			tab = 'student';
+			q = '';
+		}
+	}
+
+	let activeFilterCount = $derived((range !== 30 ? 1 : 0) + (tab !== 'student' ? 1 : 0));
 
 	function fmtDate(t: number | null): string {
 		if (!t) return 'még nincs adat';
@@ -172,22 +212,63 @@
 
 {#if data.forbidden}
 	<div class="rounded-2xl border border-amber-300 bg-amber-50 p-6 text-center dark:border-amber-500/30 dark:bg-amber-500/10">
-		<p class="font-bold text-ink-900 dark:text-white">Nincs jogosultságod ehhez az oldalhoz</p>
-		<p class="mt-1 text-sm text-stone-500">Iskola vezetői, admin vagy fejlesztői szerep kell.</p>
+		<p class="font-bold text-ink-900 dark:text-white">Nincs jogosultságod</p>
 	</div>
 {:else}
-<div class="flex items-center gap-2">
-	<p class="text-[11px] font-extrabold tracking-[0.14em] text-stone-400 uppercase dark:text-stone-500">Saját iskola</p>
-	<div class="ml-auto flex gap-1 rounded-full bg-stone-100 p-1 dark:bg-white/5">
-		{#each [7, 30, 90] as r (r)}
-			<button
-				type="button"
-				onclick={() => (range = r)}
-				class={['rounded-full px-3 py-1 text-[12px] font-bold transition', range === r ? 'bg-white text-ink-900 shadow dark:bg-stone-800 dark:text-white' : 'text-stone-500']}
+<div class="flex items-center {searchFocus ? 'gap-0' : 'gap-2'}">
+	<div
+		class="shrink-0 overflow-hidden transition-all duration-200 motion-reduce:transition-none"
+		style:max-width={searchFocus ? '0px' : '220px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<h1 class="font-display truncate text-[22px] font-extrabold tracking-tight whitespace-nowrap text-ink-900 dark:text-white">Iskola</h1>
+	</div>
+	<SearchInput
+		bind:value={q}
+		placeholder="Keresés…"
+		ariaLabel={tab === 'teacher' ? 'Tanár keresése' : 'Diák keresése'}
+		onfocus={() => (searchFocus = true)}
+		onblur={() => (searchFocus = false)}
+	/>
+	<div
+		class="relative shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none"
+		style:width={searchFocus ? '0px' : '46px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<div class="grid h-full w-[46px] place-items-center">
+			<IconButton
+				ariaLabel="Szűrők"
+				size={46}
+				disabled={searchFocus}
+				onclick={() => (filterOpen = true)}
 			>
-				{r} nap
-			</button>
-		{/each}
+				<SlidersHorizontal size={22} />
+			</IconButton>
+		</div>
+		{#if activeFilterCount > 0}
+			<span
+				class="absolute -top-0.5 -right-0.5 grid size-5 place-items-center rounded-full bg-brand-500 text-[10px] font-extrabold text-white"
+				aria-hidden="true"
+			>
+				{activeFilterCount}
+			</span>
+		{/if}
+	</div>
+	<div
+		class="shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none"
+		style:width={searchFocus ? '0px' : '46px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<div class="grid h-full w-[46px] place-items-center">
+			<IconButton
+				ariaLabel="CSV letöltése"
+				size={46}
+				disabled={searchFocus || students.length === 0}
+				onclick={() => void exportCsv()}
+			>
+				<Download size={22} />
+			</IconButton>
+		</div>
 	</div>
 </div>
 
@@ -248,47 +329,14 @@
 	>
 		<span class="min-w-0 flex-1">
 			<span class="block text-[14px] font-extrabold">Osztályok</span>
-			<span class="block text-[12px] text-stone-500">{classTotal} osztály az iskolában</span>
+			<span class="block text-[12px] text-stone-500">{classTotal} osztály</span>
 		</span>
 		<ChevronRight size={18} class="shrink-0 text-stone-300 dark:text-stone-600" aria-hidden="true" />
 	</button>
 {/if}
 
 
-<div class="mt-4 flex items-center gap-1 rounded-full bg-stone-100 p-1 dark:bg-white/5" role="group" aria-label="Névsor">
-	{#each [{ id: 'student', label: 'Diákok' }, { id: 'teacher', label: 'Tanárok' }] as t (t.id)}
-		<button
-			type="button"
-			onclick={() => switchTab(t.id as 'student' | 'teacher')}
-			aria-pressed={tab === t.id}
-			class={['flex-1 rounded-full px-3 py-1.5 text-[13px] font-bold transition', tab === t.id ? 'bg-white text-ink-900 shadow dark:bg-stone-800 dark:text-white' : 'text-stone-500']}
-		>
-			{t.label}
-		</button>
-	{/each}
-</div>
-
-<div class="mt-2 flex items-center gap-2">
-{#key tab}
-	<input
-		type="search"
-		placeholder={tab === 'teacher' ? 'Keresés tanár neve vagy e-mailje alapján' : 'Keresés név vagy e-mail alapján'}
-		value={q}
-		oninput={(e) => onSearch((e.target as HTMLInputElement).value)}
-		aria-label={tab === 'teacher' ? 'Tanár keresése' : 'Diák keresése'}
-		class="min-w-0 flex-1 rounded-full border border-stone-200 bg-white px-4 py-2.5 text-[14px] outline-none focus:border-brand-500 dark:border-white/10 dark:bg-stone-900"
-	/>
-{/key}
-	<span class="shrink-0 text-[12px] font-bold text-stone-400">{students.length} / {total} fő</span>
-	<button
-		type="button"
-		onclick={exportCsv}
-		disabled={students.length === 0}
-		class="shrink-0 rounded-full border border-stone-200 px-3.5 py-2 text-[12px] font-bold text-stone-600 transition active:scale-95 disabled:opacity-40 dark:border-white/10 dark:text-stone-300"
-	>
-		CSV letöltés
-	</button>
-</div>
+<p class="mt-2 px-1 text-[12px] font-bold text-stone-400">{tab === 'teacher' ? 'Tanárok' : 'Diákok'}: {students.length} / {total}</p>
 
 <ul class="mt-2 grid gap-2">
 	{#each students as s (s.id)}
@@ -321,7 +369,57 @@
 	</button>
 {/if}
 
-<Drawer open={classesOpen} label="Iskola osztályai" title="Iskola osztályai" onClose={() => (classesOpen = false)} wide>
+<Drawer open={filterOpen} label="Szűrők" title="Szűrők" onClose={() => (filterOpen = false)}>
+	<p class="text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Időszak</p>
+	<div role="group" aria-label="Időszak szűrő" class="mt-1 grid grid-cols-3 gap-1 rounded-2xl bg-stone-100 p-1 dark:bg-white/10">
+		{#each [7, 30, 90] as r (r)}
+			{@const selected = range === r}
+			<button
+				type="button"
+				aria-pressed={selected}
+				onclick={() => (range = r)}
+				class={[
+					'rounded-xl px-2 py-2 text-[13px] leading-none transition active:scale-[0.97]',
+					selected
+						? 'bg-white font-extrabold text-ink-900 shadow-sm dark:bg-stone-800 dark:text-white'
+						: 'font-semibold text-stone-500 hover:text-ink-900 dark:text-stone-400 dark:hover:text-white'
+				]}
+			>
+				{r} nap
+			</button>
+		{/each}
+	</div>
+	<p class="mt-3 text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Névsor</p>
+	<div role="group" aria-label="Névsor szűrő" class="mt-1 grid grid-cols-2 gap-1 rounded-2xl bg-stone-100 p-1 dark:bg-white/10">
+		{#each [{ id: 'student', label: 'Diákok' }, { id: 'teacher', label: 'Tanárok' }] as t (t.id)}
+			{@const selected = tab === t.id}
+			<button
+				type="button"
+				aria-pressed={selected}
+				onclick={() => switchTab(t.id as 'student' | 'teacher')}
+				class={[
+					'rounded-xl px-2 py-2 text-[13px] leading-none transition active:scale-[0.97]',
+					selected
+						? 'bg-white font-extrabold text-ink-900 shadow-sm dark:bg-stone-800 dark:text-white'
+						: 'font-semibold text-stone-500 hover:text-ink-900 dark:text-stone-400 dark:hover:text-white'
+				]}
+			>
+				{t.label}
+			</button>
+		{/each}
+	</div>
+	{#if activeFilterCount > 0}
+		<button
+			type="button"
+			onclick={resetFilters}
+			class="mt-3 w-full rounded-full border border-stone-200 px-4 py-2.5 text-[13px] font-bold dark:border-white/10"
+		>
+			Szűrők törlése
+		</button>
+	{/if}
+</Drawer>
+
+<Drawer open={classesOpen} label="Iskola osztályai" title="Osztályok" onClose={() => (classesOpen = false)} wide>
 	<input
 		type="search"
 		placeholder="Keresés osztály vagy tanár alapján"

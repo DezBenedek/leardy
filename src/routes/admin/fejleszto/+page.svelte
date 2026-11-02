@@ -1,6 +1,9 @@
 <script lang="ts">
+	import { SlidersHorizontal } from '@lucide/svelte';
 	import { toast } from '$lib/state/toast.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import SearchInput from '$lib/ui/SearchInput.svelte';
 	import { ApiKeysStore } from '$lib/state/api-keys.svelte';
 	import { roleLabel } from '$lib/admin/roles';
 	import type { PageData } from './$types';
@@ -20,6 +23,27 @@
 	let logOpen = $state(false);
 
 	const api = new ApiKeysStore(() => !data.forbidden);
+
+	let keyQuery = $state('');
+	let keyStatus: 'all' | 'active' | 'revoked' = $state('all');
+	let searchFocus = $state(false);
+	let filterOpen = $state(false);
+
+	let activeFilterCount = $derived(keyStatus !== 'all' ? 1 : 0);
+
+	function resetKeyFilters() {
+		keyStatus = 'all';
+	}
+
+	function matchKey(k: { name: string; prefix: string; owner?: string; email?: string }, statusOk: boolean): boolean {
+		if (!statusOk) return false;
+		const query = keyQuery.trim().toLowerCase();
+		if (!query) return true;
+		return `${k.name} ${k.prefix} ${k.owner ?? ''} ${k.email ?? ''}`.toLowerCase().includes(query);
+	}
+
+	let visibleOwnKeys = $derived(api.keys.filter((k) => matchKey(k, keyStatus === 'all' || (keyStatus === 'active') !== k.revoked)));
+	let visibleAllKeys = $derived(keys.filter((k) => matchKey(k, keyStatus === 'all' || (keyStatus === 'active') !== k.revoked)));
 
 	function actionLabel(a: string): string {
 		if (a === 'ban') return 'Tiltás';
@@ -84,11 +108,51 @@
 
 {#if data.forbidden}
 	<div class="rounded-2xl border border-amber-300 bg-amber-50 p-6 text-center dark:border-amber-500/30 dark:bg-amber-500/10">
-		<p class="font-bold text-ink-900 dark:text-white">Nincs jogosultságod ehhez az oldalhoz</p>
-		<p class="mt-1 text-sm text-stone-500">Fejlesztői szerep kell.</p>
+		<p class="font-bold text-ink-900 dark:text-white">Nincs jogosultságod</p>
 	</div>
 {:else}
-<div class="grid gap-2.5">
+<div class="flex items-center {searchFocus ? 'gap-0' : 'gap-2'}">
+	<div
+		class="shrink-0 overflow-hidden transition-all duration-200 motion-reduce:transition-none"
+		style:max-width={searchFocus ? '0px' : '220px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<h1 class="font-display truncate text-[22px] font-extrabold tracking-tight whitespace-nowrap text-ink-900 dark:text-white">Fejlesztő</h1>
+	</div>
+	<SearchInput
+		bind:value={keyQuery}
+		placeholder="Keresés…"
+		ariaLabel="Kulcs keresése"
+		onfocus={() => (searchFocus = true)}
+		onblur={() => (searchFocus = false)}
+	/>
+	<div
+		class="relative shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none"
+		style:width={searchFocus ? '0px' : '46px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<div class="grid h-full w-[46px] place-items-center">
+			<IconButton
+				ariaLabel="Szűrők"
+				size={46}
+				disabled={searchFocus}
+				onclick={() => (filterOpen = true)}
+			>
+				<SlidersHorizontal size={22} />
+			</IconButton>
+		</div>
+		{#if activeFilterCount > 0}
+			<span
+				class="absolute -top-0.5 -right-0.5 grid size-5 place-items-center rounded-full bg-brand-500 text-[10px] font-extrabold text-white"
+				aria-hidden="true"
+			>
+				{activeFilterCount}
+			</span>
+		{/if}
+	</div>
+</div>
+
+<div class="mt-3 grid gap-2.5">
 	<section class="rounded-2xl border border-stone-200 bg-white p-4 dark:border-white/10 dark:bg-stone-900">
 		<h2 class="text-[15px] font-extrabold">Szereposztás</h2>
 		<form
@@ -144,7 +208,6 @@
 				{busy ? 'Mentés…' : 'Szerep beállítása'}
 			</button>
 		</form>
-		<p class="mt-2 text-[12px] leading-relaxed text-stone-500">Diák és tanár automatikus, csak vezetőt, admint vagy fejlesztőt állíthatsz be. Utolsó fejlesztő nem fokozható le.</p>
 	</section>
 
 	<section class="rounded-2xl border border-stone-200 bg-white p-4 dark:border-white/10 dark:bg-stone-900">
@@ -175,11 +238,11 @@
 		</form>
 		{#if api.loading && !api.loaded}
 			<p class="mt-2 text-sm text-stone-500">Betöltés…</p>
-		{:else if api.keys.length === 0}
-			<p class="mt-2 rounded-xl bg-stone-100 p-3 text-[13px] text-stone-500 dark:bg-white/5">Még nincs kulcsod, legfeljebb 10 aktív lehet.</p>
+		{:else if visibleOwnKeys.length === 0}
+			<p class="mt-2 rounded-xl bg-stone-100 p-3 text-[13px] text-stone-500 dark:bg-white/5">{keyQuery || keyStatus !== 'all' ? 'Nincs találat.' : 'Még nincs kulcsod.'}</p>
 		{:else}
 			<ul class="mt-2 grid gap-1.5">
-				{#each api.keys as k (k.id)}
+				{#each visibleOwnKeys as k (k.id)}
 					<li class="flex items-center gap-2 rounded-xl bg-stone-100 px-3 py-2 dark:bg-white/5">
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-[14px] font-bold">{k.name} <span class="font-mono font-medium text-stone-400">{k.prefix}</span></span>
@@ -197,7 +260,6 @@
 				{/each}
 			</ul>
 		{/if}
-		<p class="mt-2 font-mono text-[12px] text-stone-400">GET /api/v1/ · Authorization: Bearer ld_…</p>
 	</section>
 
 	<div class="grid grid-cols-2 gap-2.5">
@@ -220,16 +282,16 @@
 	</div>
 </div>
 
-<Drawer open={auditOpen} label="Összes API kulcs" title="Összes API kulcs" onClose={() => (auditOpen = false)} wide>
+<Drawer open={auditOpen} label="Összes API kulcs" title="Összes kulcs" onClose={() => (auditOpen = false)} wide>
 	<div class="flex items-center gap-2">
-		<p class="flex-1 text-[13px] text-stone-500">Tulajdonossal és utolsó használattal.</p>
+		<p class="flex-1 text-[12px] font-bold text-stone-400">{visibleAllKeys.length} / {keys.length}</p>
 		<button type="button" onclick={() => { keysLoaded = false; void loadKeys(); }} class="text-[13px] font-bold text-brand-600 dark:text-brand-300">Frissítés</button>
 	</div>
-	{#if keys.length === 0}
-		<p class="mt-2 rounded-xl bg-stone-100 p-3 text-[13px] text-stone-500 dark:bg-white/5">{keysLoaded ? 'Még nincs kiadott kulcs.' : 'Betöltés…'}</p>
+	{#if visibleAllKeys.length === 0}
+		<p class="mt-2 rounded-xl bg-stone-100 p-3 text-[13px] text-stone-500 dark:bg-white/5">{keysLoaded ? 'Nincs találat.' : 'Betöltés…'}</p>
 	{:else}
 		<ul class="mt-2 grid gap-1.5">
-			{#each keys as k (k.id)}
+			{#each visibleAllKeys as k (k.id)}
 				<li class="rounded-xl bg-stone-100 px-3 py-2 text-[13px] dark:bg-white/5">
 					<span class="block truncate font-bold">{k.name} <span class="font-mono font-medium text-stone-400">{k.prefix}</span></span>
 					<span class="block truncate text-[12px] text-stone-500">{k.owner} · {k.email}{k.schoolId ? ` · ${k.schoolId}` : ''} · használat {fmtDate(k.lastUsedAt)}</span>
@@ -243,7 +305,6 @@
 </Drawer>
 
 <Drawer open={logOpen} label="Napló" title="Napló" onClose={() => (logOpen = false)} wide>
-	<p class="text-[13px] text-stone-500">Tiltások, feloldások, közzétételek és szerepváltások.</p>
 	{#if log.length === 0}
 		<p class="mt-2 rounded-xl bg-stone-100 p-3 text-[13px] text-stone-500 dark:bg-white/5">{logLoaded ? 'Még nincs bejegyzés.' : 'Betöltés…'}</p>
 	{:else}
@@ -266,6 +327,37 @@
 				{logBusy ? 'Betöltés…' : `Továbbiak (${logTotal - log.length})`}
 			</button>
 		{/if}
+	{/if}
+</Drawer>
+
+<Drawer open={filterOpen} label="Szűrők" title="Szűrők" onClose={() => (filterOpen = false)}>
+	<p class="text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Kulcs állapota</p>
+	<div role="group" aria-label="Kulcs állapot szűrő" class="mt-1 grid grid-cols-3 gap-1 rounded-2xl bg-stone-100 p-1 dark:bg-white/10">
+		{#each [{ id: 'all', label: 'Mind' }, { id: 'active', label: 'Aktív' }, { id: 'revoked', label: 'Visszavont' }] as o (o.id)}
+			{@const selected = keyStatus === o.id}
+			<button
+				type="button"
+				aria-pressed={selected}
+				onclick={() => (keyStatus = o.id as typeof keyStatus)}
+				class={[
+					'rounded-xl px-2 py-2 text-[13px] leading-none transition active:scale-[0.97]',
+					selected
+						? 'bg-white font-extrabold text-ink-900 shadow-sm dark:bg-stone-800 dark:text-white'
+						: 'font-semibold text-stone-500 hover:text-ink-900 dark:text-stone-400 dark:hover:text-white'
+				]}
+			>
+				{o.label}
+			</button>
+		{/each}
+	</div>
+	{#if activeFilterCount > 0}
+		<button
+			type="button"
+			onclick={resetKeyFilters}
+			class="mt-3 w-full rounded-full border border-stone-200 px-4 py-2.5 text-[13px] font-bold dark:border-white/10"
+		>
+			Szűrők törlése
+		</button>
 	{/if}
 </Drawer>
 {/if}

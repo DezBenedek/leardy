@@ -1,6 +1,10 @@
 <script lang="ts">
+	import { History, SlidersHorizontal } from '@lucide/svelte';
+	import { roleLabel } from '$lib/admin/roles';
 	import { toast } from '$lib/state/toast.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import SearchInput from '$lib/ui/SearchInput.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -13,6 +17,9 @@
 	let q = $state('');
 	let role = $state('all');
 	let onlyRestricted = $state(false);
+	let searchFocus = $state(false);
+	let filterOpen = $state(false);
+	let historyOpen = $state(false);
 	let items = $state<Row[]>([]);
 	let total = $state(0);
 	let moreBusy = $state(false);
@@ -43,15 +50,11 @@
 		try {
 			const params = new URLSearchParams({ q, role, limit: '30', offset: '0' });
 			if (onlyRestricted) params.set('restricted', '1');
-			const [u, a] = await Promise.all([
-				fetch(`/api/admin/users?${params}`, { credentials: 'same-origin' }),
-				fetch('/api/admin/actions', { credentials: 'same-origin' })
-			]);
+			const u = await fetch(`/api/admin/users?${params}`, { credentials: 'same-origin' });
 			if (!u.ok) throw new Error((await u.json().catch(() => ({}))).error ?? 'Lista nem tölthető.');
 			const j = await u.json();
 			items = j.items ?? [];
 			total = j.total ?? 0;
-			if (a.ok) actions = (await a.json()).items ?? [];
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Hiba történt.';
 		} finally {
@@ -59,8 +62,36 @@
 		}
 	}
 
+	async function loadActions() {
+		try {
+			const a = await fetch('/api/admin/actions', { credentials: 'same-origin' });
+			if (a.ok) actions = (await a.json()).items ?? [];
+		} catch {
+			// néma hiba
+		}
+	}
+
 	let timer: ReturnType<typeof setTimeout>;
 	let detailGen = 0;
+	let firstRun = true;
+
+	$effect(() => {
+		void q;
+		void role;
+		void onlyRestricted;
+		if (data.forbidden) {
+			loading = false;
+			return;
+		}
+		if (firstRun) {
+			firstRun = false;
+			void load();
+			return;
+		}
+		clearTimeout(timer);
+		timer = setTimeout(() => void load(), 350);
+		return () => clearTimeout(timer);
+	});
 
 	async function loadMore() {
 		if (moreBusy || items.length >= total) return;
@@ -88,6 +119,13 @@
 		{ id: 'developer', label: 'Fejlesztő' }
 	];
 
+	let activeFilterCount = $derived((role !== 'all' ? 1 : 0) + (onlyRestricted ? 1 : 0));
+
+	function resetFilters() {
+		role = 'all';
+		onlyRestricted = false;
+	}
+
 	function actionLabel(a: string): string {
 		if (a === 'ban') return 'Tiltás';
 		if (a === 'mute') return 'Némítás';
@@ -98,13 +136,9 @@
 		if (a.startsWith('role:')) return `Szerep: ${a.slice(5)}`;
 		return a;
 	}
-	function schedule() {
-		clearTimeout(timer);
-		timer = setTimeout(() => void load(), 350);
-	}
 
 	$effect(() => {
-		void load();
+		if (!data.forbidden) void loadActions();
 	});
 
 	async function openDetail(row: Row) {
@@ -139,6 +173,7 @@
 		toast.success('Feloldva');
 		detail = null;
 		await load();
+		void loadActions();
 	}
 
 	function fmtUntil(t: number): string {
@@ -170,24 +205,10 @@
 			target = null;
 			reason = '';
 			await load();
+			void loadActions();
 		} finally {
 			busy = false;
 		}
-	}
-
-	async function unrestrict(row: Row, k: 'ban' | 'mute') {
-		const res = await fetch('/api/admin/users', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			credentials: 'same-origin',
-			body: JSON.stringify({ action: 'unrestrict', targetId: row.id, kind: k })
-		});
-		if (!res.ok) {
-			toast.error('Nem sikerült feloldani');
-			return;
-		}
-		toast.success('Feloldva');
-		await load();
 	}
 </script>
 
@@ -197,39 +218,66 @@
 
 {#if data.forbidden}
 	<div class="rounded-2xl border border-amber-300 bg-amber-50 p-6 text-center dark:border-amber-500/30 dark:bg-amber-500/10">
-		<p class="font-bold text-ink-900 dark:text-white">Nincs jogosultságod ehhez az oldalhoz</p>
-		<p class="mt-1 text-sm text-stone-500">Admin vagy fejlesztői szerep kell.</p>
+		<p class="font-bold text-ink-900 dark:text-white">Nincs jogosultságod</p>
 	</div>
 {:else}
-<div class="grid gap-2 rounded-2xl border border-stone-200 bg-white p-4 dark:border-white/10 dark:bg-stone-900">
-	<div class="flex flex-wrap gap-2">
-		<input
-			type="search"
-			placeholder="Keresés név vagy e-mail alapján"
-			value={q}
-			oninput={(e) => { q = (e.target as HTMLInputElement).value; schedule(); }}
-			aria-label="Felhasználó keresése"
-			class="min-w-0 flex-1 rounded-full border border-stone-200 px-4 py-2 text-[14px] outline-none focus:border-brand-500 dark:border-white/10 dark:bg-stone-950"
-		/>
+<div class="flex items-center {searchFocus ? 'gap-0' : 'gap-2'}">
+	<div
+		class="shrink-0 overflow-hidden transition-all duration-200 motion-reduce:transition-none"
+		style:max-width={searchFocus ? '0px' : '220px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<h1 class="font-display truncate text-[22px] font-extrabold tracking-tight whitespace-nowrap text-ink-900 dark:text-white">Moderálás</h1>
 	</div>
-	<div class="flex flex-wrap gap-1.5" role="group" aria-label="Szerep szűrő">
-		{#each roleFilters as f (f.id)}
-			<button
-				type="button"
-				onclick={() => { role = f.id; void load(); }}
-				aria-pressed={role === f.id}
-				class={['rounded-full px-3.5 py-1.5 text-[13px] font-bold transition active:scale-95', role === f.id ? 'bg-ink-900 text-white dark:bg-white dark:text-ink-900' : 'bg-stone-100 text-stone-600 dark:bg-white/5 dark:text-stone-300']}
+	<SearchInput
+		bind:value={q}
+		placeholder="Keresés…"
+		ariaLabel="Felhasználó keresése"
+		onfocus={() => (searchFocus = true)}
+		onblur={() => (searchFocus = false)}
+	/>
+	<div
+		class="relative shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none"
+		style:width={searchFocus ? '0px' : '46px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<div class="grid h-full w-[46px] place-items-center">
+			<IconButton
+				ariaLabel="Szűrők"
+				size={46}
+				disabled={searchFocus}
+				onclick={() => (filterOpen = true)}
 			>
-				{f.label}
-			</button>
-		{/each}
-		<label class="ml-auto flex items-center gap-2 text-[13px] font-medium text-stone-600 dark:text-stone-300">
-			<input type="checkbox" checked={onlyRestricted} onchange={(e) => { onlyRestricted = (e.target as HTMLInputElement).checked; void load(); }} class="size-4 accent-red-500" />
-			Csak korlátozottak
-		</label>
+				<SlidersHorizontal size={22} />
+			</IconButton>
+		</div>
+		{#if activeFilterCount > 0}
+			<span
+				class="absolute -top-0.5 -right-0.5 grid size-5 place-items-center rounded-full bg-brand-500 text-[10px] font-extrabold text-white"
+				aria-hidden="true"
+			>
+				{activeFilterCount}
+			</span>
+		{/if}
 	</div>
-	<p class="text-[12px] font-bold text-stone-400">{items.length} / {total} találat</p>
+	<div
+		class="shrink-0 overflow-hidden transition-[width,opacity] duration-200 motion-reduce:transition-none"
+		style:width={searchFocus ? '0px' : '46px'}
+		style:opacity={searchFocus ? '0' : '1'}
+	>
+		<div class="grid h-full w-[46px] place-items-center">
+			<IconButton
+				ariaLabel="Legutóbbi műveletek"
+				size={46}
+				disabled={searchFocus}
+				onclick={() => (historyOpen = true)}
+			>
+				<History size={22} />
+			</IconButton>
+		</div>
+	</div>
 </div>
+<p class="mt-2 px-1 text-[12px] font-bold text-stone-400">{items.length} / {total}</p>
 
 {#if error}
 	<p class="mt-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>
@@ -239,39 +287,21 @@
 	{#each items as row (row.id)}
 		{@const banned = row.suspended_until > Date.now()}
 		{@const muted = row.muted_until > Date.now()}
-		<li class="flex items-center gap-2 rounded-2xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-stone-900">
-			<button type="button" onclick={() => void openDetail(row)} class="flex w-full items-center gap-2 text-left">
+		<li class="rounded-2xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-stone-900">
+			<button type="button" onclick={() => void openDetail(row)} class="flex w-full items-center gap-2.5 text-left">
+				<span class="grid size-8 shrink-0 place-items-center rounded-full bg-stone-100 text-[13px] font-extrabold text-stone-500 dark:bg-white/10 dark:text-stone-300">
+					{row.name.trim().charAt(0).toUpperCase()}
+				</span>
 				<span class="min-w-0 flex-1">
 					<span class="block truncate text-[14px] font-bold">{row.name}</span>
-					<span class="block truncate text-[12px] text-stone-500">{row.email} · {row.role}</span>
+					<span class="block truncate text-[12px] text-stone-500">{row.email} · {roleLabel(row.role)}</span>
 				</span>
-				<span class="grid size-7 shrink-0 place-items-center rounded-full bg-stone-100 text-stone-400 dark:bg-white/10">›</span>
+				{#if banned}
+					<span class="shrink-0 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-bold text-red-600 dark:text-red-300">Tiltva</span>
+				{:else if muted}
+					<span class="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-200">Némítva</span>
+				{/if}
 			</button>
-			<div class="mt-1 flex items-center gap-2">
-				<button
-					type="button"
-					onclick={() => { target = row; kind = 'ban'; days = 7; reason = ''; }}
-					class="shrink-0 rounded-full border border-red-200 px-3 py-1.5 text-[12px] font-bold text-red-600 dark:border-red-500/30 dark:text-red-300"
-				>
-					Korlátozás
-				</button>
-			</div>
-			{#if banned || muted}
-				<div class="mt-2 grid gap-1 text-[12px]">
-					{#if banned}
-						<p class="rounded-xl bg-red-500/10 px-2.5 py-1.5 text-red-700 dark:text-red-300">
-							Tiltva {fmtUntil(row.suspended_until)}ig · {row.suspended_reason}
-							<button type="button" onclick={() => void unrestrict(row, 'ban')} class="ml-2 font-bold underline">Feloldás</button>
-						</p>
-					{/if}
-					{#if muted}
-						<p class="rounded-xl bg-amber-500/10 px-2.5 py-1.5 text-amber-800 dark:text-amber-200">
-							Némítva {fmtUntil(row.muted_until)}ig · {row.muted_reason}
-							<button type="button" onclick={() => void unrestrict(row, 'mute')} class="ml-2 font-bold underline">Feloldás</button>
-						</p>
-					{/if}
-				</div>
-			{/if}
 		</li>
 	{/each}
 </ul>
@@ -288,8 +318,8 @@
 
 {#if target}
 	{@const t = target}
-	<Drawer open={target !== null} label="Korlátozás" title={`Korlátozás: ${t.name}`} onClose={() => { if (!busy) target = null; }}>
-		<p class="-mt-1 text-[13px] text-stone-500">{t.email} · {t.role}</p>
+	<Drawer open={target !== null} label="Korlátozás" title={t.name} onClose={() => { if (!busy) target = null; }}>
+		<p class="-mt-1 text-[13px] text-stone-500">{t.email} · {roleLabel(t.role)}</p>
 		<form onsubmit={submit} class="mt-3 grid gap-2.5">
 			<div class="grid grid-cols-2 gap-2">
 				<button type="button" onclick={() => (kind = 'ban')} class={['rounded-2xl border p-3 text-left transition active:scale-[0.99]', kind === 'ban' ? 'border-red-500 bg-red-50 dark:bg-red-500/10' : 'border-stone-200 dark:border-white/10']}>
@@ -319,16 +349,56 @@
 	</Drawer>
 {/if}
 
-{#if actions.length > 0}
-	<div class="mt-4 rounded-2xl border border-stone-200 bg-white p-4 dark:border-white/10 dark:bg-stone-900">
-		<p class="text-[13px] font-extrabold">Legutóbbi műveletek</p>
-			<ul class="mt-2 grid gap-1 text-[12.5px] text-stone-600 dark:text-stone-300">
-				{#each actions as a (a.id)}
-					<li class="truncate">{a.actor} → {a.target}: {actionLabel(a.action)}{a.reason ? ` · ${a.reason}` : ''}</li>
-				{/each}
-			</ul>
+<Drawer open={filterOpen} label="Szűrők" title="Szűrők" onClose={() => (filterOpen = false)}>
+	<p class="text-[11px] font-extrabold tracking-wider text-stone-400 uppercase dark:text-stone-500">Szerep</p>
+	<div role="group" aria-label="Szerep szűrő" class="mt-1 grid grid-cols-3 gap-1 rounded-2xl bg-stone-100 p-1 dark:bg-white/10">
+		{#each roleFilters as f (f.id)}
+			{@const selected = role === f.id}
+			<button
+				type="button"
+				aria-pressed={selected}
+				onclick={() => (role = f.id)}
+				class={[
+					'rounded-xl px-2 py-2 text-[13px] leading-none transition active:scale-[0.97]',
+					selected
+						? 'bg-white font-extrabold text-ink-900 shadow-sm dark:bg-stone-800 dark:text-white'
+						: 'font-semibold text-stone-500 hover:text-ink-900 dark:text-stone-400 dark:hover:text-white'
+				]}
+			>
+				{f.label}
+			</button>
+		{/each}
 	</div>
-{/if}
+	<label class="mt-3 flex cursor-pointer items-center justify-between gap-2 rounded-2xl border border-stone-200 px-4 py-3 dark:border-white/10">
+		<span class="text-[14px] font-bold">Csak korlátozottak</span>
+		<input type="checkbox" checked={onlyRestricted} onchange={(e) => (onlyRestricted = (e.target as HTMLInputElement).checked)} class="size-4 accent-red-500" />
+	</label>
+	{#if activeFilterCount > 0}
+		<button
+			type="button"
+			onclick={resetFilters}
+			class="mt-3 w-full rounded-full border border-stone-200 px-4 py-2.5 text-[13px] font-bold dark:border-white/10"
+		>
+			Szűrők törlése
+		</button>
+	{/if}
+</Drawer>
+
+<Drawer open={historyOpen} label="Legutóbbi műveletek" title="Műveletek" onClose={() => (historyOpen = false)} wide>
+	{#if actions.length === 0}
+		<p class="mt-1 rounded-xl bg-stone-100 p-3 text-[13px] text-stone-500 dark:bg-white/5">Még nincs bejegyzés.</p>
+	{:else}
+		<ul class="mt-1 grid gap-1.5">
+			{#each actions as a (a.id)}
+				<li class="truncate rounded-xl bg-stone-100 px-3 py-2 text-[13px] dark:bg-white/5">
+					<span class="font-bold">{actionLabel(a.action)}</span>
+					<span class="text-stone-500"> · {a.actor} → {a.target}</span>
+					{#if a.reason}<span class="block truncate text-[12px] text-stone-500">{a.reason}</span>{/if}
+				</li>
+			{/each}
+		</ul>
+	{/if}
+</Drawer>
 
 <Drawer
 	open={detail !== null || detailBusy}
