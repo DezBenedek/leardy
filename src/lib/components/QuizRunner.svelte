@@ -43,12 +43,16 @@
 	let notified = $state(false);
 	let reviewOpen = $state(false);
 	let autoTimer: ReturnType<typeof setTimeout> | undefined;
+	/** Csak rontott újrakörben a szűkített lista, egyébként null (teljes sor). */
+	let runQuestions = $state<QuizQuestion[] | null>(null);
+	let active = $derived(runQuestions ?? questions);
+	let retryRound = $derived(runQuestions !== null);
 	/** Az automata-tovább hátralévő ideje (a csík is ehhez igazodik). */
 	let autoMs = $state(ADV_MISS_MS);
 	/** A futam elején keverünk, válaszadás közben az elemek sorrendje stabil. */
 	let gameQuestions = $state<Record<string, GameQuestion>>({});
 
-	let current = $derived(questions[Math.min(idx, questions.length - 1)]);
+	let current = $derived(active[Math.min(idx, active.length - 1)]);
 	let answered = $derived(
 		current && answers[current.id] !== undefined ? answers[current.id] : undefined
 	);
@@ -60,6 +64,7 @@
 		void questions.map((q) => q.id).join(',');
 		untrack(() => {
 			clearAuto();
+			runQuestions = null;
 			idx = 0;
 			answers = {};
 			finished = false;
@@ -75,9 +80,9 @@
 	});
 
 	$effect(() => {
-		if (finished && !notified && questions.length > 0) {
+		if (finished && !notified && active.length > 0) {
 			notified = true;
-			onDone?.(score, questions.length, missed);
+			onDone?.(score, active.length, missed);
 		}
 	});
 
@@ -89,23 +94,26 @@
 	}
 
 	function prepareRun() {
-		gameQuestions = Object.fromEntries(questions.map((question) => [question.id, prepareQuestion(question)]));
+		const list = runQuestions ?? questions;
+		gameQuestions = Object.fromEntries(list.map((question) => [question.id, prepareQuestion(question)]));
 	}
 
-	let score = $derived(questions.filter((q) => isCorrect(q, answers[q.id])).length);
-	let pct = $derived(questions.length > 0 ? Math.round((score / questions.length) * 100) : 0);
+	let score = $derived(active.filter((q) => isCorrect(q, answers[q.id])).length);
+	let pct = $derived(active.length > 0 ? Math.round((score / active.length) * 100) : 0);
 
 	/** Rontott kérdések: mit válaszolt és mi a helyes (záróképernyő + drawer-átnézet). */
 	let missed = $derived(
-		questions
+		active
 			.filter((q) => !isCorrect(q, answers[q.id]))
 			.map((q) => ({ question: q.question_text, mine: prettyMine(q), correct: prettyCorrect(q) }))
 	);
+	let retryMissedCount = $derived(missed.length);
+	let showMissedRetry = $derived(retryMissedCount > 0 && retryMissedCount < active.length);
 
 	/** Rövid szövegű sornál keskenyebb az oszlop (450px), egyébként max 550px. */
 	let compact = $derived(
-		questions.length > 0 &&
-			questions.every((q) => (q.question_text.length + correctOf(q).length) < 60)
+		active.length > 0 &&
+			active.every((q) => (q.question_text.length + correctOf(q).length) < 60)
 	);
 
 	function answer(a: string) {
@@ -118,18 +126,29 @@
 
 	function next() {
 		clearAuto();
-		if (idx >= questions.length - 1) finished = true;
+		if (idx >= active.length - 1) finished = true;
 		else idx += 1;
 	}
 
-	function retry() {
+	function startRun(nextQuestions: QuizQuestion[] | null) {
 		clearAuto();
+		runQuestions = nextQuestions;
 		idx = 0;
 		answers = {};
 		finished = false;
 		notified = false;
 		reviewOpen = false;
 		prepareRun();
+	}
+
+	function retry() {
+		startRun(null);
+	}
+
+	function retryMissed() {
+		const list = active.filter((q) => !isCorrect(q, answers[q.id]));
+		if (list.length === 0 || list.length >= active.length) return;
+		startRun(list);
 	}
 
 	function prettyCorrect(q: QuizQuestion): string {
@@ -143,7 +162,7 @@
 	}
 </script>
 
-{#if questions.length === 0}
+{#if active.length === 0}
 	<p class="py-4 text-center text-sm font-medium text-stone-500 dark:text-stone-400">Nincs kérdés.</p>
 {:else if finished}
 	<div class="mx-auto flex min-h-[calc(100dvh-140px)] w-full max-w-[480px] flex-col justify-center py-6 sm:py-10">
@@ -154,14 +173,14 @@
 					<circle cx="88" cy="88" r="78" stroke="currentColor" stroke-width="9" stroke-linecap={pct > 0 ? 'round' : 'butt'} pathLength="100" stroke-dasharray={`${pct} 100`} class="text-brand-500 dark:text-indigo-400" />
 				</svg>
 				<p class="font-display text-[52px] leading-none font-extrabold tracking-tight text-ink-900 tabular-nums dark:text-white">{pct}%</p>
-				{#if score === questions.length}
+				{#if score === active.length}
 					<span class="absolute right-0 bottom-1 grid size-11 place-items-center rounded-2xl border-4 border-brand-50 bg-brand-500 text-white dark:border-stone-950"><Trophy size={21} /></span>
 				{/if}
 			</div>
 			<h2 class="mt-5 font-display text-[28px] leading-tight font-extrabold tracking-tight text-ink-900 dark:text-white">
-				{score === questions.length ? 'Hibátlan!' : pct >= 80 ? 'Szép munka!' : 'Kvíz befejezve'}
+				{score === active.length ? 'Hibátlan!' : pct >= 80 ? 'Szép munka!' : 'Kvíz befejezve'}
 			</h2>
-			<p class="mt-2 text-sm font-medium text-ink-600 dark:text-stone-300"><span class="font-extrabold text-ink-900 tabular-nums dark:text-white">{score}/{questions.length}</span> helyes válasz</p>
+			<p class="mt-2 text-sm font-medium text-ink-600 dark:text-stone-300"><span class="font-extrabold text-ink-900 tabular-nums dark:text-white">{score}/{active.length}</span> helyes válasz{#if retryRound} · csak a rontottak{/if}</p>
 			{#if targetPct !== null}
 				{@const met = pct >= targetPct}
 				<p class={['mx-auto mt-4 flex w-fit items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold', met ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300' : 'bg-white/80 text-ink-600 dark:bg-white/10 dark:text-stone-300']}>
@@ -187,10 +206,13 @@
 		{/if}
 
 		<div class="mt-6 grid gap-2">
+			{#if showMissedRetry}
+				<Button size="lg" block onclick={retryMissed}><RotateCcw size={16} /> Csak a rontottakat újra ({retryMissedCount})</Button>
+			{/if}
 			{#if onExit}
 				<Button size="lg" block onclick={onExit}>Kilépés <LogOut size={17} /></Button>
 			{/if}
-			<Button variant={onExit ? 'ghost' : 'primary'} size="lg" block onclick={retry}><RotateCcw size={16} /> Újrapróbálom</Button>
+			<Button variant={onExit || showMissedRetry ? 'ghost' : 'primary'} size="lg" block onclick={retry}><RotateCcw size={16} /> {retryRound ? 'Teljes sor újra' : 'Újrapróbálom'}</Button>
 		</div>
 	</div>
 {:else if current}
@@ -203,16 +225,16 @@
 				role="progressbar"
 				aria-valuenow={idx + 1}
 				aria-valuemin={0}
-				aria-valuemax={questions.length}
+				aria-valuemax={active.length}
 				aria-label="Haladás"
 			>
 				<div
 					class="h-full rounded-full bg-brand-500 transition-all duration-300 motion-reduce:transition-none"
-					style="width: {((idx + 1) / questions.length) * 100}%"
+					style="width: {((idx + 1) / active.length) * 100}%"
 				></div>
 			</div>
 			<p class="shrink-0 text-[13px] font-bold text-stone-500 tabular-nums dark:text-stone-400">
-				{idx + 1}/{questions.length}
+				{idx + 1}/{active.length}
 			</p>
 		</div>
 
@@ -256,7 +278,7 @@
 					{/if}
 					<div class="mt-3">
 						<Button size="lg" block onclick={next}>
-							{idx >= questions.length - 1 ? 'Eredmény' : 'Tovább'} <ArrowRight size={17} />
+							{idx >= active.length - 1 ? 'Eredmény' : 'Tovább'} <ArrowRight size={17} />
 						</Button>
 					</div>
 				{/if}

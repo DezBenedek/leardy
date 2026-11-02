@@ -159,6 +159,14 @@
 		if (hero.kind === 'grading') openAssignment = grading[0];
 		else if (hero.kind === 'task' && dueTasks[0]) openDue(dueTasks[0]);
 	}
+
+	let wordsDueTotal = $derived(words.reduce((n, w) => n + w.due, 0));
+	let firstWord = $derived(words.find((w) => w.due > 0) ?? words[0] ?? null);
+	let planSuggestion = $derived(stats?.suggestions?.[0] ?? null);
+	let planCount = $derived(
+		(wordsDueTotal > 0 ? 1 : 0) + (dueTasks.length > 0 ? 1 : 0) + (planSuggestion ? 1 : 0)
+	);
+	let planReady = $derived(!heroLoading && !wordsLoading && !tasksLoading && !homeLoading);
 </script>
 
 <svelte:head>
@@ -240,6 +248,48 @@
 		{/if}
 	</section>
 </div>
+
+<section class="home-section" aria-labelledby="plan-title">
+	<div class="section-heading"><h2 id="plan-title">Mai terv</h2>{#if planReady && planCount > 0}<span class="section-count">{planCount} tétel</span>{/if}</div>
+	<div class="item-list">
+		{#if !planReady}
+			{@render loadingRows(2)}
+		{:else if planCount === 0}
+			<Card tone="tint">
+				<div class="item-row">
+					<span class="item-icon words-icon"><Check size={20} aria-hidden="true" /></span>
+					<p class="item-content empty-task-label">Mára minden kész. Tartsd a sorozatot egy gyors ismétléssel.</p>
+				</div>
+			</Card>
+		{:else}
+			{#if wordsDueTotal > 0 && firstWord}
+				<Card href={resolve('/szavak/[subjectId]', { subjectId: firstWord.subjectId })} ariaLabel={`${firstWord.subjectTitle}: ${wordsDueTotal} szó ismétlésre`}>
+					<span class="item-row"><span class="item-icon words-icon"><Languages size={20} aria-hidden="true" /></span>
+						<span class="item-content"><span class="item-title">{wordsDueTotal} szó ismétlésre</span><span class="item-description">{firstWord.subjectTitle}{words.length > 1 ? ` · még ${words.length - 1} nyelv` : ''}</span></span>
+						<ChevronRight size={18} class="item-chevron" aria-hidden="true" />
+					</span>
+				</Card>
+			{/if}
+			{#if dueTasks[0]}
+				{@const first = dueTasks[0]}
+				<Card onclick={() => openDue(first)} ariaLabel={`Mai feladat: ${first.title || 'Kvízfeladat'}`}>
+					<span class="item-row"><span class="item-icon task-icon"><CalendarDays size={20} aria-hidden="true" /></span>
+						<span class="item-content"><span class="item-title">{first.title || 'Kvízfeladat'}</span><span class="item-description">{first.roomName} · {relativeDeadline(first.dueDate, now)}</span></span>
+						<ChevronRight size={18} class="item-chevron" aria-hidden="true" />
+					</span>
+				</Card>
+			{/if}
+			{#if planSuggestion}
+				<Card href={resolve('/tanulas/lecke/[id]', { id: planSuggestion.lessonId })} ariaLabel={`Folytatás: ${planSuggestion.title}`}>
+					<span class="item-row"><span class="item-icon task-icon"><BookOpen size={20} aria-hidden="true" /></span>
+						<span class="item-content"><span class="item-title">{planSuggestion.title}</span><span class="item-description">{planSuggestion.subjectTitle} · folytatás</span></span>
+						<ChevronRight size={18} class="item-chevron" aria-hidden="true" />
+					</span>
+				</Card>
+			{/if}
+		{/if}
+	</div>
+</section>
 
 {#if grading.length > 0}
 	<section class="home-section" aria-labelledby="grading-title">

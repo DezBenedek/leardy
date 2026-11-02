@@ -1,6 +1,8 @@
 /* Utolsó kvízkitöltés átnézete: mi volt a hiba és mi a helyes.
    localStorage-ban él (eszközönként), drawer újranyitáskor is megmarad. */
 
+import type { QuizQuestion } from '$lib/curriculum/curriculum';
+
 export interface QuizMiss {
 	question: string;
 	mine: string;
@@ -37,4 +39,17 @@ export function loadQuizReview(classroomId: string, taskId: string): QuizReview 
 	} catch {
 		return null;
 	}
+}
+
+/** Van-e értelme csak a rontottakat újra kérdezni: legalább egy rontott, de nem mind. */
+export function canRetryMissed(total: number, missedCount: number): boolean {
+	return Number.isFinite(total) && Number.isFinite(missedCount) && missedCount > 0 && missedCount < total;
+}
+
+/** A rontott kérdések kiválogatása újrapróbáláshoz. Sorrendet megtartja. */
+export function selectMissedQuestions(
+	questions: QuizQuestion[],
+	isMiss: (question: QuizQuestion) => boolean
+): QuizQuestion[] {
+	return questions.filter(isMiss);
 }
