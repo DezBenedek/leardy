@@ -112,12 +112,15 @@ function inline(s: string): string {
 	return out;
 }
 
-/** Minimál markdown → HTML: ##/### címsorok, listák, linkek, vastag/dőlt/kód, bekezdések. */
+/** Minimál markdown → HTML: #/##/### címsorok, táblázatok, listák, idézetek, linkek, vastag/dőlt/kód, bekezdések. */
 export function renderMarkdown(md: string): string {
 	const lines = md.split('\n');
 	const html: string[] = [];
 	let para: string[] = [];
 	let list: string[] = [];
+	let ordered: string[] = [];
+	let quote: string[] = [];
+	let table: string[] = [];
 
 	function flushPara() {
 		if (para.length > 0) {
@@ -133,40 +136,176 @@ export function renderMarkdown(md: string): string {
 		}
 	}
 
+	function flushOrdered() {
+		if (ordered.length > 0) {
+			html.push(`<ol>${ordered.map((li) => `<li>${inline(li)}</li>`).join('')}</ol>`);
+			ordered = [];
+		}
+	}
+
+	function flushQuote() {
+		if (quote.length > 0) {
+			const paras: string[] = [];
+			let buf: string[] = [];
+			for (const line of [...quote, '']) {
+				if (!line.trim()) {
+					if (buf.length > 0) {
+						paras.push(`<p>${inline(buf.join(' '))}</p>`);
+						buf = [];
+					}
+				} else {
+					buf.push(line.trim());
+				}
+			}
+			html.push(`<blockquote>${paras.join('')}</blockquote>`);
+			quote = [];
+		}
+	}
+
+	function splitCells(row: string): string[] {
+		const cells: string[] = [];
+		let current = '';
+		let escaped = false;
+		const trimmed = row.trim();
+		const inner = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
+		const body = inner.endsWith('|') ? inner.slice(0, -1) : inner;
+		for (const ch of body) {
+			if (escaped) {
+				current += ch === '|' ? '|' : `\\${ch}`;
+				escaped = false;
+			} else if (ch === '\\') {
+				escaped = true;
+			} else if (ch === '|') {
+				cells.push(current.trim());
+				current = '';
+			} else {
+				current += ch;
+			}
+		}
+		if (escaped) current += '\\';
+		cells.push(current.trim());
+		return cells;
+	}
+
+	function isSeparator(row: string): boolean {
+		const cells = splitCells(row);
+		return cells.length > 0 && cells.every((cell) => /^:?-+:?$/.test(cell));
+	}
+
+	function cellAlign(cell: string): string {
+		const left = cell.startsWith(':');
+		const right = cell.endsWith(':');
+		if (left && right) return ' style="text-align:center"';
+		if (right) return ' style="text-align:right"';
+		return '';
+	}
+
+	function flushTable() {
+		if (table.length > 0) {
+			const rows = table;
+			table = [];
+			if (rows.length >= 2 && isSeparator(rows[1])) {
+				const head = splitCells(rows[0]);
+				const aligns = splitCells(rows[1]).map(cellAlign);
+				const th = head
+					.map((cell, i) => `<th${aligns[i] ?? ''}>${inline(cell)}</th>`)
+					.join('');
+				const body = rows
+					.slice(2)
+					.map(
+						(row) =>
+							`<tr>${splitCells(row)
+								.map((cell, i) => `<td${aligns[i] ?? ''}>${inline(cell)}</td>`)
+								.join('')}</tr>`
+					)
+					.join('');
+				html.push(`<div class="lesson-table-scroll"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`);
+			} else {
+				for (const row of rows) para.push(row);
+				flushPara();
+			}
+		}
+	}
+
+	function flushAll() {
+		flushPara();
+		flushList();
+		flushOrdered();
+		flushQuote();
+		flushTable();
+	}
+
 	for (const raw of lines) {
 		const line = raw.trim();
-		if (/^<!-- section:[a-z0-9][a-z0-9-]* -->$/.test(line)) continue;
+		if (/^<!-- section:[a-z0-9][a-z0-9-]* -->$/.test(line)) {
+			flushAll();
+			continue;
+		}
 		if (!line) {
-			flushPara();
-			flushList();
+			flushAll();
 			continue;
 		}
 		let m = line.match(/^###\s+(.*)$/);
 		if (m) {
-			flushPara();
-			flushList();
+			flushAll();
 			const t = m[1].trim();
 			html.push(`<h3 id="${slugify(t)}">${inline(t)}</h3>`);
 			continue;
 		}
 		m = line.match(/^##\s+(.*)$/);
 		if (m) {
-			flushPara();
-			flushList();
+			flushAll();
 			const t = m[1].trim();
 			html.push(`<h2 id="${slugify(t)}">${inline(t)}</h2>`);
 			continue;
 		}
+		m = line.match(/^#\s+(.*)$/);
+		if (m) {
+			flushAll();
+			const t = m[1].trim();
+			html.push(`<h2 id="${slugify(t)}">${inline(t)}</h2>`);
+			continue;
+		}
+		if (/^(---|\*\*\*|___)$/.test(line)) {
+			flushAll();
+			html.push('<hr>');
+			continue;
+		}
+		if (line.startsWith('|')) {
+			flushPara();
+			flushList();
+			flushOrdered();
+			flushQuote();
+			table.push(line);
+			continue;
+		}
+		flushTable();
+		m = line.match(/^>\s?(.*)$/);
+		if (m) {
+			flushPara();
+			flushList();
+			flushOrdered();
+			quote.push(m[1]);
+			continue;
+		}
+		flushQuote();
 		m = line.match(/^-\s+(.*)$/);
 		if (m) {
 			flushPara();
+			flushOrdered();
 			list.push(m[1].trim());
 			continue;
 		}
 		flushList();
+		m = line.match(/^\d+[.)]\s+(.*)$/);
+		if (m) {
+			flushPara();
+			ordered.push(m[1].trim());
+			continue;
+		}
+		flushOrdered();
 		para.push(line);
 	}
-	flushPara();
-	flushList();
+	flushAll();
 	return html.join('\n');
 }
