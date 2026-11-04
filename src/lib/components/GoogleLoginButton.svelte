@@ -40,7 +40,7 @@
 </a>
 <div class="mt-2.5 text-center">
 	<p class="text-[13px] font-semibold text-stone-500 dark:text-stone-400">Támogatott iskolák:</p>
-	<ul class="mt-1">
+	<ul class="mt-1 space-y-1">
 		<li>
 			<a
 				href="https://szentangela.hu"
@@ -50,6 +50,12 @@
 			>
 				Szent Angéla Ferences Általános Iskola és Gimnázium
 			</a>
+		</li>
+		<li class="text-[13px] font-semibold text-stone-500 dark:text-stone-400">
+			Franka (@frankaegom.hu)
+		</li>
+		<li class="text-[13px] font-semibold text-stone-500 dark:text-stone-400">
+			Szentendrei Ferences Gimnázium (@ferencesgimnazium.hu)
 		</li>
 	</ul>
 </div>
