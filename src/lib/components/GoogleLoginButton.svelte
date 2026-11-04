@@ -51,11 +51,25 @@
 				Szent Angéla Ferences Általános Iskola és Gimnázium
 			</a>
 		</li>
-		<li class="text-[13px] font-semibold text-stone-500 dark:text-stone-400">
-			Franka (@frankaegom.hu)
+		<li>
+			<a
+				href="https://franka-egom.ferences.eu"
+				target="_blank"
+				rel="noopener noreferrer"
+				class="text-[13px] font-semibold text-brand-600 underline decoration-brand-300 underline-offset-2 dark:text-brand-400"
+			>
+				Szent Antal Esztergomi Ferences Gimnázium és Kollégium (Franka)
+			</a>
 		</li>
-		<li class="text-[13px] font-semibold text-stone-500 dark:text-stone-400">
-			Szentendrei Ferences Gimnázium (@ferencesgimnazium.hu)
+		<li>
+			<a
+				href="https://ferencesgimnazium.hu"
+				target="_blank"
+				rel="noopener noreferrer"
+				class="text-[13px] font-semibold text-brand-600 underline decoration-brand-300 underline-offset-2 dark:text-brand-400"
+			>
+				Ferences Gimnázium, Szentendre
+			</a>
 		</li>
 	</ul>
 </div>
