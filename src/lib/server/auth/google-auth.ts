@@ -1,16 +1,34 @@
-/* Google OAuth segéd: csak @szentangela.hu fiók engedett.
+/* Google OAuth segéd: csak engedélyezett iskolai fiók engedett.
    Authorization code flow server oldalon, Cloudflare Workers-kompatibilis fetch-csel.
-   A domain szűrés két helyen: a Google beleegyező képernyőn (hd paraméter, csak UI segítség)
-   és itt szerver oldalon (email utótag + email_verified, ez a mérvadó). */
+   A domain szűrés itt szerver oldalon történik (email utótag + email_verified, ez a mérvadó).
+   Több iskola miatt a Google beleegyező képernyőn nincs hd szűkítés. */
 
 export const ALLOWED_DOMAIN = 'szentangela.hu';
-export const ALLOWED_DOMAINS: readonly string[] = [ALLOWED_DOMAIN];
+export const ALLOWED_DOMAINS: readonly string[] = [
+	'szentangela.hu',
+	'frankaegom.hu',
+	'ferencesgimnazium.hu'
+];
 
-/** Iskola azonosító az e-mail domainből: szentangela.hu marad egyben. */
-export function schoolIdFromEmail(email: string): string {
-	const at = email.trim().toLowerCase().lastIndexOf('@');
+/** Domainből iskola azonosító. A Szent Angéla a régi, domain alakú azonosítót
+    tartja meg a meglévő fiókok miatt, az új iskolák rövid azonosítót kapnak. */
+const SCHOOL_ID_BY_DOMAIN: Record<string, string> = {
+	'szentangela.hu': 'szentangela.hu',
+	'frankaegom.hu': 'frankaegom',
+	'ferencesgimnazium.hu': 'ferencesgimnazium'
+};
+
+/** E-mail domain kinyerése (kisbetűsítve). */
+function domainFromEmail(email: string): string {
+	const clean = email.trim().toLowerCase();
+	const at = clean.lastIndexOf('@');
 	if (at < 0) return '';
-	return email.trim().toLowerCase().slice(at + 1);
+	return clean.slice(at + 1);
+}
+
+/** Iskola azonosító az e-mail domainből. Ismeretlen domainre üres. */
+export function schoolIdFromEmail(email: string): string {
+	return SCHOOL_ID_BY_DOMAIN[domainFromEmail(email)] ?? '';
 }
 
 export interface GoogleEnv {
@@ -40,17 +58,21 @@ export function getGoogleEnv(env: GoogleEnv | undefined | null): {
 }
 
 export function isAllowedEmail(email: string): boolean {
-	const domain = schoolIdFromEmail(email);
-	return (ALLOWED_DOMAINS as readonly string[]).includes(domain);
+	return schoolIdFromEmail(email) !== '';
 }
 
-/* Szerepkör az e-mail helyi része alapján:
-   csak számokból álló helyi rész (pl. 72000000000) diák,
+/* Szerepkör az e-mail cím alapján:
+   Franka és Ferences: név alapú címek (vezetek.utonev), ezért ott mindenki
+   diák alapból, a tanárokat később kézzel kell kiemelni.
+   Szent Angéla: csak számokból álló helyi rész (pl. 72000000000) diák,
    minden más (pl. hangositas, kt) tanár. */
+const ALL_STUDENT_DOMAINS: readonly string[] = ['frankaegom.hu', 'ferencesgimnazium.hu'];
+
 export function isStudentEmail(email: string): boolean {
 	const clean = email.trim().toLowerCase();
 	const at = clean.lastIndexOf('@');
 	if (at <= 0) return false;
+	if ((ALL_STUDENT_DOMAINS as readonly string[]).includes(clean.slice(at + 1))) return true;
 	const local = clean.slice(0, at);
 	return local.length > 0 && /^\d+$/.test(local);
 }
@@ -71,7 +93,6 @@ export function buildGoogleAuthUrl(opts: {
 		response_type: 'code',
 		scope: 'openid email profile',
 		state: opts.state,
-		hd: ALLOWED_DOMAIN,
 		prompt: 'select_account',
 		access_type: 'online'
 	});
@@ -145,7 +166,9 @@ export function validateGoogleProfile(p: GoogleProfile): {
 	const email = p.email.trim().toLowerCase();
 	const school_id = schoolIdFromEmail(email);
 	if (!isAllowedEmail(email)) {
-		throw new Error(`Csak @${ALLOWED_DOMAIN} végű Google fiókkal lehet belépni.`);
+		throw new Error(
+			`Csak iskolai Google fiókkal lehet belépni (${ALLOWED_DOMAINS.map((d) => `@${d}`).join(', ')}).`
+		);
 	}
 	const name = p.name.trim().replace(/\s+/g, ' ').slice(0, 80) || email.split('@')[0];
 	if (name.length < 2) throw new Error('A Google fiókhoz nem tartozik megjeleníthető név.');

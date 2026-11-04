@@ -2,7 +2,7 @@ import { redirect, type RequestHandler } from '@sveltejs/kit';
 import { env as privateEnv } from '$env/dynamic/private';
 import { createSession, ensureAuthSchema, getDb, type DbUser } from '$lib/server/infra/db';
 import {
-	ALLOWED_DOMAIN,
+	ALLOWED_DOMAINS,
 	exchangeCodeForTokens,
 	fetchGoogleProfile,
 	getGoogleEnv,
@@ -60,7 +60,7 @@ export const GET: RequestHandler = async (event) => {
 		school_id = valid.school_id;
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : '';
-		if (msg.includes(`@${ALLOWED_DOMAIN}`)) return fail('domain');
+		if (ALLOWED_DOMAINS.some((d) => msg.includes(`@${d}`))) return fail('domain');
 		console.error('[leardy] Google callback hiba', err);
 		return fail('google');
 	}

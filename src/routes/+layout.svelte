@@ -168,7 +168,7 @@
 		}
 		if (!err) return;
 		if (err === 'domain') {
-			toast.error('Csak iskolai fiók', 'Csak @szentangela.hu végű Google fiókkal lehet belépni.');
+			toast.error('Csak iskolai fiók', 'Csak @szentangela.hu, @frankaegom.hu vagy @ferencesgimnazium.hu végű Google fiókkal lehet belépni.');
 		} else if (err === 'config') {
 			toast.error('Belépés nem elérhető', 'Hiányzik a Google OAuth beállítás. Szólj a rendszergazdának.');
 		} else if (err === 'db') {
